@@ -87,6 +87,7 @@ def generate_launch_description():
             'start_pose_trajectory_topic': '/ur_joint_trajectory_controller/joint_trajectory',
             'start_joint_positions': LaunchConfiguration('start_joint_positions'),
             'start_pose_publish_delay': '5.0',
+            'path_direction': LaunchConfiguration('path_direction'),
         }.items(),
     )
 
@@ -94,14 +95,15 @@ def generate_launch_description():
         DeclareLaunchArgument('launch_rviz', default_value='false'),
         DeclareLaunchArgument('controller_manager', default_value='/controller_manager'),
         DeclareLaunchArgument('switch_to_velocity_controller', default_value='true'),
-        DeclareLaunchArgument('path_length', default_value='0.3'),
+        DeclareLaunchArgument('path_length', default_value='1.2'),
         DeclareLaunchArgument('num_points', default_value='50'),
         DeclareLaunchArgument('time_step', default_value='0.1'),
+        DeclareLaunchArgument('path_direction', default_value='[-1.0, 0.0, 0.0]'),
         DeclareLaunchArgument('wait_for_start_condition', default_value='false'),
         DeclareLaunchArgument('move_to_start_pose', default_value='false'),
         DeclareLaunchArgument(
             'start_joint_positions',
-            default_value='[0.0, -1.57, 1.57, -1.57, -1.57, 0.0]',
+            default_value='[0.7854, -1.57, 1.5707963268, -0.0, 0.7854, 0.0]',
         ),
         sim_launch,
         TimerAction(period=5.0, actions=[start_pose]),
