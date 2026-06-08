@@ -25,6 +25,7 @@ def _launch_setup(context, *args, **kwargs):
     path_index_topic = LaunchConfiguration('path_index_topic')
     normal_topic = LaunchConfiguration('normal_topic')
     start_condition_topic = LaunchConfiguration('start_condition_topic')
+    combined_twist_source_topic = LaunchConfiguration('combined_twist_source_topic')
     twist_topics = (
         '['
         + LaunchConfiguration('ur_twist_world_topic').perform(context)
@@ -42,7 +43,7 @@ def _launch_setup(context, *args, **kwargs):
             condition=IfCondition(LaunchConfiguration('publish_current_pose_from_tf')),
             parameters=[{
                 'use_sim_time': use_sim_time,
-                'target_frame': LaunchConfiguration('base_link'),
+                'target_frame': LaunchConfiguration('path_frame'),
                 'source_frame': LaunchConfiguration('tip_link'),
                 'pose_topic': current_pose_topic,
                 'publish_rate': LaunchConfiguration('pose_publish_rate'),
@@ -70,7 +71,7 @@ def _launch_setup(context, *args, **kwargs):
             output='screen',
             parameters=[{
                 'use_sim_time': use_sim_time,
-                'frame_id': LaunchConfiguration('base_link'),
+                'frame_id': LaunchConfiguration('path_frame'),
                 'path_topic': path_topic,
                 'original_path_topic': LaunchConfiguration('original_path_topic'),
                 'normal_topic': normal_topic,
@@ -173,10 +174,23 @@ def _launch_setup(context, *args, **kwargs):
             parameters=[{
                 'use_sim_time': use_sim_time,
                 'twist_topics': twist_topics,
-                'combined_twist_topic': LaunchConfiguration('combined_twist_topic'),
+                'combined_twist_topic': combined_twist_source_topic,
                 'output_stamped': True,
-                'frame_id': LaunchConfiguration('base_link'),
+                'frame_id': LaunchConfiguration('path_frame'),
                 'publish_rate_hz': LaunchConfiguration('combined_twist_rate'),
+            }],
+        ),
+        Node(
+            package='ur_trajectory_follower',
+            executable='transform_twist_stamped',
+            name='transform_twist_to_command_frame',
+            output='screen',
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'input_topic': combined_twist_source_topic,
+                'output_topic': LaunchConfiguration('combined_twist_topic'),
+                'target_frame': LaunchConfiguration('base_link'),
+                'fallback_source_frame': LaunchConfiguration('path_frame'),
             }],
         ),
     ]
@@ -216,6 +230,7 @@ def generate_launch_description():
         DeclareLaunchArgument('joint_prefix', default_value='ur_'),
         DeclareLaunchArgument('base_link', default_value='ur_base_link'),
         DeclareLaunchArgument('tip_link', default_value='ur_tool0'),
+        DeclareLaunchArgument('path_frame', default_value='map'),
         DeclareLaunchArgument('robot_description_topic', default_value='/robot_description'),
         DeclareLaunchArgument('joint_states_topic', default_value='/joint_states'),
         DeclareLaunchArgument('velocity_command_topic', default_value='/ur_forward_velocity_controller/commands'),
@@ -255,6 +270,7 @@ def generate_launch_description():
         DeclareLaunchArgument('ur_error_topic', default_value='/ur_error_world'),
         DeclareLaunchArgument('ur_twist_world_topic', default_value='/ur_twist_world'),
         DeclareLaunchArgument('orientation_twist_topic', default_value='/ur_orientation_twist'),
+        DeclareLaunchArgument('combined_twist_source_topic', default_value='/jparse_velocity_controller_ur/twist_cmd_world'),
         DeclareLaunchArgument('combined_twist_topic', default_value='/jparse_velocity_controller_ur/twist_cmd'),
         DeclareLaunchArgument('combined_twist_rate', default_value='100.0'),
         DeclareLaunchArgument('kp_orientation', default_value='1.0'),

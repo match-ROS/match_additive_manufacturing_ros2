@@ -31,6 +31,7 @@ setup(
             'pid_twist_controller = ur_trajectory_follower.pid_twist_controller:main',
             'publish_joint_pose_once = ur_trajectory_follower.publish_joint_pose_once:main',
             'publish_sideways_test_path = ur_trajectory_follower.publish_sideways_test_path:main',
+            'transform_twist_stamped = ur_trajectory_follower.transform_twist_stamped:main',
             'ur_orientation_controller = ur_trajectory_follower.ur_path_orientation_controller:main',
         ],
     },
