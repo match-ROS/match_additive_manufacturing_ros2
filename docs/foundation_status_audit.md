@@ -68,7 +68,7 @@ Result: 11 passed. The only warnings were from pytest being unable to write cach
 files in the read-only workspace root.
 
 ```bash
-colcon build --packages-select \
+colcon build --symlink-install --packages-select \
   parse_paths base_trajectory_follower print_path_monitoring am_bringup \
   move_to_path_idx ur_trajectory_follower rbvogui_ur_sim_setup \
   bunker_description controllers_ros2
