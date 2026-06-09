@@ -66,7 +66,7 @@ def _launch_setup(context, *args, **kwargs):
         ),
         Node(
             package='parse_paths',
-            executable='publish_front_side_arm_base_paths',
+            executable='publish_sideways_arm_test_path',
             name='sideways_arm_test_path',
             output='screen',
             parameters=[{
