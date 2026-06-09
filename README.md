@@ -13,6 +13,7 @@ imports belong in platform repositories such as `bunker_manipulator`.
 - `move_to_path_idx`: One-shot mobile-base motion to a selected path index from an
   externally supplied robot pose.
 - `ur_trajectory_follower`: UR/TCP path-following and twist-composition utilities.
+- `am_bringup`: Demo launch/config glue connecting generic AM nodes to simulator topics.
 
 ## Core Topic Assumptions
 

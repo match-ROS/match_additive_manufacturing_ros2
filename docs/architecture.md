@@ -80,6 +80,12 @@ needed and tested in simulation.
   controllers, PID twist control, twist combining, and twist frame transforms.
 - Should not own path generation or platform simulation setup.
 
+`am_bringup`
+
+- Demo launch and config glue for simulation experiments.
+- Connects generic AM nodes to externally provided platform pose and command topics.
+- Does not own robot descriptions, Gazebo worlds, or vendor bringup.
+
 ### Planned Packages
 
 `print_path_monitoring`
@@ -88,13 +94,6 @@ needed and tested in simulation.
 - Consumes external TCP/nozzle pose and optional reference path/pose.
 - Publishes/logs error values.
 - No control, compensation, or pose estimation.
-
-`am_bringup`
-
-- Demo launch and config glue for simulation experiments.
-- Should connect generic AM nodes to platform-provided topics.
-- Platform-specific defaults should be launch arguments or YAML overlays, not hardcoded
-  inside generic nodes.
 
 ## Topic Contracts
 
