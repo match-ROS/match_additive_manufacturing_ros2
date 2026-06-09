@@ -65,9 +65,9 @@ def _launch_setup(context, *args, **kwargs):
             }],
         ),
         Node(
-            package='ur_trajectory_follower',
-            executable='publish_sideways_test_path',
-            name='sideways_ur_test_path',
+            package='parse_paths',
+            executable='publish_front_side_arm_base_paths',
+            name='sideways_arm_test_path',
             output='screen',
             parameters=[{
                 'use_sim_time': use_sim_time,

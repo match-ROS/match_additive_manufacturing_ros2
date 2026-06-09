@@ -9,38 +9,13 @@ from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool
-from tf_transformations import quaternion_from_matrix
 
-from ur_trajectory_follower.ros2_utils import as_bool, as_float_list
-
-
-def _normalize(vec: np.ndarray, fallback: np.ndarray) -> np.ndarray:
-    norm = np.linalg.norm(vec)
-    if norm < 1e-6:
-        return fallback
-    return vec / norm
+from parse_paths.path_utils import as_bool, as_float_list, build_orientation, make_pose, normalize
 
 
-def _build_orientation(nozzle_axis: np.ndarray, x_axis_hint: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    z_axis = _normalize(nozzle_axis, np.array([0.0, 0.0, 1.0]))
-    ref_axis = _normalize(x_axis_hint, np.array([1.0, 0.0, 0.0]))
-    if abs(float(np.dot(ref_axis, z_axis))) > 0.95:
-        ref_axis = np.array([1.0, 0.0, 0.0]) if abs(z_axis[0]) < 0.95 else np.array([0.0, 1.0, 0.0])
-
-    x_axis = _normalize(np.cross(ref_axis, z_axis), np.array([1.0, 0.0, 0.0]))
-    y_axis = _normalize(np.cross(z_axis, x_axis), np.array([0.0, 1.0, 0.0]))
-    x_axis = _normalize(np.cross(y_axis, z_axis), np.array([1.0, 0.0, 0.0]))
-
-    rotation = np.eye(4)
-    rotation[0:3, 0] = x_axis
-    rotation[0:3, 1] = y_axis
-    rotation[0:3, 2] = z_axis
-    return quaternion_from_matrix(rotation), z_axis
-
-
-class SidewaysTestPathPublisher(Node):
+class SidewaysArmTestPathPublisher(Node):
     def __init__(self) -> None:
-        super().__init__('ur_sideways_test_path_publisher')
+        super().__init__('sideways_arm_test_path_publisher')
         self.declare_parameter('frame_id', 'base_link')
         self.declare_parameter('path_topic', '/ur_path_transformed')
         self.declare_parameter('original_path_topic', '/ur_path_original')
@@ -92,7 +67,7 @@ class SidewaysTestPathPublisher(Node):
 
         rate = max(0.1, float(self.get_parameter('publish_rate').value))
         self.create_timer(1.0 / rate, self._tick)
-        self.get_logger().info("Sideways test path publisher waiting for start pose inputs.")
+        self.get_logger().info("Sideways arm test path publisher waiting for start pose inputs.")
 
     def _current_pose_cb(self, msg: PoseStamped) -> None:
         self.current_pose = msg
@@ -116,32 +91,22 @@ class SidewaysTestPathPublisher(Node):
             start = self.start_xyz
         self.path_msg, self.normal_msg = self._build_messages(start + self.start_offset)
         self.get_logger().info(
-            f"Publishing sideways path with {self.num_points} points on {self.path_topic}."
+            f"Publishing sideways arm path with {self.num_points} points on {self.path_topic}."
         )
 
     def _build_messages(self, start_point: np.ndarray) -> Tuple[Path, Vector3]:
-        direction = _normalize(self.direction, np.array([1.0, 0.0, 0.0]))
+        direction = normalize(self.direction, np.array([1.0, 0.0, 0.0]))
         step = self.path_length / max(self.num_points - 1, 1)
-        quat, nozzle_axis = _build_orientation(self.nozzle_axis, self.x_axis_hint)
+        orientation, normal = build_orientation(self.nozzle_axis, self.x_axis_hint)
         path_msg = Path()
         path_msg.header.frame_id = self.frame_id
         start_time = self.get_clock().now()
 
         for i in range(self.num_points):
-            pose = PoseStamped()
-            pose.header.frame_id = self.frame_id
-            pose.header.stamp = (start_time + Duration(seconds=self.time_step * i)).to_msg()
+            stamp = (start_time + Duration(seconds=self.time_step * i)).to_msg()
             position = start_point + direction * (step * i)
-            pose.pose.position.x = float(position[0])
-            pose.pose.position.y = float(position[1])
-            pose.pose.position.z = float(position[2])
-            pose.pose.orientation.x = float(quat[0])
-            pose.pose.orientation.y = float(quat[1])
-            pose.pose.orientation.z = float(quat[2])
-            pose.pose.orientation.w = float(quat[3])
-            path_msg.poses.append(pose)
+            path_msg.poses.append(make_pose(self.frame_id, stamp, position, orientation))
 
-        normal = Vector3(x=float(nozzle_axis[0]), y=float(nozzle_axis[1]), z=float(nozzle_axis[2]))
         return path_msg, normal
 
     def _tick(self) -> None:
@@ -157,7 +122,7 @@ class SidewaysTestPathPublisher(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = SidewaysTestPathPublisher()
+    node = SidewaysArmTestPathPublisher()
     rclpy.spin(node)
     node.destroy_node()
     rclpy.shutdown()
