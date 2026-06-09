@@ -155,6 +155,8 @@ Base velocity command:
 
 ## Decisions For Now
 
+- The current local foundation status and remaining simulator validation checks are
+  summarized in `docs/foundation_status_audit.md`.
 - Do not start with MoveIt. Add it only when a branch requires planning or collision
   checking.
 - Do not estimate base/TCP poses in application packages.
