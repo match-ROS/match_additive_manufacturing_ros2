@@ -14,6 +14,7 @@ imports belong in platform repositories such as `bunker_manipulator`.
   externally supplied robot pose.
 - `ur_trajectory_follower`: UR/TCP path-following and twist-composition utilities.
 - `am_bringup`: Demo launch/config glue connecting generic AM nodes to simulator topics.
+- `print_path_monitoring`: Monitoring-only nozzle/TCP pose error diagnostics.
 
 ## Core Topic Assumptions
 

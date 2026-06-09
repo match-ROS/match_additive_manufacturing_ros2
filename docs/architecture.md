@@ -86,14 +86,13 @@ needed and tested in simulation.
 - Connects generic AM nodes to externally provided platform pose and command topics.
 - Does not own robot descriptions, Gazebo worlds, or vendor bringup.
 
-### Planned Packages
-
 `print_path_monitoring`
 
-- Monitoring only.
-- Consumes external TCP/nozzle pose and optional reference path/pose.
-- Publishes/logs error values.
-- No control, compensation, or pose estimation.
+- Monitoring-only TCP/nozzle diagnostics.
+- Compares external TCP/nozzle pose with a reference pose or path index.
+- Publishes/logs error values without commanding correction or compensation.
+
+### Planned Packages
 
 ## Topic Contracts
 
