@@ -65,6 +65,14 @@ needed and tested in simulation.
 - Publishes base velocity until the selected path index is reached and oriented.
 - Useful for start-pose setup, not continuous path following.
 
+`base_trajectory_follower`
+
+- Generic simple mobile-base follower package for RB-VOGUI first, then Bunker.
+- Subscribes to `nav_msgs/msg/Path` and external base pose.
+- Publishes configurable `Twist` or `TwistStamped` base velocity commands.
+- Includes proportional x/y/yaw command generation, lookahead target selection,
+  velocity limits, final tolerances, and stale-pose zero-command behavior.
+
 `ur_trajectory_follower`
 
 - UR/TCP path-following and twist utilities.
@@ -73,15 +81,6 @@ needed and tested in simulation.
 - Should not own path generation or platform simulation setup.
 
 ### Planned Packages
-
-`base_trajectory_follower`
-
-- Generic mobile-base follower package for RB-VOGUI first, then Bunker.
-- Subscribes to `nav_msgs/msg/Path` and external base pose.
-- Publishes a configured velocity command topic.
-- Parameters should cover command mode, gains, lookahead/tolerances, velocity limits,
-  stale-pose timeout, and stop behavior.
-- Must publish zero velocity when no valid path or fresh pose is available.
 
 `print_path_monitoring`
 

@@ -1,0 +1,24 @@
+simple_base_follower:
+  ros__parameters:
+    path_topic: /base_path
+    robot_pose_topic: /robot_pose
+    robot_pose_type: pose_stamped
+    cmd_vel_topic: /robot/robotnik_base_control/cmd_vel_unstamped
+    output_stamped: false
+    command_frame_id: base_link
+    publish_rate: 20.0
+    lookahead_distance: 0.4
+    stale_pose_timeout: 0.5
+    stop_on_goal: true
+    allow_reverse: true
+
+    kp_x: 0.8
+    kp_y: 0.8
+    kp_yaw: 1.2
+
+    max_vx: 0.4
+    max_vy: 0.4
+    max_wz: 0.8
+
+    xy_goal_tolerance: 0.05
+    yaw_goal_tolerance: 0.08
