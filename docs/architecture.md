@@ -151,6 +151,7 @@ Base velocity command:
    - Adapt the generic base follower to Bunker command/kinematic constraints.
 9. `feature/port-mir-trajectory-follower-analysis`
    - Analyze ROS 1 `mir_trajectory_follower` and recommend port/simplify/rewrite.
+   - See `docs/ros1_mir_trajectory_follower_analysis.md`.
 
 ## Decisions For Now
 
