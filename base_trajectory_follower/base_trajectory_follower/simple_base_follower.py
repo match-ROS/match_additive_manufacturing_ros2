@@ -7,7 +7,7 @@ from geometry_msgs.msg import Pose, PoseStamped, Twist, TwistStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
-from std_msgs.msg import Int32
+from std_msgs.msg import Bool, Int32
 
 from base_trajectory_follower.controller import (
     FollowerGains,
@@ -30,6 +30,8 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('command_frame_id', 'base_link')
         self.declare_parameter('use_external_path_index', False)
         self.declare_parameter('path_index_topic', '/path_index')
+        self.declare_parameter('wait_for_start_condition', False)
+        self.declare_parameter('start_condition_topic', '/start_condition')
         self.declare_parameter('publish_rate', 20.0)
         self.declare_parameter('lookahead_distance', 0.4)
         self.declare_parameter('stale_pose_timeout', 0.5)
@@ -58,6 +60,10 @@ class SimpleBaseFollower(Node):
         self.output_stamped = self._as_bool(self.get_parameter('output_stamped').value)
         self.command_frame_id = str(self.get_parameter('command_frame_id').value)
         self.use_external_path_index = self._as_bool(self.get_parameter('use_external_path_index').value)
+        self.wait_for_start_condition = self._as_bool(
+            self.get_parameter('wait_for_start_condition').value
+        )
+        self.control_enabled = not self.wait_for_start_condition
 
         latch_qos = QoSProfile(
             depth=1,
@@ -72,6 +78,12 @@ class SimpleBaseFollower(Node):
                 self._path_index_cb,
                 10,
             )
+        self.create_subscription(
+            Bool,
+            str(self.get_parameter('start_condition_topic').value),
+            self._start_condition_cb,
+            10,
+        )
 
         pose_type = str(self.get_parameter('robot_pose_type').value).strip().lower()
         if pose_type in {'pose', 'geometry_msgs/msg/pose'}:
@@ -103,6 +115,14 @@ class SimpleBaseFollower(Node):
     def _path_index_cb(self, msg: Int32) -> None:
         self.external_path_index = max(0, int(msg.data))
 
+    def _start_condition_cb(self, msg: Bool) -> None:
+        was_enabled = self.control_enabled
+        self.control_enabled = bool(msg.data) or not self.wait_for_start_condition
+        if self.control_enabled and not was_enabled:
+            self.get_logger().info("Base follower start condition received.")
+        elif was_enabled and not self.control_enabled:
+            self._publish_stop('start condition disabled')
+
     def _pose_cb(self, msg: Pose) -> None:
         self.robot_pose = self._pose2d_from_pose(msg)
         self.last_pose_time = self.get_clock().now()
@@ -112,6 +132,8 @@ class SimpleBaseFollower(Node):
         self.last_pose_time = self.get_clock().now()
 
     def _tick(self) -> None:
+        if not self.control_enabled:
+            return
         if not self.path:
             self._publish_stop('no path')
             return

@@ -29,6 +29,23 @@ Application packages do not estimate these poses. They consume pose topics, publ
 reference paths, publish velocity commands, and expose gains/limits/tolerances as
 parameters.
 
+## Robotnik Paired Base/Arm Demo
+
+The current integrated demo is the RB-VOGUI base plus UR arm paired-path flow. It
+generates base and arm paths with the same number of waypoints, drives the base to
+the first base waypoint, then uses one shared `/path_index` to advance both paths.
+
+```bash
+colcon build --symlink-install --packages-select \
+  parse_paths move_to_path_idx base_trajectory_follower ur_trajectory_follower am_bringup
+source install/setup.bash
+ros2 launch am_bringup rbvogui_paired_base_only_demo.launch.py launch_sim:=true
+ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py launch_sim:=true
+```
+
+See [am_bringup/README.md](am_bringup/README.md) for topic checks, the start-pose
+handoff, and the current Robotnik UR velocity-controller caveat.
+
 ## Development Direction
 
 The near-term simulation target is Robotnik RB-VOGUI + UR because omnidirectional

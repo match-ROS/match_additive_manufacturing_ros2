@@ -9,6 +9,7 @@ from geometry_msgs.msg import Pose, PoseStamped, Twist
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from std_msgs.msg import Bool
 
 
 class ControlState(Enum):
@@ -33,6 +34,12 @@ def clamp(value: float, limit: float) -> float:
     return max(-limit, min(limit, value))
 
 
+def as_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
+
+
 class MoveToPathIdx(Node):
     def __init__(self) -> None:
         super().__init__('move_to_path_idx')
@@ -51,6 +58,9 @@ class MoveToPathIdx(Node):
         self.declare_parameter('max_linear_velocity', 0.25)
         self.declare_parameter('max_angular_velocity', 0.6)
         self.declare_parameter('drive_heading_threshold', 0.6)
+        self.declare_parameter('publish_start_condition', False)
+        self.declare_parameter('start_condition_topic', '/start_condition')
+        self.declare_parameter('start_condition_publish_count', 5)
 
         self.path: Optional[Path] = None
         self.robot_pose: Optional[Pose] = None
@@ -58,6 +68,7 @@ class MoveToPathIdx(Node):
         self.state = ControlState.WAITING_FOR_INPUTS
         self.target_pose: Optional[Pose] = None
         self.has_logged_waiting = False
+        self.start_condition_remaining = 0
 
         path_topic = str(self.get_parameter('path_topic').value)
         robot_pose_topic = str(self.get_parameter('robot_pose_topic').value)
@@ -69,6 +80,11 @@ class MoveToPathIdx(Node):
             reliability=QoSReliabilityPolicy.RELIABLE,
         )
         self.create_subscription(Path, path_topic, self._path_cb, path_qos)
+        self.start_condition_pub = self.create_publisher(
+            Bool,
+            str(self.get_parameter('start_condition_topic').value),
+            path_qos,
+        )
 
         pose_type = str(self.get_parameter('robot_pose_type').value).strip().lower()
         if pose_type in {'pose', 'geometry_msgs/msg/pose'}:
@@ -125,9 +141,21 @@ class MoveToPathIdx(Node):
     def _publish_stop(self) -> None:
         self.cmd_vel_pub.publish(Twist())
 
+    def _publish_start_condition(self) -> None:
+        if as_bool(self.get_parameter('publish_start_condition').value):
+            self.start_condition_pub.publish(Bool(data=True))
+
     def _tick(self) -> None:
         if self.state == ControlState.WAITING_FOR_INPUTS:
             self._maybe_start()
+            return
+        if self.state == ControlState.DONE:
+            self._publish_stop()
+            if self.start_condition_remaining > 0:
+                self._publish_start_condition()
+                self.start_condition_remaining -= 1
+                return
+            rclpy.shutdown()
             return
         if self.target_pose is None or self.robot_pose is None:
             return
@@ -166,11 +194,16 @@ class MoveToPathIdx(Node):
             if abs(angle_diff) <= float(self.get_parameter('yaw_tolerance').value):
                 self.state = ControlState.DONE
                 self._publish_stop()
+                self.start_condition_remaining = max(
+                    1,
+                    int(self.get_parameter('start_condition_publish_count').value),
+                )
+                self._publish_start_condition()
+                self.start_condition_remaining -= 1
                 self.get_logger().info(
                     f"Reached path index {self.path_index}: dist={dist:.3f}, "
-                    f"angle_diff={angle_diff:.3f}. Shutting down."
+                    f"angle_diff={angle_diff:.3f}. Signaling start condition and shutting down."
                 )
-                rclpy.shutdown()
             else:
                 cmd.angular.z = clamp(
                     float(self.get_parameter('kp_angular_reorient').value) * angle_diff,

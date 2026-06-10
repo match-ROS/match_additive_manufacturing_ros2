@@ -11,6 +11,8 @@ def generate_launch_description():
         DeclareLaunchArgument('robot_pose_type', default_value='pose_stamped'),
         DeclareLaunchArgument('cmd_vel_topic', default_value='/diff_drive_controller/cmd_vel'),
         DeclareLaunchArgument('path_index', default_value='0'),
+        DeclareLaunchArgument('publish_start_condition', default_value='false'),
+        DeclareLaunchArgument('start_condition_topic', default_value='/start_condition'),
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         Node(
             package='move_to_path_idx',
@@ -24,6 +26,8 @@ def generate_launch_description():
                 'robot_pose_type': LaunchConfiguration('robot_pose_type'),
                 'cmd_vel_topic': LaunchConfiguration('cmd_vel_topic'),
                 'path_index': LaunchConfiguration('path_index'),
+                'publish_start_condition': LaunchConfiguration('publish_start_condition'),
+                'start_condition_topic': LaunchConfiguration('start_condition_topic'),
             }],
         ),
     ])

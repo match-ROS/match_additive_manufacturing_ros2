@@ -83,12 +83,15 @@ Default topics:
 - TCP pose input: `/current_tcp_pose`
 
 By default, the publisher waits for the current base and TCP poses and then creates
-the start poses offset from those current poses. For a deterministic path without
-pose inputs:
+the start poses offset from those current poses. `base_start_offset` can place the
+first base waypoint away from the current base pose so a `move_to_path_idx` pre-roll
+can drive to `/base_path[0]` before trajectory tracking starts. For a deterministic
+path without pose inputs:
 
 ```bash
 ros2 launch parse_paths robotnik_base_arm_paths.launch.py \
   use_current_poses:=false \
   base_start_xyz:='[0.0, 0.0, 0.0]' \
+  base_start_offset:='[0.35, 0.0, 0.0]' \
   arm_start_xyz:='[0.6, 0.0, 0.8]'
 ```

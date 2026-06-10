@@ -21,6 +21,8 @@ def generate_launch_description():
         DeclareLaunchArgument('output_stamped', default_value='false'),
         DeclareLaunchArgument('use_external_path_index', default_value='false'),
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
+        DeclareLaunchArgument('wait_for_start_condition', default_value='false'),
+        DeclareLaunchArgument('start_condition_topic', default_value='/start_condition'),
         Node(
             package='base_trajectory_follower',
             executable='simple_base_follower',
@@ -36,6 +38,8 @@ def generate_launch_description():
                     'output_stamped': LaunchConfiguration('output_stamped'),
                     'use_external_path_index': LaunchConfiguration('use_external_path_index'),
                     'path_index_topic': LaunchConfiguration('path_index_topic'),
+                    'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
+                    'start_condition_topic': LaunchConfiguration('start_condition_topic'),
                 },
             ],
         ),

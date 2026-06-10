@@ -10,6 +10,7 @@ The first node, `simple_base_follower`, is intentionally small and platform-ligh
 - can publish `geometry_msgs/msg/TwistStamped` when `output_stamped:=true`
 - supports x, y, and yaw velocity for omnidirectional bases such as RB-VOGUI
 - can optionally consume a shared external `std_msgs/msg/Int32` path index
+- can wait for a shared `std_msgs/msg/Bool` start condition before publishing commands
 - publishes zero velocity if no path, no pose, stale pose, or goal reached
 
 It does not estimate pose, run localization, perform obstacle avoidance, or compensate
@@ -45,6 +46,9 @@ ros2 launch base_trajectory_follower simple_base_follower.launch.py \
 - `use_external_path_index`: if true, use `path_index_topic` instead of lookahead
   target selection.
 - `path_index_topic`: shared path-index input, default `/path_index`.
+- `wait_for_start_condition`: if true, stay quiet until `start_condition_topic`
+  publishes true.
+- `start_condition_topic`: shared start gate, default `/start_condition`.
 - `stale_pose_timeout`: max allowed age of the latest pose before commanding zero.
 - `kp_x`, `kp_y`, `kp_yaw`: proportional gains in robot frame.
 - `max_vx`, `max_vy`, `max_wz`: command limits.

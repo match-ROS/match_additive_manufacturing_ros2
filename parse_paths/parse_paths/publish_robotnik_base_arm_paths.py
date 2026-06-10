@@ -95,6 +95,7 @@ class RobotnikBaseArmPathPublisher(Node):
         self.declare_parameter('current_arm_pose_topic', '/current_tcp_pose')
         self.declare_parameter('use_current_poses', True)
         self.declare_parameter('base_start_xyz', [0.0, 0.0, 0.0])
+        self.declare_parameter('base_start_offset', [0.0, 0.0, 0.0])
         self.declare_parameter('base_yaw', 0.0)
         self.declare_parameter('arm_start_xyz', [0.6, 0.0, 0.8])
         self.declare_parameter('sideways_distance', 0.8)
@@ -171,11 +172,19 @@ class RobotnikBaseArmPathPublisher(Node):
             base_position = self.robot_pose.position
             base_start = np.array([base_position.x, base_position.y, base_position.z], dtype=float)
             base_yaw = yaw_from_quaternion(self.robot_pose.orientation)
+            base_start += rotate_xy(
+                as_vector3(self.get_parameter('base_start_offset').value, [0.0, 0.0, 0.0]),
+                base_yaw,
+            )
             arm_position = self.current_arm_pose.pose.position
             arm_start = np.array([arm_position.x, arm_position.y, arm_position.z], dtype=float)
         else:
             base_start = as_vector3(self.get_parameter('base_start_xyz').value, [0.0, 0.0, 0.0])
             base_yaw = float(self.get_parameter('base_yaw').value)
+            base_start += rotate_xy(
+                as_vector3(self.get_parameter('base_start_offset').value, [0.0, 0.0, 0.0]),
+                base_yaw,
+            )
             arm_start = as_vector3(self.get_parameter('arm_start_xyz').value, [0.6, 0.0, 0.8])
 
         base_points = generate_sideways_then_diagonal_points(

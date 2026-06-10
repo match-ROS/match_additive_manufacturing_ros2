@@ -5,6 +5,7 @@ import numpy as np
 from parse_paths.publish_robotnik_base_arm_paths import (
     generate_arm_points,
     generate_sideways_then_diagonal_points,
+    rotate_xy,
 )
 
 
@@ -48,6 +49,22 @@ def test_robotnik_base_path_respects_start_yaw():
 
     assert points[1][0] < points[0][0]
     assert np.allclose(points[-1], [-1.0, 3.0, 0.0])
+
+
+def test_base_start_offset_can_be_applied_in_robot_frame():
+    base_pose = np.array([1.0, 2.0, 0.0])
+    start_offset = np.array([0.35, 0.0, 0.0])
+    base_yaw = math.pi / 2.0
+
+    points = generate_sideways_then_diagonal_points(
+        base_pose + rotate_xy(start_offset, base_yaw),
+        base_yaw,
+        1.0,
+        math.sqrt(2.0),
+        20,
+    )
+
+    assert np.allclose(points[0], [1.0, 2.35, 0.0])
 
 
 def test_arm_path_tracks_base_displacement_with_offset_and_height_change():

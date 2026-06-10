@@ -53,7 +53,14 @@ ros2 launch am_bringup rbvogui_path_following_demo.launch.py \
 
 The paired Robotnik demos use one shared `/path_index` for both the base path and
 the arm path. This keeps the base and UR reference trajectories synchronized by
-waypoint number.
+waypoint number: index `i` is the base target and arm target for the same step.
+
+By default the paired path starts `0.35 m` in front of the current base pose. The
+`move_to_base_path_start` node first drives the RB-VOGUI to `/base_path[0]`, then
+publishes `/start_condition`. The shared index publisher, base follower, and arm
+controller wait for that signal before following the trajectory. In the base+arm
+demo, the same `move_to_start_pose` switch also enables the UR one-shot joint-pose
+publisher on `/robot/joint_trajectory_controller/joint_trajectory`.
 
 Generate paired paths, increment the shared index, and drive only the RB-VOGUI base:
 
@@ -73,6 +80,14 @@ Run the base plus UR control-node wiring:
 ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py
 ```
 
+Disable the pre-roll only when another node is already publishing the start signal:
+
+```bash
+ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py \
+  move_to_start_pose:=false \
+  wait_for_start_condition:=false
+```
+
 The base+arm launch reuses the UR sideways control stack but disables its internal
 path publisher and internal index publisher. The paired Robotnik path publisher owns
 both paths, and the single `shared_path_index` node publishes `/path_index`.
@@ -87,9 +102,11 @@ Useful checks:
 
 ```bash
 ros2 topic echo /path_index --once
+ros2 topic echo /start_condition --once
 ros2 topic echo /base_path --once
 ros2 topic echo /ur_path_transformed --once
 ros2 topic echo /robot/robotnik_base_control/cmd_vel_unstamped
+ros2 topic echo /robot/joint_trajectory_controller/joint_trajectory --once
 ```
 
 ## Bunker TCP Monitoring Demo
