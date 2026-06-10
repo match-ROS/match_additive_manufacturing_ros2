@@ -49,6 +49,49 @@ ros2 launch am_bringup rbvogui_path_following_demo.launch.py \
   path_frame:=<world_frame>
 ```
 
+## RB-VOGUI Paired Base/Arm Demo
+
+The paired Robotnik demos use one shared `/path_index` for both the base path and
+the arm path. This keeps the base and UR reference trajectories synchronized by
+waypoint number.
+
+Generate paired paths, increment the shared index, and drive only the RB-VOGUI base:
+
+```bash
+ros2 launch am_bringup rbvogui_paired_base_only_demo.launch.py
+```
+
+Start the validated Robotnik simulation as part of the base-only demo:
+
+```bash
+ros2 launch am_bringup rbvogui_paired_base_only_demo.launch.py launch_sim:=true
+```
+
+Run the base plus UR control-node wiring:
+
+```bash
+ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py
+```
+
+The base+arm launch reuses the UR sideways control stack but disables its internal
+path publisher and internal index publisher. The paired Robotnik path publisher owns
+both paths, and the single `shared_path_index` node publishes `/path_index`.
+
+The Robotnik standard-control simulation currently exposes the UR
+`joint_trajectory_controller`. Actual UR velocity actuation through the KDL velocity
+bridge requires a compatible joint velocity command topic. Keep
+`start_jparse_controller:=false` unless that controller is available; the UR control
+nodes will still publish their twist chain for validation.
+
+Useful checks:
+
+```bash
+ros2 topic echo /path_index --once
+ros2 topic echo /base_path --once
+ros2 topic echo /ur_path_transformed --once
+ros2 topic echo /robot/robotnik_base_control/cmd_vel_unstamped
+```
+
 ## Bunker TCP Monitoring Demo
 
 Prerequisites:

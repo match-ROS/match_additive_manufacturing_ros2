@@ -19,6 +19,8 @@ def generate_launch_description():
         DeclareLaunchArgument('robot_pose_topic', default_value='/robot_pose'),
         DeclareLaunchArgument('cmd_vel_topic', default_value='/robot/robotnik_base_control/cmd_vel_unstamped'),
         DeclareLaunchArgument('output_stamped', default_value='false'),
+        DeclareLaunchArgument('use_external_path_index', default_value='false'),
+        DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
         Node(
             package='base_trajectory_follower',
             executable='simple_base_follower',
@@ -32,6 +34,8 @@ def generate_launch_description():
                     'robot_pose_topic': LaunchConfiguration('robot_pose_topic'),
                     'cmd_vel_topic': LaunchConfiguration('cmd_vel_topic'),
                     'output_stamped': LaunchConfiguration('output_stamped'),
+                    'use_external_path_index': LaunchConfiguration('use_external_path_index'),
+                    'path_index_topic': LaunchConfiguration('path_index_topic'),
                 },
             ],
         ),

@@ -69,6 +69,7 @@ def _launch_setup(context, *args, **kwargs):
             executable='publish_sideways_arm_test_path',
             name='sideways_arm_test_path',
             output='screen',
+            condition=IfCondition(LaunchConfiguration('publish_path')),
             parameters=[{
                 'use_sim_time': use_sim_time,
                 'frame_id': LaunchConfiguration('path_frame'),
@@ -92,6 +93,7 @@ def _launch_setup(context, *args, **kwargs):
             executable='increment_path_index',
             name='increment_path_index',
             output='screen',
+            condition=IfCondition(LaunchConfiguration('publish_path_index')),
             parameters=[{
                 'use_sim_time': use_sim_time,
                 'path_index_topic': path_index_topic,
@@ -238,10 +240,12 @@ def generate_launch_description():
         DeclareLaunchArgument('publish_current_pose_from_tf', default_value='true'),
         DeclareLaunchArgument('current_pose_topic', default_value='/current_tcp_pose'),
         DeclareLaunchArgument('pose_publish_rate', default_value='50.0'),
+        DeclareLaunchArgument('publish_path', default_value='true'),
         DeclareLaunchArgument('path_topic', default_value='/ur_path_transformed'),
         DeclareLaunchArgument('original_path_topic', default_value='/ur_path_original'),
         DeclareLaunchArgument('normal_topic', default_value='/normal_vector'),
         DeclareLaunchArgument('next_goal_topic', default_value='/next_goal'),
+        DeclareLaunchArgument('publish_path_index', default_value='true'),
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
         DeclareLaunchArgument('path_index_rate', default_value='10.0'),
         DeclareLaunchArgument('initial_path_index', default_value='0'),

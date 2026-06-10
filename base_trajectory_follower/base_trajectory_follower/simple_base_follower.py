@@ -7,6 +7,7 @@ from geometry_msgs.msg import Pose, PoseStamped, Twist, TwistStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from std_msgs.msg import Int32
 
 from base_trajectory_follower.controller import (
     FollowerGains,
@@ -27,6 +28,8 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('cmd_vel_topic', '/robot/robotnik_base_control/cmd_vel_unstamped')
         self.declare_parameter('output_stamped', False)
         self.declare_parameter('command_frame_id', 'base_link')
+        self.declare_parameter('use_external_path_index', False)
+        self.declare_parameter('path_index_topic', '/path_index')
         self.declare_parameter('publish_rate', 20.0)
         self.declare_parameter('lookahead_distance', 0.4)
         self.declare_parameter('stale_pose_timeout', 0.5)
@@ -45,6 +48,7 @@ class SimpleBaseFollower(Node):
         self.robot_pose: Optional[Pose2D] = None
         self.last_pose_time = None
         self.current_index = 0
+        self.external_path_index: Optional[int] = None
         self.goal_reached = False
         self.last_stop_reason = ''
 
@@ -53,6 +57,7 @@ class SimpleBaseFollower(Node):
         self.cmd_vel_topic = str(self.get_parameter('cmd_vel_topic').value)
         self.output_stamped = self._as_bool(self.get_parameter('output_stamped').value)
         self.command_frame_id = str(self.get_parameter('command_frame_id').value)
+        self.use_external_path_index = self._as_bool(self.get_parameter('use_external_path_index').value)
 
         latch_qos = QoSProfile(
             depth=1,
@@ -60,6 +65,13 @@ class SimpleBaseFollower(Node):
             reliability=QoSReliabilityPolicy.RELIABLE,
         )
         self.create_subscription(Path, self.path_topic, self._path_cb, latch_qos)
+        if self.use_external_path_index:
+            self.create_subscription(
+                Int32,
+                str(self.get_parameter('path_index_topic').value),
+                self._path_index_cb,
+                10,
+            )
 
         pose_type = str(self.get_parameter('robot_pose_type').value).strip().lower()
         if pose_type in {'pose', 'geometry_msgs/msg/pose'}:
@@ -83,8 +95,13 @@ class SimpleBaseFollower(Node):
         poses = [self._pose2d_from_pose_stamped(pose) for pose in msg.poses]
         self.path = poses
         self.current_index = 0
+        if self.external_path_index is not None and self.path:
+            self.current_index = max(0, min(self.external_path_index, len(self.path) - 1))
         self.goal_reached = False
         self.get_logger().info(f"Received base path with {len(self.path)} poses.")
+
+    def _path_index_cb(self, msg: Int32) -> None:
+        self.external_path_index = max(0, int(msg.data))
 
     def _pose_cb(self, msg: Pose) -> None:
         self.robot_pose = self._pose2d_from_pose(msg)
@@ -108,13 +125,19 @@ class SimpleBaseFollower(Node):
             self._publish_stop('goal reached')
             return
 
-        lookahead = float(self.get_parameter('lookahead_distance').value)
-        self.current_index = select_lookahead_index(
-            self.path,
-            self.robot_pose,
-            lookahead,
-            self.current_index,
-        )
+        if self.use_external_path_index:
+            if self.external_path_index is None:
+                self._publish_stop('no path index')
+                return
+            self.current_index = max(0, min(self.external_path_index, len(self.path) - 1))
+        else:
+            lookahead = float(self.get_parameter('lookahead_distance').value)
+            self.current_index = select_lookahead_index(
+                self.path,
+                self.robot_pose,
+                lookahead,
+                self.current_index,
+            )
         command = compute_velocity_command(
             self.robot_pose,
             self.path[self.current_index],
