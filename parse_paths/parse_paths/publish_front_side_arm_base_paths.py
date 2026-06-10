@@ -179,10 +179,17 @@ class FrontSideArmBasePathPublisher(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = FrontSideArmBasePathPublisher()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    node: Optional[FrontSideArmBasePathPublisher] = None
+    try:
+        node = FrontSideArmBasePathPublisher()
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if node is not None:
+            node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

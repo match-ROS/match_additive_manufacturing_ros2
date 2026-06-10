@@ -18,6 +18,7 @@ class NozzlePoseMonitor(Node):
         self.declare_parameter('reference_pose_topic', '')
         self.declare_parameter('reference_path_topic', '/ur_path_transformed')
         self.declare_parameter('path_index_topic', '/path_index')
+        self.declare_parameter('fixed_path_index', -1)
         self.declare_parameter('position_error_topic', '/nozzle_position_error')
         self.declare_parameter('position_error_norm_topic', '/nozzle_position_error_norm')
         self.declare_parameter('yaw_error_topic', '/nozzle_yaw_error')
@@ -28,6 +29,8 @@ class NozzlePoseMonitor(Node):
         self.reference_pose: Optional[PoseStamped] = None
         self.reference_path: Optional[Path] = None
         self.path_index: Optional[int] = None
+        fixed_path_index = int(self.get_parameter('fixed_path_index').value)
+        self.fixed_path_index: Optional[int] = fixed_path_index if fixed_path_index >= 0 else None
         self.last_wait_reason = ''
 
         latch_qos = QoSProfile(
@@ -120,9 +123,12 @@ class NozzlePoseMonitor(Node):
     def _select_reference(self) -> Optional[PoseStamped]:
         if self.reference_pose is not None:
             return self.reference_pose
-        if self.reference_path is None or not self.reference_path.poses or self.path_index is None:
+        if self.reference_path is None or not self.reference_path.poses:
             return None
-        idx = max(0, min(self.path_index, len(self.reference_path.poses) - 1))
+        path_index = self.path_index if self.path_index is not None else self.fixed_path_index
+        if path_index is None:
+            return None
+        idx = max(0, min(path_index, len(self.reference_path.poses) - 1))
         return self.reference_path.poses[idx]
 
     def _log_waiting(self, reason: str) -> None:
@@ -134,10 +140,17 @@ class NozzlePoseMonitor(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = NozzlePoseMonitor()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    node: Optional[NozzlePoseMonitor] = None
+    try:
+        node = NozzlePoseMonitor()
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if node is not None:
+            node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

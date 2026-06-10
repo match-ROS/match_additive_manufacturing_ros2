@@ -4,6 +4,7 @@ nozzle_pose_monitor:
     reference_pose_topic: ''
     reference_path_topic: /ur_path_transformed
     path_index_topic: /path_index
+    fixed_path_index: -1
     position_error_topic: /nozzle_position_error
     position_error_norm_topic: /nozzle_position_error_norm
     yaw_error_topic: /nozzle_yaw_error

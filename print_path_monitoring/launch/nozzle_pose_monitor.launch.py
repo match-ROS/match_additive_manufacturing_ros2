@@ -18,6 +18,7 @@ def generate_launch_description():
         DeclareLaunchArgument('tcp_pose_topic', default_value='/current_tcp_pose'),
         DeclareLaunchArgument('reference_path_topic', default_value='/ur_path_transformed'),
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
+        DeclareLaunchArgument('fixed_path_index', default_value='-1'),
         Node(
             package='print_path_monitoring',
             executable='nozzle_pose_monitor',
@@ -30,6 +31,7 @@ def generate_launch_description():
                     'tcp_pose_topic': LaunchConfiguration('tcp_pose_topic'),
                     'reference_path_topic': LaunchConfiguration('reference_path_topic'),
                     'path_index_topic': LaunchConfiguration('path_index_topic'),
+                    'fixed_path_index': LaunchConfiguration('fixed_path_index'),
                 },
             ],
         ),

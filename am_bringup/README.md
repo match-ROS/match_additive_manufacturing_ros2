@@ -49,6 +49,42 @@ ros2 launch am_bringup rbvogui_path_following_demo.launch.py \
   path_frame:=<world_frame>
 ```
 
+## Bunker TCP Monitoring Demo
+
+Prerequisites:
+
+- Bunker simulation running from `bunker_description`, or launch it through this demo.
+- TF resolves `map -> ur_tool0`.
+- `/robot_pose` publishes `geometry_msgs/msg/PoseStamped` in frame `map`.
+
+Default AM topic assumptions:
+
+- TCP/nozzle pose output: `/current_tcp_pose`
+- TCP transform: `map <- ur_tool0`
+- Arm path: `/ur_path_transformed`
+- Base path: `/bunker_base_path`
+- Monitor outputs: `/nozzle_position_error`, `/nozzle_position_error_norm`,
+  `/nozzle_yaw_error`
+
+Attach to an already-running Bunker simulation:
+
+```bash
+ros2 launch am_bringup bunker_tcp_monitoring_demo.launch.py
+```
+
+Start the Bunker simulation headless as part of the demo:
+
+```bash
+ros2 launch am_bringup bunker_tcp_monitoring_demo.launch.py launch_sim:=true
+```
+
+By default, the monitor compares `/current_tcp_pose` against index `0` of the
+generated arm path. To use a live path-index source instead:
+
+```bash
+ros2 launch am_bringup bunker_tcp_monitoring_demo.launch.py fixed_path_index:=-1
+```
+
 ## Test Procedure
 
 In separate terminals:

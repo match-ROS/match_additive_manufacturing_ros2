@@ -10,6 +10,8 @@
 
   <exec_depend>base_trajectory_follower</exec_depend>
   <exec_depend>parse_paths</exec_depend>
+  <exec_depend>print_path_monitoring</exec_depend>
+  <exec_depend>ur_trajectory_follower</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 

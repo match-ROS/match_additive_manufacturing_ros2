@@ -79,8 +79,15 @@ Bunker runtime contracts:
 Nozzle/TCP monitoring:
 
 - `print_path_monitoring/nozzle_pose_monitor` compares an externally supplied TCP
-  pose with either a reference pose or a path/index pair.
+  pose with either a reference pose or a path plus live or fixed index.
 - It publishes monitoring values only. It does not command compensation.
+- `am_bringup/bunker_tcp_monitoring_demo.launch.py` wires Bunker TF
+  `map -> ur_tool0` through `/current_tcp_pose`, starts the paired arm/base path
+  publisher, and monitors the TCP against `/ur_path_transformed`.
+- The Bunker TCP monitoring demo was runtime-validated headless: `/current_tcp_pose`
+  published in frame `map`, `/ur_path_transformed` published 50 arm poses in
+  frame `map`, `/nozzle_position_error_norm` published about `1.3e-09`, and
+  `/nozzle_yaw_error` published about `0.2525`.
 
 ROS 1 MiR follower:
 
@@ -115,25 +122,38 @@ Launch argument checks:
 ```bash
 ros2 launch am_bringup rbvogui_path_following_demo.launch.py --show-args
 ros2 launch bunker_description bunker_path_following_demo.launch.py --show-args
+ros2 launch am_bringup bunker_tcp_monitoring_demo.launch.py --show-args
 ```
 
-Result: both launch files loaded and exposed the expected parameters.
+Result: all three launch files loaded and exposed the expected parameters.
 
-## Not Yet Proven
+Bunker TCP monitoring runtime check:
+
+```bash
+ros2 launch am_bringup bunker_tcp_monitoring_demo.launch.py \
+  launch_sim:=true headless:=true launch_rviz:=false
+ros2 topic echo /current_tcp_pose --once
+ros2 topic echo /ur_path_transformed --once
+ros2 topic echo /nozzle_position_error_norm --once
+ros2 topic echo /nozzle_yaw_error --once
+```
+
+Result: the launch started the headless Bunker simulator, published the TCP pose,
+published the generated arm path, and produced nozzle/TCP monitoring outputs.
+
+## Completion Notes
 
 The foundation is locally buildable and the generic code is covered by focused unit
 tests. RB-VOGUI pose, TCP pose, base velocity, and the default path-following demo
 are runtime-validated. Bunker pose, base command, tool TF, and the default
-path-following demo are also runtime-validated. The full objective still needs this
-remaining runtime check:
-
-- Publish `/current_tcp_pose` for Bunker from `map -> ur_tool0` and use it with
-  nozzle/TCP monitoring against a print path.
+path-following demo are also runtime-validated. Bunker TCP pose publication and
+monitoring against a generated arm print path are now runtime-validated too.
 
 ## Current Recommendation
 
 Treat the repository state as a clean local foundation and the next milestone as
-runtime validation, not additional controller complexity.
+arm-path execution or higher-level coordination, not additional base-controller
+complexity.
 
 Run the RB-VOGUI simulator first and record the exact pose and command contracts. If
 those contracts match the current defaults, the existing `am_bringup` demo is the
@@ -141,5 +161,6 @@ first integration test. If they differ, add minimal platform-side bridge nodes o
 launch remappings outside generic AM packages.
 
 For Bunker, keep using the generic base follower with `linear.y` disabled and stamped
-commands on `/diff_drive_controller/cmd_vel` until runtime testing proves a different
-interface is required.
+commands on `/diff_drive_controller/cmd_vel`. Use
+`am_bringup/bunker_tcp_monitoring_demo.launch.py` as the smoke test for Bunker
+TCP/nozzle monitoring before adding arm motion or compensation.
