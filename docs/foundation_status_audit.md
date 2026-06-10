@@ -61,6 +61,21 @@ RB-VOGUI runtime contracts:
   `x=1.93`, and the command topic returned to zero after the follower reported
   `goal reached`.
 
+Bunker runtime contracts:
+
+- `bunker_description/spawn_with_controllers.launch.py` starts Gazebo, the BunkUR
+  model, `joint_state_broadcaster`, `diff_drive_controller`, and the UR controllers.
+- `diff_drive_controller` is active and subscribes to
+  `geometry_msgs/msg/TwistStamped` on `/diff_drive_controller/cmd_vel`.
+- `/robot_pose` publishes `geometry_msgs/msg/PoseStamped` in frame `map`.
+- TF resolves `map -> base_footprint` and `map -> ur_tool0`.
+- A short stamped forward command moved `/robot_pose.x` from about `-0.0008` to
+  `0.3427`.
+- The full Bunker path-following demo moved along the default 1 m line:
+  `/bunker_base_path` published in `map`, `/robot_pose.x` reached about `0.94`,
+  and `/diff_drive_controller/cmd_vel` returned to zero after the follower reported
+  `goal reached`.
+
 Nozzle/TCP monitoring:
 
 - `print_path_monitoring/nozzle_pose_monitor` compares an externally supplied TCP
@@ -107,15 +122,13 @@ Result: both launch files loaded and exposed the expected parameters.
 ## Not Yet Proven
 
 The foundation is locally buildable and the generic code is covered by focused unit
-tests. RB-VOGUI pose, TCP pose, and base velocity contracts are now runtime-validated
-with the local standard-controller launch. The full objective still needs these
-remaining runtime checks:
+tests. RB-VOGUI pose, TCP pose, base velocity, and the default path-following demo
+are runtime-validated. Bunker pose, base command, tool TF, and the default
+path-following demo are also runtime-validated. The full objective still needs this
+remaining runtime check:
 
-- Launch Bunker simulation and confirm the active diff-drive command topic and type:
-  `/diff_drive_controller/cmd_vel_unstamped` as `Twist`, or another topic/type.
-- Confirm Bunker `/robot_pose` frame, update rate, and TF consistency.
-- Confirm UR tool frame for Bunker, likely `ur_tool0`, before using TCP monitoring
-  against a print path.
+- Publish `/current_tcp_pose` for Bunker from `map -> ur_tool0` and use it with
+  nozzle/TCP monitoring against a print path.
 
 ## Current Recommendation
 
@@ -127,5 +140,6 @@ those contracts match the current defaults, the existing `am_bringup` demo is th
 first integration test. If they differ, add minimal platform-side bridge nodes or
 launch remappings outside generic AM packages.
 
-For Bunker, keep using the generic base follower with `linear.y` disabled until a
-runtime test proves a different interface is required.
+For Bunker, keep using the generic base follower with `linear.y` disabled and stamped
+commands on `/diff_drive_controller/cmd_vel` until runtime testing proves a different
+interface is required.
