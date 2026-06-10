@@ -9,6 +9,8 @@ imports belong in platform repositories such as `bunker_manipulator`.
 ## Current Packages
 
 - `parse_paths`: Generates simple test/reference paths as `nav_msgs/msg/Path`.
+  It also contains specialized paired path publishers, including the Robotnik
+  base/UR arm sideways plus 45 degree demo paths.
 - `base_trajectory_follower`: Generic simple mobile-base path follower for simulation.
 - `move_to_path_idx`: One-shot mobile-base motion to a selected path index from an
   externally supplied robot pose.

@@ -1,0 +1,59 @@
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    return LaunchDescription([
+        DeclareLaunchArgument('use_sim_time', default_value='true'),
+        DeclareLaunchArgument('frame_id', default_value='robotnik_simple'),
+        DeclareLaunchArgument('base_path_topic', default_value='/base_path'),
+        DeclareLaunchArgument('base_original_path_topic', default_value='/base_path_original'),
+        DeclareLaunchArgument('arm_path_topic', default_value='/ur_path_transformed'),
+        DeclareLaunchArgument('arm_original_path_topic', default_value='/ur_path_original'),
+        DeclareLaunchArgument('normal_topic', default_value='/normal_vector'),
+        DeclareLaunchArgument('robot_pose_topic', default_value='/robot_pose'),
+        DeclareLaunchArgument('current_arm_pose_topic', default_value='/current_tcp_pose'),
+        DeclareLaunchArgument('use_current_poses', default_value='true'),
+        DeclareLaunchArgument('base_start_xyz', default_value='[0.0, 0.0, 0.0]'),
+        DeclareLaunchArgument('base_yaw', default_value='0.0'),
+        DeclareLaunchArgument('arm_start_xyz', default_value='[0.6, 0.0, 0.8]'),
+        DeclareLaunchArgument('sideways_distance', default_value='0.8'),
+        DeclareLaunchArgument('diagonal_distance', default_value='0.8'),
+        DeclareLaunchArgument('arm_xy_offset', default_value='[0.15, 0.0, 0.0]'),
+        DeclareLaunchArgument('arm_height_delta', default_value='0.2'),
+        DeclareLaunchArgument('nozzle_axis', default_value='[0.0, 1.0, 0.0]'),
+        DeclareLaunchArgument('num_points', default_value='50'),
+        DeclareLaunchArgument('time_step', default_value='0.1'),
+        DeclareLaunchArgument('publish_once', default_value='false'),
+        Node(
+            package='parse_paths',
+            executable='publish_robotnik_base_arm_paths',
+            name='robotnik_base_arm_path_publisher',
+            output='screen',
+            parameters=[{
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
+                'frame_id': LaunchConfiguration('frame_id'),
+                'base_path_topic': LaunchConfiguration('base_path_topic'),
+                'base_original_path_topic': LaunchConfiguration('base_original_path_topic'),
+                'arm_path_topic': LaunchConfiguration('arm_path_topic'),
+                'arm_original_path_topic': LaunchConfiguration('arm_original_path_topic'),
+                'normal_topic': LaunchConfiguration('normal_topic'),
+                'robot_pose_topic': LaunchConfiguration('robot_pose_topic'),
+                'current_arm_pose_topic': LaunchConfiguration('current_arm_pose_topic'),
+                'use_current_poses': LaunchConfiguration('use_current_poses'),
+                'base_start_xyz': LaunchConfiguration('base_start_xyz'),
+                'base_yaw': LaunchConfiguration('base_yaw'),
+                'arm_start_xyz': LaunchConfiguration('arm_start_xyz'),
+                'sideways_distance': LaunchConfiguration('sideways_distance'),
+                'diagonal_distance': LaunchConfiguration('diagonal_distance'),
+                'arm_xy_offset': LaunchConfiguration('arm_xy_offset'),
+                'arm_height_delta': LaunchConfiguration('arm_height_delta'),
+                'nozzle_axis': LaunchConfiguration('nozzle_axis'),
+                'num_points': LaunchConfiguration('num_points'),
+                'time_step': LaunchConfiguration('time_step'),
+                'publish_once': LaunchConfiguration('publish_once'),
+            }],
+        ),
+    ])

@@ -59,3 +59,36 @@ Shape-specific parameters:
   sideways test launch.
 - `publish_front_side_arm_base_paths`: paired arm/base path publisher that preserves
   the startup XY offset between the arm path and mobile-base path.
+- `publish_robotnik_base_arm_paths`: paired RB-VOGUI base/UR arm publisher. The
+  base path keeps a fixed yaw while moving sideways and then in a 45 degree
+  direction; the arm path has the same number of indices, a small XY offset, and a
+  height change.
+
+## Robotnik Paired Base/Arm Paths
+
+Generate synchronized base and arm paths for the RB-VOGUI demo:
+
+```bash
+ros2 launch parse_paths robotnik_base_arm_paths.launch.py
+```
+
+Default topics:
+
+- base path: `/base_path`
+- base original path: `/base_path_original`
+- arm path: `/ur_path_transformed`
+- arm original path: `/ur_path_original`
+- normal vector: `/normal_vector`
+- base pose input: `/robot_pose`
+- TCP pose input: `/current_tcp_pose`
+
+By default, the publisher waits for the current base and TCP poses and then creates
+the start poses offset from those current poses. For a deterministic path without
+pose inputs:
+
+```bash
+ros2 launch parse_paths robotnik_base_arm_paths.launch.py \
+  use_current_poses:=false \
+  base_start_xyz:='[0.0, 0.0, 0.0]' \
+  arm_start_xyz:='[0.6, 0.0, 0.8]'
+```
