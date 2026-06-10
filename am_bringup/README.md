@@ -18,6 +18,7 @@ Prerequisites:
 Default AM topic assumptions:
 
 - Base pose: `/robot_pose`
+- Path frame: `robotnik_simple`
 - Base path: `/base_path`
 - Base command: `/robot/robotnik_base_control/cmd_vel_unstamped`
 
@@ -41,6 +42,13 @@ Try a circle path:
 ros2 launch am_bringup rbvogui_path_following_demo.launch.py path_type:=circle
 ```
 
+If a different simulator world frame is used:
+
+```bash
+ros2 launch am_bringup rbvogui_path_following_demo.launch.py \
+  path_frame:=<world_frame>
+```
+
 ## Test Procedure
 
 In separate terminals:
@@ -55,6 +63,8 @@ ros2 topic echo /robot/robotnik_base_control/cmd_vel_unstamped
 Expected behavior:
 
 - `test_path_generator` publishes `/base_path`.
+- `/base_path` and `/robot_pose` are in the same world frame.
+- The demo path is published once with transient-local QoS.
 - `simple_base_follower` publishes zero velocity until `/robot_pose` is fresh.
 - Once pose and path are available, the follower publishes x/y/yaw velocity commands.
 - If pose stops updating longer than `stale_pose_timeout`, the follower commands zero.

@@ -201,10 +201,14 @@ def main(args=None) -> None:
     node = SimpleBaseFollower()
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
-        node._publish_twist(Twist())
+        if rclpy.ok():
+            node._publish_twist(Twist())
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

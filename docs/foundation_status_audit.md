@@ -37,10 +37,29 @@ Base follower:
 Demo launches:
 
 - `am_bringup/rbvogui_path_following_demo.launch.py` connects the test path
-  generator to the generic base follower using RB-VOGUI topic defaults.
+  generator to the generic base follower using RB-VOGUI topic defaults and the
+  validated `robotnik_simple` world frame. The fixed demo path is published once
+  with transient-local QoS.
 - `bunker_description/bunker_path_following_demo.launch.py` connects the same
   generic nodes with Bunker diff-drive defaults and can optionally include the
   Bunker simulator.
+
+RB-VOGUI runtime contracts:
+
+- `rbvogui_ur_sim_setup/rbvogui_ur_standard_control.launch.py` starts a local
+  standard-controller workaround for the RB-VOGUI + UR model.
+- `/robot_pose` publishes `geometry_msgs/msg/PoseStamped` in frame
+  `robotnik_simple`.
+- `/current_tcp_pose` publishes `geometry_msgs/msg/PoseStamped` for
+  `robot_arm_tool0` in frame `robotnik_simple`.
+- The standard-controller bridge accepts `geometry_msgs/msg/Twist` on
+  `/robot/robotnik_base_control/cmd_vel_unstamped`.
+- Lateral x/y commands were runtime-validated through the platform-side swerve
+  controller.
+- The RB-VOGUI path-following demo drove the robot along the default 2 m line:
+  `/base_path` published in `robotnik_simple`, `/robot_pose` reached about
+  `x=1.93`, and the command topic returned to zero after the follower reported
+  `goal reached`.
 
 Nozzle/TCP monitoring:
 
@@ -88,18 +107,10 @@ Result: both launch files loaded and exposed the expected parameters.
 ## Not Yet Proven
 
 The foundation is locally buildable and the generic code is covered by focused unit
-tests, but the full objective is not completely proven until these runtime checks are
-performed in a real simulator session:
+tests. RB-VOGUI pose, TCP pose, and base velocity contracts are now runtime-validated
+with the local standard-controller launch. The full objective still needs these
+remaining runtime checks:
 
-- Import Robotnik RB-VOGUI dependencies from
-  `bunker_manipulator/rbvogui_ur_sim_setup/dependencies/rbvogui_simulation.jazzy.repos`.
-- Launch RB-VOGUI simulation and confirm whether `rbvogui_plus` includes the needed
-  UR arm model or only provides the mobile-base baseline.
-- Confirm exact RB-VOGUI base pose source and whether a platform-side bridge is
-  needed to publish `/robot_pose` as `geometry_msgs/msg/PoseStamped`.
-- Confirm exact RB-VOGUI TCP/nozzle pose source and whether a bridge is needed to
-  publish `/current_tcp_pose`.
-- Confirm lateral velocity on `/robot/robotnik_base_control/cmd_vel_unstamped`.
 - Launch Bunker simulation and confirm the active diff-drive command topic and type:
   `/diff_drive_controller/cmd_vel_unstamped` as `Twist`, or another topic/type.
 - Confirm Bunker `/robot_pose` frame, update rate, and TF consistency.

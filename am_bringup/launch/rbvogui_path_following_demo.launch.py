@@ -16,6 +16,7 @@ def generate_launch_description():
         DeclareLaunchArgument('config_file', default_value=default_config),
         DeclareLaunchArgument('use_sim_time', default_value='true'),
         DeclareLaunchArgument('path_type', default_value='line'),
+        DeclareLaunchArgument('path_frame', default_value='robotnik_simple'),
         DeclareLaunchArgument('path_topic', default_value='/base_path'),
         DeclareLaunchArgument('robot_pose_topic', default_value='/robot_pose'),
         DeclareLaunchArgument('cmd_vel_topic', default_value='/robot/robotnik_base_control/cmd_vel_unstamped'),
@@ -30,6 +31,7 @@ def generate_launch_description():
                 {
                     'use_sim_time': LaunchConfiguration('use_sim_time'),
                     'path_type': LaunchConfiguration('path_type'),
+                    'frame_id': LaunchConfiguration('path_frame'),
                     'path_topic': LaunchConfiguration('path_topic'),
                 },
             ],
