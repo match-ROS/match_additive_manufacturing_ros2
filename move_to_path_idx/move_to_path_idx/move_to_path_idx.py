@@ -223,7 +223,8 @@ def main(args=None) -> None:
     except ExternalShutdownException:
         pass
     finally:
-        node._publish_stop()
+        if rclpy.ok():
+            node._publish_stop()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

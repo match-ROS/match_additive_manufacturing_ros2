@@ -2,6 +2,7 @@
 import rclpy
 from rclpy.duration import Duration
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from ur_trajectory_follower.ros2_utils import as_float_list, as_string_list
@@ -11,7 +12,7 @@ class PublishJointPoseOnce(Node):
     def __init__(self) -> None:
         super().__init__('publish_joint_pose_once')
         self.declare_parameter('trajectory_topic', '/ur_joint_trajectory_controller/joint_trajectory')
-        self.declare_parameter('joint_names', [])
+        self.declare_parameter('joint_names', Parameter.Type.STRING_ARRAY)
         self.declare_parameter('positions', [0.0, -1.57, 1.57, -1.57, -1.57, 0.0])
         self.declare_parameter('time_from_start', 4.0)
         self.declare_parameter('publish_delay', 2.0)

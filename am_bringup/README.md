@@ -92,6 +92,16 @@ The base+arm launch reuses the UR sideways control stack but disables its intern
 path publisher and internal index publisher. The paired Robotnik path publisher owns
 both paths, and the single `shared_path_index` node publishes `/path_index`.
 
+The arm direction controller defaults to `direction_control_mode:=speed_orthogonal`.
+It uses the timestamp-derived path speed as tangent feed-forward and adds bounded
+cross-track correction in the plane orthogonal to the spray axis. Tune with:
+
+```bash
+ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py \
+  orthogonal_kp:=1.0 \
+  orthogonal_max_velocity:=0.1
+```
+
 The Robotnik standard-control simulation currently exposes the UR
 `joint_trajectory_controller`. Actual UR velocity actuation through the KDL velocity
 bridge requires a compatible joint velocity command topic. Keep
