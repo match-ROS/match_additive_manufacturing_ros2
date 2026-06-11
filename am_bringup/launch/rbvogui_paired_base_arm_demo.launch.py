@@ -139,6 +139,31 @@ def generate_launch_description():
         }],
     )
 
+    move_ur_to_start = Node(
+        package='move_to_path_idx',
+        executable='move_ur_to_path_idx',
+        name='move_ur_to_arm_path_start',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('move_to_arm_start_pose')),
+        parameters=[{
+            'path_topic': LaunchConfiguration('arm_path_topic'),
+            'current_pose_topic': LaunchConfiguration('current_arm_pose_topic'),
+            'path_index': LaunchConfiguration('initial_path_index'),
+            'publish_rate': 20.0,
+            'distance_tolerance': 0.03,
+            'orientation_tolerance': 0.06,
+            'kp_linear': 0.8,
+            'kp_angular': 1.0,
+            'max_linear_velocity': 0.12,
+            'max_angular_velocity': 0.5,
+            'publish_stop_count': 3,
+            'wait_for_start_condition': True,
+            'start_condition_topic': LaunchConfiguration('start_pose_reached_topic'),
+            'cmd_vel_topic': '/jparse_velocity_controller_ur/twist_cmd_world',
+            'path_frame': LaunchConfiguration('path_frame'),
+        }],
+    )
+
     move_to_start = Node(
         package='move_to_path_idx',
         executable='move_to_path_idx',
@@ -303,6 +328,7 @@ def generate_launch_description():
         DeclareLaunchArgument('arm_trajectory_filename', default_value='arm_path.json'),
         DeclareLaunchArgument('normal_filename', default_value='normal_vector.json'),
         DeclareLaunchArgument('publish_once', default_value='true'),
+        DeclareLaunchArgument('move_to_arm_start_pose', default_value='true'),
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
         DeclareLaunchArgument('next_goal_topic', default_value='/next_goal'),
         DeclareLaunchArgument('initial_path_index', default_value='0'),
@@ -341,6 +367,7 @@ def generate_launch_description():
         prestart_path_publisher,
         final_path_publisher,
         exported_path_publisher,
+        move_ur_to_start,
         delayed_move_to_start,
         path_index,
         base_follower,

@@ -67,6 +67,10 @@ moves the RB-VOGUI to a base start area. When the base reaches that point,
 base pose and current TCP pose. The final base path starts at the current base pose,
 and the final arm path starts at the current TCP pose.
 
+After the base start is reached, `move_ur_to_path_idx` uses the existing UR twist
+pipeline to move the TCP to the selected `ur_path` waypoint, usually index `0`,
+before you manually start the trajectory follow phase.
+
 The shared index publisher, base follower, and arm controller wait for your manual
 `/start_condition` signal before following the final trajectory.
 

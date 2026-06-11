@@ -185,6 +185,8 @@ def _launch_setup(context, *args, **kwargs):
                 'output_stamped': True,
                 'frame_id': LaunchConfiguration('path_frame'),
                 'publish_rate_hz': LaunchConfiguration('combined_twist_rate'),
+                'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
+                'start_condition_topic': start_condition_topic,
             }],
         ),
         Node(
