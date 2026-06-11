@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -50,8 +50,11 @@ def generate_launch_description():
             'diagonal_distance': LaunchConfiguration('diagonal_distance'),
             'arm_xy_offset': LaunchConfiguration('arm_xy_offset'),
             'arm_height_delta': LaunchConfiguration('arm_height_delta'),
+            'min_reachable_radius': LaunchConfiguration('min_reachable_radius'),
+            'max_reachable_radius': LaunchConfiguration('max_reachable_radius'),
             'num_points': LaunchConfiguration('num_points'),
             'time_step': LaunchConfiguration('time_step'),
+            'publish_once': LaunchConfiguration('publish_once'),
         }],
     )
 
@@ -143,6 +146,7 @@ def generate_launch_description():
             'publish_path_index': 'false',
             'move_to_start_pose': LaunchConfiguration('move_to_start_pose'),
             'start_pose_trajectory_topic': LaunchConfiguration('start_pose_trajectory_topic'),
+            'start_pose_publish_delay': LaunchConfiguration('start_pose_publish_delay'),
             'current_pose_topic': LaunchConfiguration('current_arm_pose_topic'),
             'path_topic': LaunchConfiguration('arm_path_topic'),
             'original_path_topic': LaunchConfiguration('arm_original_path_topic'),
@@ -157,6 +161,27 @@ def generate_launch_description():
             'orthogonal_max_velocity': LaunchConfiguration('orthogonal_max_velocity'),
         }.items(),
         condition=IfCondition(LaunchConfiguration('run_arm_control')),
+    )
+
+    activate_arm_velocity_controller = TimerAction(
+        period=LaunchConfiguration('arm_velocity_activation_delay'),
+        actions=[
+            ExecuteProcess(
+                cmd=[
+                    'ros2',
+                    'control',
+                    'switch_controllers',
+                    '--controller-manager',
+                    ['/', LaunchConfiguration('robot_id'), '/controller_manager'],
+                    '--deactivate',
+                    'joint_trajectory_controller',
+                    '--activate',
+                    'arm_forward_velocity_controller',
+                ],
+                output='screen',
+                condition=IfCondition(LaunchConfiguration('start_jparse_controller')),
+            )
+        ],
     )
 
     return LaunchDescription([
@@ -178,8 +203,11 @@ def generate_launch_description():
         DeclareLaunchArgument('diagonal_distance', default_value='0.8'),
         DeclareLaunchArgument('arm_xy_offset', default_value='[0.15, 0.0, 0.0]'),
         DeclareLaunchArgument('arm_height_delta', default_value='0.2'),
+        DeclareLaunchArgument('min_reachable_radius', default_value='0.25'),
+        DeclareLaunchArgument('max_reachable_radius', default_value='0.85'),
         DeclareLaunchArgument('num_points', default_value='50'),
         DeclareLaunchArgument('time_step', default_value='0.1'),
+        DeclareLaunchArgument('publish_once', default_value='true'),
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
         DeclareLaunchArgument('next_goal_topic', default_value='/next_goal'),
         DeclareLaunchArgument('initial_path_index', default_value='0'),
@@ -204,15 +232,18 @@ def generate_launch_description():
         DeclareLaunchArgument('robot_description_topic', default_value='/robot/robot_description'),
         DeclareLaunchArgument('joint_states_topic', default_value='/robot/joint_states'),
         DeclareLaunchArgument('arm_velocity_command_topic', default_value='/robot/arm_forward_velocity_controller/commands'),
-        DeclareLaunchArgument('start_jparse_controller', default_value='false'),
+        DeclareLaunchArgument('start_jparse_controller', default_value='true'),
+        DeclareLaunchArgument('arm_velocity_activation_delay', default_value='13.0'),
         DeclareLaunchArgument('direction_control_mode', default_value='speed_orthogonal'),
         DeclareLaunchArgument('orthogonal_kp', default_value='1.0'),
         DeclareLaunchArgument('orthogonal_max_velocity', default_value='0.1'),
         DeclareLaunchArgument('start_pose_trajectory_topic', default_value='/robot/joint_trajectory_controller/joint_trajectory'),
+        DeclareLaunchArgument('start_pose_publish_delay', default_value='8.0'),
         OpaqueFunction(function=_optional_sim_launch),
         path_publisher,
         move_to_start,
         path_index,
         base_follower,
         arm_control,
+        activate_arm_velocity_controller,
     ])

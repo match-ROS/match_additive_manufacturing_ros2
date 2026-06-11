@@ -85,8 +85,13 @@ Default topics:
 By default, the publisher waits for the current base and TCP poses and then creates
 the start poses offset from those current poses. `base_start_offset` can place the
 first base waypoint away from the current base pose so a `move_to_path_idx` pre-roll
-can drive to `/base_path[0]` before trajectory tracking starts. For a deterministic
-path without pose inputs:
+can drive to `/base_path[0]` before trajectory tracking starts. The Robotnik demo
+uses `publish_once:=true`, because the path is static and transient-local QoS serves
+late subscribers without republishing.
+
+The publisher also logs a warning if the planar base-to-arm target distance leaves
+the conservative default range `0.25..0.85 m`. For a deterministic path without pose
+inputs:
 
 ```bash
 ros2 launch parse_paths robotnik_base_arm_paths.launch.py \

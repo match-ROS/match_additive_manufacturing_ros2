@@ -82,6 +82,16 @@ def generate_arm_points(
     return points
 
 
+def base_to_arm_planar_distances(
+    base_points: List[np.ndarray],
+    arm_points: List[np.ndarray],
+) -> List[float]:
+    return [
+        float(np.linalg.norm((arm_point - base_point)[0:2]))
+        for base_point, arm_point in zip(base_points, arm_points)
+    ]
+
+
 class RobotnikBaseArmPathPublisher(Node):
     def __init__(self) -> None:
         super().__init__('robotnik_base_arm_path_publisher')
@@ -102,12 +112,14 @@ class RobotnikBaseArmPathPublisher(Node):
         self.declare_parameter('diagonal_distance', 0.8)
         self.declare_parameter('arm_xy_offset', [0.15, 0.0, 0.0])
         self.declare_parameter('arm_height_delta', 0.2)
+        self.declare_parameter('min_reachable_radius', 0.25)
+        self.declare_parameter('max_reachable_radius', 0.85)
         self.declare_parameter('nozzle_axis', [0.0, 1.0, 0.0])
         self.declare_parameter('x_axis_hint', [1.0, 0.0, 0.0])
         self.declare_parameter('num_points', 50)
         self.declare_parameter('time_step', 0.1)
         self.declare_parameter('publish_rate', 1.0)
-        self.declare_parameter('publish_once', False)
+        self.declare_parameter('publish_once', True)
 
         self.frame_id = str(self.get_parameter('frame_id').value)
         self.base_path_topic = str(self.get_parameter('base_path_topic').value)
@@ -201,6 +213,7 @@ class RobotnikBaseArmPathPublisher(Node):
             as_vector3(self.get_parameter('arm_xy_offset').value, [0.15, 0.0, 0.0]),
             float(self.get_parameter('arm_height_delta').value),
         )
+        self._warn_if_unreachable(base_points, arm_points)
         self.base_path_msg, self.arm_path_msg, self.normal_msg = self._build_paths(
             base_points,
             arm_points,
@@ -210,6 +223,25 @@ class RobotnikBaseArmPathPublisher(Node):
             f"Prepared {len(base_points)} Robotnik paired path poses. "
             f"Base moves sideways then 45 degrees with fixed yaw {base_yaw:.3f} rad."
         )
+
+    def _warn_if_unreachable(
+        self,
+        base_points: List[np.ndarray],
+        arm_points: List[np.ndarray],
+    ) -> None:
+        distances = base_to_arm_planar_distances(base_points, arm_points)
+        if not distances:
+            return
+        min_radius = float(self.get_parameter('min_reachable_radius').value)
+        max_radius = float(self.get_parameter('max_reachable_radius').value)
+        min_distance = min(distances)
+        max_distance = max(distances)
+        if min_distance < min_radius or max_distance > max_radius:
+            self.get_logger().warn(
+                "Robotnik paired arm path may be outside conservative UR reach: "
+                f"planar base-to-arm distance range {min_distance:.3f}..{max_distance:.3f} m "
+                f"not within {min_radius:.3f}..{max_radius:.3f} m."
+            )
 
     def _build_paths(
         self,

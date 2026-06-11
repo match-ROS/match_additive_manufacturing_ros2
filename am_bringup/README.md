@@ -62,6 +62,9 @@ controller wait for that signal before following the trajectory. In the base+arm
 demo, the same `move_to_start_pose` switch also enables the UR one-shot joint-pose
 publisher on `/robot/joint_trajectory_controller/joint_trajectory`.
 
+The paired paths are static and publish once by default with transient-local QoS.
+Use `publish_once:=false` only when debugging repeated path publication.
+
 Generate paired paths, increment the shared index, and drive only the RB-VOGUI base:
 
 ```bash
@@ -102,11 +105,11 @@ ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py \
   orthogonal_max_velocity:=0.1
 ```
 
-The Robotnik standard-control simulation currently exposes the UR
-`joint_trajectory_controller`. Actual UR velocity actuation through the KDL velocity
-bridge requires a compatible joint velocity command topic. Keep
-`start_jparse_controller:=false` unless that controller is available; the UR control
-nodes will still publish their twist chain for validation.
+The Robotnik standard-control simulation exposes the UR
+`joint_trajectory_controller` for the one-shot start pose and
+`arm_forward_velocity_controller` for path following. The base+arm demo starts the
+J-PARSE velocity bridge by default, waits for the start-pose delay, then switches
+from the trajectory controller to the velocity controller.
 
 Useful checks:
 
@@ -117,6 +120,12 @@ ros2 topic echo /base_path --once
 ros2 topic echo /ur_path_transformed --once
 ros2 topic echo /robot/robotnik_base_control/cmd_vel_unstamped
 ros2 topic echo /robot/joint_trajectory_controller/joint_trajectory --once
+ros2 topic hz /current_tcp_pose
+ros2 topic echo /ur_error_world --once
+ros2 topic echo /ur_twist_world --once
+ros2 topic echo /jparse_velocity_controller_ur/twist_cmd --once
+ros2 topic echo /robot/arm_forward_velocity_controller/commands --once
+ros2 control list_controllers --controller-manager /robot/controller_manager
 ```
 
 ## Bunker TCP Monitoring Demo

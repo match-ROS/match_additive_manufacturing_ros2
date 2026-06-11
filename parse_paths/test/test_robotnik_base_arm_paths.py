@@ -3,6 +3,7 @@ import math
 import numpy as np
 
 from parse_paths.publish_robotnik_base_arm_paths import (
+    base_to_arm_planar_distances,
     generate_arm_points,
     generate_sideways_then_diagonal_points,
     rotate_xy,
@@ -88,3 +89,28 @@ def test_arm_path_tracks_base_displacement_with_offset_and_height_change():
     assert np.allclose(arm_points[0], [0.6, 0.1, 0.8])
     assert np.allclose(arm_points[1], [0.6, 1.1, 0.9])
     assert np.allclose(arm_points[2], [1.6, 2.1, 1.0])
+
+
+def test_default_robotnik_arm_path_stays_in_conservative_planar_reach():
+    base_start = np.array([0.0, 0.0, 0.0])
+    arm_start = np.array([0.5, 0.2, 0.8])
+    base_points = generate_sideways_then_diagonal_points(
+        base_start,
+        0.0,
+        0.8,
+        0.8,
+        50,
+    )
+
+    arm_points = generate_arm_points(
+        arm_start,
+        base_points,
+        base_start,
+        np.array([0.15, 0.0, 0.0]),
+        0.2,
+    )
+    distances = base_to_arm_planar_distances(base_points, arm_points)
+
+    assert len(distances) == len(base_points)
+    assert min(distances) > 0.25
+    assert max(distances) < 0.85
