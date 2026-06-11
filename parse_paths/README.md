@@ -90,8 +90,9 @@ uses `publish_once:=true`, because the path is static and transient-local QoS se
 late subscribers without republishing.
 
 The publisher also logs a warning if the planar base-to-arm target distance leaves
-the conservative default range `0.25..0.85 m`. For a deterministic path without pose
-inputs:
+the conservative default range `0.25..0.85 m`. By default `ramp_arm_xy_offset:=true`,
+so the first arm waypoint is exactly the TCP start pose and the configured XY offset
+is reached gradually along the path. For a deterministic path without pose inputs:
 
 ```bash
 ros2 launch parse_paths robotnik_base_arm_paths.launch.py \

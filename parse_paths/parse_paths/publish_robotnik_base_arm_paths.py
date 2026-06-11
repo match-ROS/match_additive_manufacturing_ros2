@@ -71,13 +71,15 @@ def generate_arm_points(
     base_start: np.ndarray,
     arm_xy_offset: np.ndarray,
     arm_height_delta: float,
+    ramp_xy_offset: bool = True,
 ) -> List[np.ndarray]:
     points = []
     for index, base_point in enumerate(base_points):
         ratio = index / max(len(base_points) - 1, 1)
         displacement = base_point - base_start
-        point = arm_start + displacement + arm_xy_offset
-        point[2] = arm_start[2] + arm_xy_offset[2] + float(arm_height_delta) * ratio
+        xy_offset = arm_xy_offset * ratio if ramp_xy_offset else arm_xy_offset
+        point = arm_start + displacement + xy_offset
+        point[2] = arm_start[2] + xy_offset[2] + float(arm_height_delta) * ratio
         points.append(point)
     return points
 
@@ -111,6 +113,7 @@ class RobotnikBaseArmPathPublisher(Node):
         self.declare_parameter('sideways_distance', 0.8)
         self.declare_parameter('diagonal_distance', 0.8)
         self.declare_parameter('arm_xy_offset', [0.15, 0.0, 0.0])
+        self.declare_parameter('ramp_arm_xy_offset', True)
         self.declare_parameter('arm_height_delta', 0.2)
         self.declare_parameter('min_reachable_radius', 0.25)
         self.declare_parameter('max_reachable_radius', 0.85)
@@ -212,6 +215,7 @@ class RobotnikBaseArmPathPublisher(Node):
             base_start,
             as_vector3(self.get_parameter('arm_xy_offset').value, [0.15, 0.0, 0.0]),
             float(self.get_parameter('arm_height_delta').value),
+            as_bool(self.get_parameter('ramp_arm_xy_offset').value),
         )
         self._warn_if_unreachable(base_points, arm_points)
         self.base_path_msg, self.arm_path_msg, self.normal_msg = self._build_paths(

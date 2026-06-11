@@ -86,8 +86,8 @@ def test_arm_path_tracks_base_displacement_with_offset_and_height_change():
     )
 
     assert len(arm_points) == len(base_points)
-    assert np.allclose(arm_points[0], [0.6, 0.1, 0.8])
-    assert np.allclose(arm_points[1], [0.6, 1.1, 0.9])
+    assert np.allclose(arm_points[0], [0.5, 0.2, 0.8])
+    assert np.allclose(arm_points[1], [0.55, 1.15, 0.9])
     assert np.allclose(arm_points[2], [1.6, 2.1, 1.0])
 
 

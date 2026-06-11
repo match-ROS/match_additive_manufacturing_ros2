@@ -145,6 +145,9 @@ class MoveToPathIdx(Node):
         if as_bool(self.get_parameter('publish_start_condition').value):
             self.start_condition_pub.publish(Bool(data=True))
 
+    def _start_condition_enabled(self) -> bool:
+        return as_bool(self.get_parameter('publish_start_condition').value)
+
     def _tick(self) -> None:
         if self.state == ControlState.WAITING_FOR_INPUTS:
             self._maybe_start()
@@ -200,9 +203,14 @@ class MoveToPathIdx(Node):
                 )
                 self._publish_start_condition()
                 self.start_condition_remaining -= 1
+                status = (
+                    f"Published reached signal on {self.start_condition_pub.topic_name}"
+                    if self._start_condition_enabled()
+                    else "No reached signal configured"
+                )
                 self.get_logger().info(
                     f"Reached path index {self.path_index}: dist={dist:.3f}, "
-                    f"angle_diff={angle_diff:.3f}. Signaling start condition and shutting down."
+                    f"angle_diff={angle_diff:.3f}. {status}; shutting down."
                 )
             else:
                 cmd.angular.z = clamp(

@@ -55,12 +55,17 @@ The paired Robotnik demos use one shared `/path_index` for both the base path an
 the arm path. This keeps the base and UR reference trajectories synchronized by
 waypoint number: index `i` is the base target and arm target for the same step.
 
-By default the paired path starts `0.35 m` in front of the current base pose. The
-`move_to_base_path_start` node first drives the RB-VOGUI to `/base_path[0]`, then
-publishes `/start_condition`. The shared index publisher, base follower, and arm
-controller wait for that signal before following the trajectory. In the base+arm
-demo, the same `move_to_start_pose` switch also enables the UR one-shot joint-pose
-publisher on `/robot/joint_trajectory_controller/joint_trajectory`.
+In the base+arm demo, `move_to_start_pose` first sends a UR one-shot joint pose on
+`/robot/joint_trajectory_controller/joint_trajectory`. The paired path is generated
+after `path_generation_delay`, so `/ur_path_transformed[0]` is based on the TCP pose
+after that arm start motion. The arm XY offset is ramped from zero, so the first arm
+waypoint is the generated TCP start pose.
+
+By default the paired base path starts `0.35 m` in front of the current base pose.
+The `move_to_base_path_start` node drives the RB-VOGUI to `/base_path[0]`, then
+publishes `/start_pose_reached`. The shared index publisher, base follower, and arm
+controller wait for your manual `/start_condition` signal before following the
+trajectory.
 
 The paired paths are static and publish once by default with transient-local QoS.
 Use `publish_once:=false` only when debugging repeated path publication.
@@ -88,7 +93,15 @@ Disable the pre-roll only when another node is already publishing the start sign
 ```bash
 ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py \
   move_to_start_pose:=false \
-  wait_for_start_condition:=false
+  wait_for_start_condition:=false \
+  path_generation_delay:=0.0
+```
+
+After the start pose has been reached, begin trajectory following manually:
+
+```bash
+ros2 topic echo /start_pose_reached --once
+ros2 topic pub --once /start_condition std_msgs/msg/Bool "{data: true}"
 ```
 
 The base+arm launch reuses the UR sideways control stack but disables its internal
@@ -116,6 +129,7 @@ Useful checks:
 ```bash
 ros2 topic echo /path_index --once
 ros2 topic echo /start_condition --once
+ros2 topic echo /start_pose_reached --once
 ros2 topic echo /base_path --once
 ros2 topic echo /ur_path_transformed --once
 ros2 topic echo /robot/robotnik_base_control/cmd_vel_unstamped

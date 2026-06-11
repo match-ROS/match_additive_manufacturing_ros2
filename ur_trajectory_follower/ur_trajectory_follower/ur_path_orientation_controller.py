@@ -8,7 +8,7 @@ from geometry_msgs.msg import PoseStamped, Twist
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
-from std_msgs.msg import Float32, Int32
+from std_msgs.msg import Bool, Float32, Int32
 from tf_transformations import quaternion_inverse, quaternion_multiply
 
 
@@ -25,6 +25,8 @@ class OrientationController(Node):
         self.declare_parameter('path_index_topic', '/path_index')
         self.declare_parameter('velocity_override_topic', '/velocity_override')
         self.declare_parameter('twist_topic', '/ur_orientation_twist')
+        self.declare_parameter('start_condition_topic', '/start_condition')
+        self.declare_parameter('wait_for_start_condition', False)
 
         self.kp = float(self.get_parameter('kp_orientation').value)
         self.ki = float(self.get_parameter('ki_orientation').value)
@@ -37,13 +39,29 @@ class OrientationController(Node):
         self.current_pose: Optional[PoseStamped] = None
         self.current_index = max(0, int(self.get_parameter('initial_path_index').value))
         self.velocity_override = 1.0
+        self.wait_for_start_condition = self._as_bool(
+            self.get_parameter('wait_for_start_condition').value
+        )
+        self.control_enabled = not self.wait_for_start_condition
 
         path_qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL, reliability=QoSReliabilityPolicy.RELIABLE)
         self.create_subscription(Path, str(self.get_parameter('path_topic').value), self._path_cb, path_qos)
         self.create_subscription(Int32, str(self.get_parameter('path_index_topic').value), self._index_cb, 10)
         self.create_subscription(PoseStamped, str(self.get_parameter('current_pose_topic').value), self._pose_cb, 10)
         self.create_subscription(Float32, str(self.get_parameter('velocity_override_topic').value), self._velocity_cb, 10)
+        self.create_subscription(
+            Bool,
+            str(self.get_parameter('start_condition_topic').value),
+            self._start_condition_cb,
+            10,
+        )
         self.pub = self.create_publisher(Twist, str(self.get_parameter('twist_topic').value), 10)
+
+    @staticmethod
+    def _as_bool(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {'1', 'true', 'yes', 'y', 'on'}
 
     def _path_cb(self, msg: Path) -> None:
         if len(msg.poses) < 2:
@@ -64,6 +82,20 @@ class OrientationController(Node):
 
     def _velocity_cb(self, msg: Float32) -> None:
         self.velocity_override = max(0.0, min(float(msg.data), 1.0))
+
+    def _start_condition_cb(self, msg: Bool) -> None:
+        new_state = bool(msg.data) or not self.wait_for_start_condition
+        if new_state == self.control_enabled:
+            return
+        self.control_enabled = new_state
+        if self.control_enabled:
+            self.get_logger().info("Start condition fulfilled - enabling orientation controller output.")
+            self._calculate()
+        else:
+            self.old_twist = Twist()
+            self.integral_error = np.zeros(3)
+            self.prev_error = np.zeros(3)
+            self.pub.publish(Twist())
 
     @staticmethod
     def _axis_angle(quat: np.ndarray):
@@ -89,6 +121,8 @@ class OrientationController(Node):
 
     def _calculate(self) -> None:
         if self.path is None or self.current_pose is None:
+            return
+        if not self.control_enabled:
             return
         goal = self.path.poses[self.current_index]
         q_des = np.array([goal.pose.orientation.x, goal.pose.orientation.y, goal.pose.orientation.z, goal.pose.orientation.w], dtype=float)

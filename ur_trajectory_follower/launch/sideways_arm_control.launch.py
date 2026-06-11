@@ -169,6 +169,8 @@ def _launch_setup(context, *args, **kwargs):
                 'velocity_override_topic': LaunchConfiguration('velocity_override_topic'),
                 'twist_topic': LaunchConfiguration('orientation_twist_topic'),
                 'initial_path_index': LaunchConfiguration('initial_path_index'),
+                'start_condition_topic': start_condition_topic,
+                'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
             }],
         ),
         Node(
