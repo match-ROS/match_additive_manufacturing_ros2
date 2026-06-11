@@ -327,7 +327,11 @@ def generate_launch_description():
         DeclareLaunchArgument('base_trajectory_filename', default_value='base_path.json'),
         DeclareLaunchArgument('arm_trajectory_filename', default_value='arm_path.json'),
         DeclareLaunchArgument('normal_filename', default_value='normal_vector.json'),
-        DeclareLaunchArgument('publish_once', default_value='true'),
+        DeclareLaunchArgument(
+            'publish_once',
+            default_value='false',
+            description='Keep republishing static paths so late RViz subscribers can still receive them.',
+        ),
         DeclareLaunchArgument('move_to_arm_start_pose', default_value='true'),
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
         DeclareLaunchArgument('next_goal_topic', default_value='/next_goal'),

@@ -23,7 +23,7 @@
       "frame_id": "robotnik_simple",
       "stamp": {
         "sec": 12,
-        "nanosec": 760000000
+        "nanosec": 986530612
       },
       "position": {
         "x": 0.2935081037528789,
@@ -40,8 +40,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 12,
-        "nanosec": 860000000
+        "sec": 13,
+        "nanosec": 313061224
       },
       "position": {
         "x": 0.2935140439373487,
@@ -58,8 +58,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 12,
-        "nanosec": 960000000
+        "sec": 13,
+        "nanosec": 639591837
       },
       "position": {
         "x": 0.2935199841218185,
@@ -77,7 +77,7 @@
       "frame_id": "robotnik_simple",
       "stamp": {
         "sec": 13,
-        "nanosec": 60000000
+        "nanosec": 966122449
       },
       "position": {
         "x": 0.2935259243062883,
@@ -94,8 +94,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 13,
-        "nanosec": 160000000
+        "sec": 14,
+        "nanosec": 292653061
       },
       "position": {
         "x": 0.29353186449075813,
@@ -112,8 +112,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 13,
-        "nanosec": 260000000
+        "sec": 14,
+        "nanosec": 619183673
       },
       "position": {
         "x": 0.2935378046752279,
@@ -130,8 +130,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 13,
-        "nanosec": 360000000
+        "sec": 14,
+        "nanosec": 945714286
       },
       "position": {
         "x": 0.2935437448596977,
@@ -148,8 +148,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 13,
-        "nanosec": 460000000
+        "sec": 15,
+        "nanosec": 272244898
       },
       "position": {
         "x": 0.2935496850441675,
@@ -166,8 +166,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 13,
-        "nanosec": 560000000
+        "sec": 15,
+        "nanosec": 598775510
       },
       "position": {
         "x": 0.2935556252286373,
@@ -184,8 +184,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 13,
-        "nanosec": 660000000
+        "sec": 15,
+        "nanosec": 925306122
       },
       "position": {
         "x": 0.29356156541310713,
@@ -202,8 +202,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 13,
-        "nanosec": 760000000
+        "sec": 16,
+        "nanosec": 251836735
       },
       "position": {
         "x": 0.29356750559757694,
@@ -220,8 +220,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 13,
-        "nanosec": 860000000
+        "sec": 16,
+        "nanosec": 578367347
       },
       "position": {
         "x": 0.29357344578204675,
@@ -238,8 +238,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 13,
-        "nanosec": 960000000
+        "sec": 16,
+        "nanosec": 904897959
       },
       "position": {
         "x": 0.29357938596651656,
@@ -256,8 +256,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 60000000
+        "sec": 17,
+        "nanosec": 231428571
       },
       "position": {
         "x": 0.29358532615098637,
@@ -274,8 +274,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 160000000
+        "sec": 17,
+        "nanosec": 557959184
       },
       "position": {
         "x": 0.2935912663354562,
@@ -292,8 +292,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 260000000
+        "sec": 17,
+        "nanosec": 884489796
       },
       "position": {
         "x": 0.29359720651992594,
@@ -310,8 +310,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 360000000
+        "sec": 18,
+        "nanosec": 211020408
       },
       "position": {
         "x": 0.29360314670439575,
@@ -328,8 +328,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 460000000
+        "sec": 18,
+        "nanosec": 537551020
       },
       "position": {
         "x": 0.29360908688886556,
@@ -346,8 +346,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 560000000
+        "sec": 18,
+        "nanosec": 864081633
       },
       "position": {
         "x": 0.29361502707333537,
@@ -364,8 +364,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 660000000
+        "sec": 19,
+        "nanosec": 190612245
       },
       "position": {
         "x": 0.2936209672578052,
@@ -382,8 +382,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 760000000
+        "sec": 19,
+        "nanosec": 517142857
       },
       "position": {
         "x": 0.293626907442275,
@@ -400,8 +400,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 860000000
+        "sec": 19,
+        "nanosec": 843673469
       },
       "position": {
         "x": 0.2936328476267448,
@@ -418,8 +418,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 14,
-        "nanosec": 960000000
+        "sec": 20,
+        "nanosec": 170204082
       },
       "position": {
         "x": 0.2936387878112146,
@@ -436,8 +436,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 60000000
+        "sec": 20,
+        "nanosec": 496734694
       },
       "position": {
         "x": 0.2936447279956844,
@@ -454,8 +454,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 160000000
+        "sec": 20,
+        "nanosec": 798409643
       },
       "position": {
         "x": 0.30519439857841774,
@@ -472,8 +472,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 260000000
+        "sec": 21,
+        "nanosec": 124940256
       },
       "position": {
         "x": 0.3282877995594146,
@@ -490,8 +490,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 360000000
+        "sec": 21,
+        "nanosec": 451470868
       },
       "position": {
         "x": 0.35138120054041144,
@@ -508,8 +508,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 460000000
+        "sec": 21,
+        "nanosec": 778001480
       },
       "position": {
         "x": 0.3744746015214084,
@@ -526,8 +526,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 560000000
+        "sec": 22,
+        "nanosec": 104532092
       },
       "position": {
         "x": 0.3975680025024053,
@@ -544,8 +544,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 660000000
+        "sec": 22,
+        "nanosec": 431062704
       },
       "position": {
         "x": 0.42066140348340203,
@@ -562,8 +562,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 760000000
+        "sec": 22,
+        "nanosec": 757593317
       },
       "position": {
         "x": 0.44375480446439886,
@@ -580,8 +580,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 860000000
+        "sec": 23,
+        "nanosec": 84123929
       },
       "position": {
         "x": 0.46684820544539585,
@@ -598,8 +598,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 15,
-        "nanosec": 960000000
+        "sec": 23,
+        "nanosec": 410654541
       },
       "position": {
         "x": 0.48994160642639273,
@@ -616,8 +616,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 60000000
+        "sec": 23,
+        "nanosec": 737185153
       },
       "position": {
         "x": 0.5130350074073897,
@@ -634,8 +634,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 160000000
+        "sec": 24,
+        "nanosec": 63715766
       },
       "position": {
         "x": 0.5361284083883864,
@@ -652,8 +652,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 260000000
+        "sec": 24,
+        "nanosec": 390246378
       },
       "position": {
         "x": 0.5592218093693834,
@@ -670,8 +670,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 360000000
+        "sec": 24,
+        "nanosec": 716776990
       },
       "position": {
         "x": 0.5823152103503801,
@@ -688,8 +688,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 460000000
+        "sec": 25,
+        "nanosec": 43307602
       },
       "position": {
         "x": 0.605408611331377,
@@ -706,8 +706,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 560000000
+        "sec": 25,
+        "nanosec": 369838215
       },
       "position": {
         "x": 0.6285020123123739,
@@ -724,8 +724,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 660000000
+        "sec": 25,
+        "nanosec": 696368827
       },
       "position": {
         "x": 0.6515954132933707,
@@ -742,8 +742,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 760000000
+        "sec": 26,
+        "nanosec": 22899439
       },
       "position": {
         "x": 0.6746888142743677,
@@ -760,8 +760,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 860000000
+        "sec": 26,
+        "nanosec": 349430051
       },
       "position": {
         "x": 0.6977822152553645,
@@ -778,8 +778,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 16,
-        "nanosec": 960000000
+        "sec": 26,
+        "nanosec": 675960664
       },
       "position": {
         "x": 0.7208756162363614,
@@ -796,8 +796,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 17,
-        "nanosec": 60000000
+        "sec": 27,
+        "nanosec": 2491276
       },
       "position": {
         "x": 0.7439690172173583,
@@ -814,8 +814,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 17,
-        "nanosec": 160000000
+        "sec": 27,
+        "nanosec": 329021888
       },
       "position": {
         "x": 0.7670624181983552,
@@ -832,8 +832,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 17,
-        "nanosec": 260000000
+        "sec": 27,
+        "nanosec": 655552500
       },
       "position": {
         "x": 0.7901558191793522,
@@ -850,8 +850,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 17,
-        "nanosec": 360000000
+        "sec": 27,
+        "nanosec": 982083113
       },
       "position": {
         "x": 0.8132492201603488,
@@ -868,8 +868,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 17,
-        "nanosec": 460000000
+        "sec": 28,
+        "nanosec": 308613725
       },
       "position": {
         "x": 0.8363426211413458,
@@ -886,8 +886,8 @@
     {
       "frame_id": "robotnik_simple",
       "stamp": {
-        "sec": 17,
-        "nanosec": 560000000
+        "sec": 28,
+        "nanosec": 635144337
       },
       "position": {
         "x": 0.8594360221223426,
