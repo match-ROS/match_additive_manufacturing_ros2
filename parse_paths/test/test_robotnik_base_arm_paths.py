@@ -2,11 +2,18 @@ import math
 
 import numpy as np
 
+from geometry_msgs.msg import PoseStamped, Vector3
+from nav_msgs.msg import Path
 from parse_paths.publish_robotnik_base_arm_paths import (
     base_to_arm_planar_distances,
     generate_arm_points,
     generate_sideways_then_diagonal_points,
+    path_from_dict,
+    path_to_dict,
+    quaternion_from_yaw,
     rotate_xy,
+    vector3_from_dict,
+    vector3_to_dict,
 )
 
 
@@ -114,3 +121,32 @@ def test_default_robotnik_arm_path_stays_in_conservative_planar_reach():
     assert len(distances) == len(base_points)
     assert min(distances) > 0.25
     assert max(distances) < 0.85
+
+
+def test_path_json_round_trip_preserves_pose_count_and_frame():
+    path = Path()
+    path.header.frame_id = 'robotnik_simple'
+    orientation = quaternion_from_yaw(0.5)
+    for x, y, z in [(1.0, 2.0, 0.3), (1.5, 2.5, 0.4)]:
+        pose = PoseStamped()
+        pose.header.frame_id = 'robotnik_simple'
+        pose.pose.position.x = x
+        pose.pose.position.y = y
+        pose.pose.position.z = z
+        pose.pose.orientation = orientation
+        path.poses.append(pose)
+
+    restored = path_from_dict(path_to_dict(path), 'fallback')
+
+    assert restored.header.frame_id == 'robotnik_simple'
+    assert len(restored.poses) == 2
+    assert restored.poses[1].pose.position.x == 1.5
+    assert restored.poses[1].pose.orientation.z == orientation.z
+
+
+def test_normal_vector_json_round_trip():
+    restored = vector3_from_dict(vector3_to_dict(Vector3(x=0.0, y=1.0, z=0.0)))
+
+    assert restored.x == 0.0
+    assert restored.y == 1.0
+    assert restored.z == 0.0

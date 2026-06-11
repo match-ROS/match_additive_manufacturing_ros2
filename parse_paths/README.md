@@ -103,3 +103,8 @@ ros2 launch parse_paths robotnik_base_arm_paths.launch.py \
   base_start_offset:='[0.35, 0.0, 0.0]' \
   arm_start_xyz:='[0.6, 0.0, 0.8]'
 ```
+
+The Robotnik publisher can also export and replay paired paths. Set
+`export_trajectories:=true` to write JSON files to `trajectory_directory`; set
+`load_exported_trajectories:=true` to publish those files instead of generating a
+new test path. The base and arm files must contain the same number of poses.

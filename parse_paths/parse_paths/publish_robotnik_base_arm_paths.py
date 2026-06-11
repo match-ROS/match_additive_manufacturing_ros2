@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import json
 import math
 from copy import deepcopy
+from pathlib import Path as FilePath
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -95,6 +97,79 @@ def base_to_arm_planar_distances(
     ]
 
 
+def pose_stamped_to_dict(pose_stamped: PoseStamped) -> dict:
+    pose = pose_stamped.pose
+    return {
+        'frame_id': pose_stamped.header.frame_id,
+        'stamp': {
+            'sec': int(pose_stamped.header.stamp.sec),
+            'nanosec': int(pose_stamped.header.stamp.nanosec),
+        },
+        'position': {
+            'x': float(pose.position.x),
+            'y': float(pose.position.y),
+            'z': float(pose.position.z),
+        },
+        'orientation': {
+            'x': float(pose.orientation.x),
+            'y': float(pose.orientation.y),
+            'z': float(pose.orientation.z),
+            'w': float(pose.orientation.w),
+        },
+    }
+
+
+def pose_stamped_from_dict(data: dict, fallback_frame_id: str) -> PoseStamped:
+    pose_stamped = PoseStamped()
+    pose_stamped.header.frame_id = str(data.get('frame_id') or fallback_frame_id)
+    stamp = data.get('stamp', {})
+    pose_stamped.header.stamp.sec = int(stamp.get('sec', 0))
+    pose_stamped.header.stamp.nanosec = int(stamp.get('nanosec', 0))
+    position = data.get('position', {})
+    orientation = data.get('orientation', {})
+    pose_stamped.pose.position.x = float(position.get('x', 0.0))
+    pose_stamped.pose.position.y = float(position.get('y', 0.0))
+    pose_stamped.pose.position.z = float(position.get('z', 0.0))
+    pose_stamped.pose.orientation.x = float(orientation.get('x', 0.0))
+    pose_stamped.pose.orientation.y = float(orientation.get('y', 0.0))
+    pose_stamped.pose.orientation.z = float(orientation.get('z', 0.0))
+    pose_stamped.pose.orientation.w = float(orientation.get('w', 1.0))
+    return pose_stamped
+
+
+def path_to_dict(path: Path) -> dict:
+    return {
+        'frame_id': path.header.frame_id,
+        'poses': [pose_stamped_to_dict(pose) for pose in path.poses],
+    }
+
+
+def path_from_dict(data: dict, fallback_frame_id: str) -> Path:
+    path = Path()
+    path.header.frame_id = str(data.get('frame_id') or fallback_frame_id)
+    path.poses = [
+        pose_stamped_from_dict(pose_data, path.header.frame_id)
+        for pose_data in data.get('poses', [])
+    ]
+    return path
+
+
+def vector3_to_dict(vector: Vector3) -> dict:
+    return {
+        'x': float(vector.x),
+        'y': float(vector.y),
+        'z': float(vector.z),
+    }
+
+
+def vector3_from_dict(data: dict) -> Vector3:
+    return Vector3(
+        x=float(data.get('x', 0.0)),
+        y=float(data.get('y', 0.0)),
+        z=float(data.get('z', 0.0)),
+    )
+
+
 class RobotnikBaseArmPathPublisher(Node):
     def __init__(self) -> None:
         super().__init__('robotnik_base_arm_path_publisher')
@@ -126,6 +201,15 @@ class RobotnikBaseArmPathPublisher(Node):
         self.declare_parameter('publish_once', True)
         self.declare_parameter('wait_for_trigger', False)
         self.declare_parameter('trigger_topic', '/start_pose_reached')
+        self.declare_parameter('export_trajectories', False)
+        self.declare_parameter('load_exported_trajectories', False)
+        self.declare_parameter(
+            'trajectory_directory',
+            'match_additive_manufacturing_ros2/components/robotnik_paired_demo',
+        )
+        self.declare_parameter('base_trajectory_filename', 'base_path.json')
+        self.declare_parameter('arm_trajectory_filename', 'arm_path.json')
+        self.declare_parameter('normal_filename', 'normal_vector.json')
 
         self.frame_id = str(self.get_parameter('frame_id').value)
         self.base_path_topic = str(self.get_parameter('base_path_topic').value)
@@ -141,6 +225,16 @@ class RobotnikBaseArmPathPublisher(Node):
         self.publish_once = as_bool(self.get_parameter('publish_once').value)
         self.wait_for_trigger = as_bool(self.get_parameter('wait_for_trigger').value)
         self.trigger_received = not self.wait_for_trigger
+        self.export_trajectories = as_bool(self.get_parameter('export_trajectories').value)
+        self.load_exported_trajectories = as_bool(
+            self.get_parameter('load_exported_trajectories').value
+        )
+        self.trajectory_directory = FilePath(
+            str(self.get_parameter('trajectory_directory').value)
+        ).expanduser()
+        self.base_trajectory_filename = str(self.get_parameter('base_trajectory_filename').value)
+        self.arm_trajectory_filename = str(self.get_parameter('arm_trajectory_filename').value)
+        self.normal_filename = str(self.get_parameter('normal_filename').value)
 
         latch_qos = QoSProfile(
             depth=1,
@@ -160,12 +254,14 @@ class RobotnikBaseArmPathPublisher(Node):
         self.normal_msg = Vector3()
         self.has_published_once = False
 
-        if self.use_current_poses:
+        if self.load_exported_trajectories:
+            self._load_paths()
+        elif self.use_current_poses:
             self.create_subscription(PoseStamped, self.robot_pose_topic, self._robot_pose_cb, 10)
             self.create_subscription(PoseStamped, self.current_arm_pose_topic, self._arm_pose_cb, 10)
         else:
             self._ensure_paths()
-        if self.wait_for_trigger:
+        if self.wait_for_trigger and not self.load_exported_trajectories:
             self.create_subscription(
                 Bool,
                 str(self.get_parameter('trigger_topic').value),
@@ -175,10 +271,16 @@ class RobotnikBaseArmPathPublisher(Node):
 
         rate = max(0.1, float(self.get_parameter('publish_rate').value))
         self.create_timer(1.0 / rate, self._tick)
-        wait_msg = " and trigger" if self.wait_for_trigger else ""
-        self.get_logger().info(
-            f"Robotnik paired base/arm path publisher waiting for robot and TCP poses{wait_msg}."
-        )
+        if self.load_exported_trajectories:
+            self.get_logger().info(
+                f"Robotnik paired base/arm path publisher loaded exported paths from "
+                f"{self.trajectory_directory}."
+            )
+        else:
+            wait_msg = " and trigger" if self.wait_for_trigger else ""
+            self.get_logger().info(
+                f"Robotnik paired base/arm path publisher waiting for robot and TCP poses{wait_msg}."
+            )
 
     def _trigger_cb(self, msg: Bool) -> None:
         if not msg.data:
@@ -250,10 +352,67 @@ class RobotnikBaseArmPathPublisher(Node):
             arm_points,
             base_yaw,
         )
+        if self.export_trajectories:
+            self._export_paths()
         self.get_logger().info(
             f"Prepared {len(base_points)} Robotnik paired path poses. "
             f"Base moves sideways then 45 degrees with fixed yaw {base_yaw:.3f} rad."
         )
+
+    def _path_file(self, filename: str) -> FilePath:
+        return self.trajectory_directory / filename
+
+    def _export_paths(self) -> None:
+        if self.base_path_msg is None or self.arm_path_msg is None:
+            return
+        self.trajectory_directory.mkdir(parents=True, exist_ok=True)
+        self._path_file(self.base_trajectory_filename).write_text(
+            json.dumps(path_to_dict(self.base_path_msg), indent=2),
+            encoding='utf-8',
+        )
+        self._path_file(self.arm_trajectory_filename).write_text(
+            json.dumps(path_to_dict(self.arm_path_msg), indent=2),
+            encoding='utf-8',
+        )
+        self._path_file(self.normal_filename).write_text(
+            json.dumps(vector3_to_dict(self.normal_msg), indent=2),
+            encoding='utf-8',
+        )
+        self.get_logger().info(
+            f"Exported Robotnik paired paths to {self.trajectory_directory}."
+        )
+
+    def _load_paths(self) -> None:
+        base_file = self._path_file(self.base_trajectory_filename)
+        arm_file = self._path_file(self.arm_trajectory_filename)
+        normal_file = self._path_file(self.normal_filename)
+        if not base_file.exists() or not arm_file.exists():
+            raise FileNotFoundError(
+                f"Exported trajectory files not found: {base_file} and/or {arm_file}"
+            )
+
+        self.base_path_msg = path_from_dict(
+            json.loads(base_file.read_text(encoding='utf-8')),
+            self.frame_id,
+        )
+        self.arm_path_msg = path_from_dict(
+            json.loads(arm_file.read_text(encoding='utf-8')),
+            self.frame_id,
+        )
+        if normal_file.exists():
+            self.normal_msg = vector3_from_dict(json.loads(normal_file.read_text(encoding='utf-8')))
+        else:
+            _, normal = build_orientation(
+                np.array(as_float_list(self.get_parameter('nozzle_axis').value, [0.0, 1.0, 0.0]), dtype=float),
+                np.array(as_float_list(self.get_parameter('x_axis_hint').value, [1.0, 0.0, 0.0]), dtype=float),
+            )
+            self.normal_msg = normal
+
+        if len(self.base_path_msg.poses) != len(self.arm_path_msg.poses):
+            raise ValueError(
+                "Exported base and arm paths must have the same number of poses: "
+                f"{len(self.base_path_msg.poses)} != {len(self.arm_path_msg.poses)}"
+            )
 
     def _warn_if_unreachable(
         self,

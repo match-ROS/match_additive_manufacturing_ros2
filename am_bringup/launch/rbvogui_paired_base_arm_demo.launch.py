@@ -1,10 +1,17 @@
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+
+
+DEFAULT_TRAJECTORY_DIRECTORY = str(
+    Path(__file__).resolve().parents[2] / 'components' / 'robotnik_paired_demo'
+)
 
 
 def _optional_sim_launch(context, *args, **kwargs):
@@ -29,12 +36,19 @@ def _optional_sim_launch(context, *args, **kwargs):
 
 
 def generate_launch_description():
+    generated_paths_condition = IfCondition(PythonExpression([
+        "'", LaunchConfiguration('generate_test_paths'),
+        "'.strip().lower() in ('1','true','yes','on') and '",
+        LaunchConfiguration('use_exported_trajectories'),
+        "'.strip().lower() not in ('1','true','yes','on')",
+    ]))
+
     prestart_path_publisher = Node(
         package='parse_paths',
         executable='publish_robotnik_base_arm_paths',
         name='robotnik_prestart_base_arm_path_publisher',
         output='screen',
-        condition=IfCondition(LaunchConfiguration('generate_test_paths')),
+        condition=generated_paths_condition,
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'frame_id': LaunchConfiguration('path_frame'),
@@ -58,6 +72,7 @@ def generate_launch_description():
             'time_step': LaunchConfiguration('time_step'),
             'publish_once': LaunchConfiguration('publish_once'),
             'wait_for_trigger': False,
+            'export_trajectories': False,
         }],
     )
 
@@ -66,7 +81,7 @@ def generate_launch_description():
         executable='publish_robotnik_base_arm_paths',
         name='robotnik_final_base_arm_path_publisher',
         output='screen',
-        condition=IfCondition(LaunchConfiguration('generate_test_paths')),
+        condition=generated_paths_condition,
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'frame_id': LaunchConfiguration('path_frame'),
@@ -91,6 +106,36 @@ def generate_launch_description():
             'publish_once': LaunchConfiguration('publish_once'),
             'wait_for_trigger': True,
             'trigger_topic': LaunchConfiguration('start_pose_reached_topic'),
+            'export_trajectories': LaunchConfiguration('export_trajectories'),
+            'trajectory_directory': LaunchConfiguration('trajectory_directory'),
+            'base_trajectory_filename': LaunchConfiguration('base_trajectory_filename'),
+            'arm_trajectory_filename': LaunchConfiguration('arm_trajectory_filename'),
+            'normal_filename': LaunchConfiguration('normal_filename'),
+        }],
+    )
+
+    exported_path_publisher = Node(
+        package='parse_paths',
+        executable='publish_robotnik_base_arm_paths',
+        name='robotnik_exported_base_arm_path_publisher',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('use_exported_trajectories')),
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'frame_id': LaunchConfiguration('path_frame'),
+            'base_path_topic': LaunchConfiguration('base_path_topic'),
+            'base_original_path_topic': LaunchConfiguration('base_original_path_topic'),
+            'arm_path_topic': LaunchConfiguration('arm_path_topic'),
+            'arm_original_path_topic': LaunchConfiguration('arm_original_path_topic'),
+            'normal_topic': LaunchConfiguration('normal_topic'),
+            'nozzle_axis': [0.0, 1.0, 0.0],
+            'x_axis_hint': [1.0, 0.0, 0.0],
+            'publish_once': LaunchConfiguration('publish_once'),
+            'load_exported_trajectories': True,
+            'trajectory_directory': LaunchConfiguration('trajectory_directory'),
+            'base_trajectory_filename': LaunchConfiguration('base_trajectory_filename'),
+            'arm_trajectory_filename': LaunchConfiguration('arm_trajectory_filename'),
+            'normal_filename': LaunchConfiguration('normal_filename'),
         }],
     )
 
@@ -251,6 +296,12 @@ def generate_launch_description():
         DeclareLaunchArgument('num_points', default_value='50'),
         DeclareLaunchArgument('time_step', default_value='0.1'),
         DeclareLaunchArgument('generate_test_paths', default_value='true'),
+        DeclareLaunchArgument('export_trajectories', default_value='true'),
+        DeclareLaunchArgument('use_exported_trajectories', default_value='false'),
+        DeclareLaunchArgument('trajectory_directory', default_value=DEFAULT_TRAJECTORY_DIRECTORY),
+        DeclareLaunchArgument('base_trajectory_filename', default_value='base_path.json'),
+        DeclareLaunchArgument('arm_trajectory_filename', default_value='arm_path.json'),
+        DeclareLaunchArgument('normal_filename', default_value='normal_vector.json'),
         DeclareLaunchArgument('publish_once', default_value='true'),
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
         DeclareLaunchArgument('next_goal_topic', default_value='/next_goal'),
@@ -289,6 +340,7 @@ def generate_launch_description():
         OpaqueFunction(function=_optional_sim_launch),
         prestart_path_publisher,
         final_path_publisher,
+        exported_path_publisher,
         delayed_move_to_start,
         path_index,
         base_follower,

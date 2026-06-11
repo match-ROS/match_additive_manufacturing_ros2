@@ -73,6 +73,15 @@ The shared index publisher, base follower, and arm controller wait for your manu
 The paired paths are static and publish once by default with transient-local QoS.
 Use `publish_once:=false` only when debugging repeated path publication.
 
+Generated test trajectories are exported by default after the final path is created.
+The default export folder is:
+
+```bash
+match_additive_manufacturing_ros2/components/robotnik_paired_demo
+```
+
+It contains `base_path.json`, `arm_path.json`, and `normal_vector.json`.
+
 Generate paired paths, increment the shared index, and drive only the RB-VOGUI base:
 
 ```bash
@@ -97,6 +106,17 @@ Use externally supplied path topics instead of the test generator:
 ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py \
   generate_test_paths:=false
 ```
+
+Replay the previously exported generated trajectories on the next launch:
+
+```bash
+ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py \
+  use_exported_trajectories:=true
+```
+
+In this mode the launch publishes the exported `/base_path` and
+`/ur_path_transformed` once with transient-local QoS, then the usual start-pose and
+manual `/start_condition` flow is used.
 
 Disable the pre-roll only when another node has already positioned the robot:
 

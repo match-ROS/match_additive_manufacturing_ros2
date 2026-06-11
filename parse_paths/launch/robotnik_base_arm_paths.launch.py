@@ -1,7 +1,14 @@
+from pathlib import Path
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+
+
+DEFAULT_TRAJECTORY_DIRECTORY = str(
+    Path(__file__).resolve().parents[2] / 'components' / 'robotnik_paired_demo'
+)
 
 
 def generate_launch_description():
@@ -33,6 +40,12 @@ def generate_launch_description():
         DeclareLaunchArgument('publish_once', default_value='true'),
         DeclareLaunchArgument('wait_for_trigger', default_value='false'),
         DeclareLaunchArgument('trigger_topic', default_value='/start_pose_reached'),
+        DeclareLaunchArgument('export_trajectories', default_value='false'),
+        DeclareLaunchArgument('load_exported_trajectories', default_value='false'),
+        DeclareLaunchArgument('trajectory_directory', default_value=DEFAULT_TRAJECTORY_DIRECTORY),
+        DeclareLaunchArgument('base_trajectory_filename', default_value='base_path.json'),
+        DeclareLaunchArgument('arm_trajectory_filename', default_value='arm_path.json'),
+        DeclareLaunchArgument('normal_filename', default_value='normal_vector.json'),
         Node(
             package='parse_paths',
             executable='publish_robotnik_base_arm_paths',
@@ -66,6 +79,12 @@ def generate_launch_description():
                 'publish_once': LaunchConfiguration('publish_once'),
                 'wait_for_trigger': LaunchConfiguration('wait_for_trigger'),
                 'trigger_topic': LaunchConfiguration('trigger_topic'),
+                'export_trajectories': LaunchConfiguration('export_trajectories'),
+                'load_exported_trajectories': LaunchConfiguration('load_exported_trajectories'),
+                'trajectory_directory': LaunchConfiguration('trajectory_directory'),
+                'base_trajectory_filename': LaunchConfiguration('base_trajectory_filename'),
+                'arm_trajectory_filename': LaunchConfiguration('arm_trajectory_filename'),
+                'normal_filename': LaunchConfiguration('normal_filename'),
             }],
         ),
     ])
