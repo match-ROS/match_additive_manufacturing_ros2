@@ -10,6 +10,7 @@ from nav_msgs.msg import Path
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from std_msgs.msg import Bool
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
 
 from parse_paths.path_utils import as_bool, as_float_list, build_orientation, make_pose
@@ -123,6 +124,8 @@ class RobotnikBaseArmPathPublisher(Node):
         self.declare_parameter('time_step', 0.1)
         self.declare_parameter('publish_rate', 1.0)
         self.declare_parameter('publish_once', True)
+        self.declare_parameter('wait_for_trigger', False)
+        self.declare_parameter('trigger_topic', '/start_pose_reached')
 
         self.frame_id = str(self.get_parameter('frame_id').value)
         self.base_path_topic = str(self.get_parameter('base_path_topic').value)
@@ -136,6 +139,8 @@ class RobotnikBaseArmPathPublisher(Node):
         self.num_points = max(2, int(self.get_parameter('num_points').value))
         self.time_step = float(self.get_parameter('time_step').value)
         self.publish_once = as_bool(self.get_parameter('publish_once').value)
+        self.wait_for_trigger = as_bool(self.get_parameter('wait_for_trigger').value)
+        self.trigger_received = not self.wait_for_trigger
 
         latch_qos = QoSProfile(
             depth=1,
@@ -160,12 +165,32 @@ class RobotnikBaseArmPathPublisher(Node):
             self.create_subscription(PoseStamped, self.current_arm_pose_topic, self._arm_pose_cb, 10)
         else:
             self._ensure_paths()
+        if self.wait_for_trigger:
+            self.create_subscription(
+                Bool,
+                str(self.get_parameter('trigger_topic').value),
+                self._trigger_cb,
+                latch_qos,
+            )
 
         rate = max(0.1, float(self.get_parameter('publish_rate').value))
         self.create_timer(1.0 / rate, self._tick)
+        wait_msg = " and trigger" if self.wait_for_trigger else ""
         self.get_logger().info(
-            "Robotnik paired base/arm path publisher waiting for robot and TCP poses."
+            f"Robotnik paired base/arm path publisher waiting for robot and TCP poses{wait_msg}."
         )
+
+    def _trigger_cb(self, msg: Bool) -> None:
+        if not msg.data:
+            return
+        if self.trigger_received:
+            return
+        self.trigger_received = True
+        self.base_path_msg = None
+        self.arm_path_msg = None
+        self.has_published_once = False
+        self.get_logger().info("Path generation trigger received.")
+        self._ensure_paths()
 
     def _robot_pose_cb(self, msg: PoseStamped) -> None:
         self.robot_pose = msg.pose
@@ -177,6 +202,8 @@ class RobotnikBaseArmPathPublisher(Node):
 
     def _ensure_paths(self) -> None:
         if self.base_path_msg is not None and self.arm_path_msg is not None:
+            return
+        if not self.trigger_received:
             return
         if self.use_current_poses and (self.robot_pose is None or self.current_arm_pose is None):
             return

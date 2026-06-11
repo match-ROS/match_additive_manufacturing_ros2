@@ -55,17 +55,20 @@ The paired Robotnik demos use one shared `/path_index` for both the base path an
 the arm path. This keeps the base and UR reference trajectories synchronized by
 waypoint number: index `i` is the base target and arm target for the same step.
 
-In the base+arm demo, `move_to_start_pose` first sends a UR one-shot joint pose on
-`/robot/joint_trajectory_controller/joint_trajectory`. The paired path is generated
-after `path_generation_delay`, so `/ur_path_transformed[0]` is based on the TCP pose
-after that arm start motion. The arm XY offset is ramped from zero, so the first arm
-waypoint is the generated TCP start pose.
+The demo can either generate temporary test paths or consume externally supplied
+`/base_path` and `/ur_path_transformed` topics. For external paths, run with
+`generate_test_paths:=false`; the base mover, shared index, base follower, and arm
+controllers wait for those topic messages.
 
-By default the paired base path starts `0.35 m` in front of the current base pose.
-The `move_to_base_path_start` node drives the RB-VOGUI to `/base_path[0]`, then
-publishes `/start_pose_reached`. The shared index publisher, base follower, and arm
-controller wait for your manual `/start_condition` signal before following the
-trajectory.
+In the generated test mode, `move_to_start_pose` first sends a UR one-shot joint pose
+on `/robot/joint_trajectory_controller/joint_trajectory`. A temporary prestart path
+moves the RB-VOGUI to a base start area. When the base reaches that point,
+`/start_pose_reached` triggers generation of the final paired path from the current
+base pose and current TCP pose. The final base path starts at the current base pose,
+and the final arm path starts at the current TCP pose.
+
+The shared index publisher, base follower, and arm controller wait for your manual
+`/start_condition` signal before following the final trajectory.
 
 The paired paths are static and publish once by default with transient-local QoS.
 Use `publish_once:=false` only when debugging repeated path publication.
@@ -88,13 +91,19 @@ Run the base plus UR control-node wiring:
 ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py
 ```
 
-Disable the pre-roll only when another node is already publishing the start signal:
+Use externally supplied path topics instead of the test generator:
+
+```bash
+ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py \
+  generate_test_paths:=false
+```
+
+Disable the pre-roll only when another node has already positioned the robot:
 
 ```bash
 ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py \
   move_to_start_pose:=false \
-  wait_for_start_condition:=false \
-  path_generation_delay:=0.0
+  wait_for_start_condition:=false
 ```
 
 After the start pose has been reached, begin trajectory following manually:

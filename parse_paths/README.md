@@ -92,7 +92,9 @@ late subscribers without republishing.
 The publisher also logs a warning if the planar base-to-arm target distance leaves
 the conservative default range `0.25..0.85 m`. By default `ramp_arm_xy_offset:=true`,
 so the first arm waypoint is exactly the TCP start pose and the configured XY offset
-is reached gradually along the path. For a deterministic path without pose inputs:
+is reached gradually along the path. Use `wait_for_trigger:=true` with
+`trigger_topic:=/start_pose_reached` to generate the path from the latest poses only
+after an external pre-positioning step. For a deterministic path without pose inputs:
 
 ```bash
 ros2 launch parse_paths robotnik_base_arm_paths.launch.py \

@@ -34,6 +34,7 @@ def generate_launch_description():
         executable='publish_robotnik_base_arm_paths',
         name='robotnik_base_arm_path_publisher',
         output='screen',
+        condition=IfCondition(LaunchConfiguration('generate_test_paths')),
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'frame_id': LaunchConfiguration('path_frame'),
@@ -56,6 +57,7 @@ def generate_launch_description():
             'num_points': LaunchConfiguration('num_points'),
             'time_step': LaunchConfiguration('time_step'),
             'publish_once': LaunchConfiguration('publish_once'),
+            'wait_for_trigger': False,
         }],
     )
 
@@ -146,6 +148,7 @@ def generate_launch_description():
         DeclareLaunchArgument('max_reachable_radius', default_value='0.85'),
         DeclareLaunchArgument('num_points', default_value='50'),
         DeclareLaunchArgument('time_step', default_value='0.1'),
+        DeclareLaunchArgument('generate_test_paths', default_value='true'),
         DeclareLaunchArgument('publish_once', default_value='true'),
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
         DeclareLaunchArgument('base_next_goal_topic', default_value='/base_next_goal'),

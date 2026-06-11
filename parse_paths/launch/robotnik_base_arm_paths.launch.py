@@ -31,6 +31,8 @@ def generate_launch_description():
         DeclareLaunchArgument('num_points', default_value='50'),
         DeclareLaunchArgument('time_step', default_value='0.1'),
         DeclareLaunchArgument('publish_once', default_value='true'),
+        DeclareLaunchArgument('wait_for_trigger', default_value='false'),
+        DeclareLaunchArgument('trigger_topic', default_value='/start_pose_reached'),
         Node(
             package='parse_paths',
             executable='publish_robotnik_base_arm_paths',
@@ -62,6 +64,8 @@ def generate_launch_description():
                 'num_points': LaunchConfiguration('num_points'),
                 'time_step': LaunchConfiguration('time_step'),
                 'publish_once': LaunchConfiguration('publish_once'),
+                'wait_for_trigger': LaunchConfiguration('wait_for_trigger'),
+                'trigger_topic': LaunchConfiguration('trigger_topic'),
             }],
         ),
     ])

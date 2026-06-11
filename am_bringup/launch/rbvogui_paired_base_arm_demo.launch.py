@@ -29,11 +29,12 @@ def _optional_sim_launch(context, *args, **kwargs):
 
 
 def generate_launch_description():
-    path_publisher = Node(
+    prestart_path_publisher = Node(
         package='parse_paths',
         executable='publish_robotnik_base_arm_paths',
-        name='robotnik_base_arm_path_publisher',
+        name='robotnik_prestart_base_arm_path_publisher',
         output='screen',
+        condition=IfCondition(LaunchConfiguration('generate_test_paths')),
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'frame_id': LaunchConfiguration('path_frame'),
@@ -56,6 +57,40 @@ def generate_launch_description():
             'num_points': LaunchConfiguration('num_points'),
             'time_step': LaunchConfiguration('time_step'),
             'publish_once': LaunchConfiguration('publish_once'),
+            'wait_for_trigger': False,
+        }],
+    )
+
+    final_path_publisher = Node(
+        package='parse_paths',
+        executable='publish_robotnik_base_arm_paths',
+        name='robotnik_final_base_arm_path_publisher',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('generate_test_paths')),
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'frame_id': LaunchConfiguration('path_frame'),
+            'base_path_topic': LaunchConfiguration('base_path_topic'),
+            'base_original_path_topic': LaunchConfiguration('base_original_path_topic'),
+            'arm_path_topic': LaunchConfiguration('arm_path_topic'),
+            'arm_original_path_topic': LaunchConfiguration('arm_original_path_topic'),
+            'normal_topic': LaunchConfiguration('normal_topic'),
+            'robot_pose_topic': LaunchConfiguration('robot_pose_topic'),
+            'current_arm_pose_topic': LaunchConfiguration('current_arm_pose_topic'),
+            'use_current_poses': LaunchConfiguration('use_current_poses'),
+            'base_start_offset': LaunchConfiguration('final_base_start_offset'),
+            'sideways_distance': LaunchConfiguration('sideways_distance'),
+            'diagonal_distance': LaunchConfiguration('diagonal_distance'),
+            'arm_xy_offset': LaunchConfiguration('arm_xy_offset'),
+            'ramp_arm_xy_offset': LaunchConfiguration('ramp_arm_xy_offset'),
+            'arm_height_delta': LaunchConfiguration('arm_height_delta'),
+            'min_reachable_radius': LaunchConfiguration('min_reachable_radius'),
+            'max_reachable_radius': LaunchConfiguration('max_reachable_radius'),
+            'num_points': LaunchConfiguration('num_points'),
+            'time_step': LaunchConfiguration('time_step'),
+            'publish_once': LaunchConfiguration('publish_once'),
+            'wait_for_trigger': True,
+            'trigger_topic': LaunchConfiguration('start_pose_reached_topic'),
         }],
     )
 
@@ -185,9 +220,9 @@ def generate_launch_description():
         ],
     )
 
-    delayed_path_publisher = TimerAction(
-        period=LaunchConfiguration('path_generation_delay'),
-        actions=[path_publisher],
+    delayed_move_to_start = TimerAction(
+        period=LaunchConfiguration('base_start_move_delay'),
+        actions=[move_to_start],
     )
 
     return LaunchDescription([
@@ -205,6 +240,7 @@ def generate_launch_description():
         DeclareLaunchArgument('current_arm_pose_topic', default_value='/current_tcp_pose'),
         DeclareLaunchArgument('use_current_poses', default_value='true'),
         DeclareLaunchArgument('base_start_offset', default_value='[0.35, 0.0, 0.0]'),
+        DeclareLaunchArgument('final_base_start_offset', default_value='[0.0, 0.0, 0.0]'),
         DeclareLaunchArgument('sideways_distance', default_value='0.8'),
         DeclareLaunchArgument('diagonal_distance', default_value='0.8'),
         DeclareLaunchArgument('arm_xy_offset', default_value='[0.15, 0.0, 0.0]'),
@@ -214,7 +250,7 @@ def generate_launch_description():
         DeclareLaunchArgument('max_reachable_radius', default_value='0.85'),
         DeclareLaunchArgument('num_points', default_value='50'),
         DeclareLaunchArgument('time_step', default_value='0.1'),
-        DeclareLaunchArgument('path_generation_delay', default_value='13.0'),
+        DeclareLaunchArgument('generate_test_paths', default_value='true'),
         DeclareLaunchArgument('publish_once', default_value='true'),
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
         DeclareLaunchArgument('next_goal_topic', default_value='/next_goal'),
@@ -225,6 +261,7 @@ def generate_launch_description():
         DeclareLaunchArgument('start_pose_reached_topic', default_value='/start_pose_reached'),
         DeclareLaunchArgument('publish_start_pose_reached', default_value='true'),
         DeclareLaunchArgument('move_to_start_pose', default_value='true'),
+        DeclareLaunchArgument('base_start_move_delay', default_value='13.0'),
         DeclareLaunchArgument('start_distance_tolerance', default_value='0.06'),
         DeclareLaunchArgument('start_yaw_tolerance', default_value='0.08'),
         DeclareLaunchArgument('start_max_linear_velocity', default_value='0.2'),
@@ -250,8 +287,9 @@ def generate_launch_description():
         DeclareLaunchArgument('start_pose_trajectory_topic', default_value='/robot/joint_trajectory_controller/joint_trajectory'),
         DeclareLaunchArgument('start_pose_publish_delay', default_value='8.0'),
         OpaqueFunction(function=_optional_sim_launch),
-        delayed_path_publisher,
-        move_to_start,
+        prestart_path_publisher,
+        final_path_publisher,
+        delayed_move_to_start,
         path_index,
         base_follower,
         arm_control,
