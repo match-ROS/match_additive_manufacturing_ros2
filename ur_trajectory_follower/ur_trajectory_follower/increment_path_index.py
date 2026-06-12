@@ -25,16 +25,31 @@ class IncrementPathIndex(Node):
 
         self.path: Optional[Path] = None
         self.path_index = max(0, int(self.get_parameter('initial_path_index').value))
+        self._last_published_index: Optional[int] = None
         self.start_enabled = not as_bool(self.get_parameter('wait_for_start_condition').value)
         self.normal = Vector3(x=0.0, y=0.0, z=1.0)
 
-        latch_qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL, reliability=QoSReliabilityPolicy.RELIABLE)
-        self.index_pub = self.create_publisher(Int32, str(self.get_parameter('path_index_topic').value), latch_qos)
-        self.goal_pose_pub = self.create_publisher(PoseStamped, str(self.get_parameter('next_goal_topic').value), latch_qos)
-        self.normal_pub = self.create_publisher(Vector3, str(self.get_parameter('normal_topic').value), latch_qos)
+        latch_qos = QoSProfile(
+            depth=1,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+        )
+        self.path_index_topic = str(self.get_parameter('path_index_topic').value)
+        self.index_pub = self.create_publisher(Int32, self.path_index_topic, latch_qos)
+        self.goal_pose_pub = self.create_publisher(
+            PoseStamped,
+            str(self.get_parameter('next_goal_topic').value),
+            latch_qos,
+        )
+        self.normal_pub = self.create_publisher(
+            Vector3,
+            str(self.get_parameter('normal_topic').value),
+            latch_qos,
+        )
 
         self.create_subscription(Path, str(self.get_parameter('path_topic').value), self._path_cb, latch_qos)
         self.create_subscription(Vector3, str(self.get_parameter('normal_topic').value), self._normal_cb, latch_qos)
+        self.create_subscription(Int32, self.path_index_topic, self._external_index_cb, 10)
         self.create_subscription(Bool, str(self.get_parameter('start_condition_topic').value), self._start_cb, 10)
         rate = max(0.1, float(self.get_parameter('publish_rate').value))
         self.create_timer(1.0 / rate, self._tick)
@@ -43,23 +58,46 @@ class IncrementPathIndex(Node):
         if not msg.poses:
             self.get_logger().warn("Ignoring empty path.")
             return
+        had_path = self.path is not None
         self.path = msg
-        self.path_index = min(self.path_index, len(msg.poses) - 1)
+        clamped_index = min(self.path_index, len(msg.poses) - 1)
+        index_changed = clamped_index != self.path_index
+        self.path_index = clamped_index
+        if not had_path or index_changed:
+            self._publish_state(force=True)
 
     def _normal_cb(self, msg: Vector3) -> None:
         self.normal = msg
+        self.normal_pub.publish(self.normal)
 
     def _start_cb(self, msg: Bool) -> None:
         self.start_enabled = bool(msg.data)
+
+    def _external_index_cb(self, msg: Int32) -> None:
+        requested_index = max(0, int(msg.data))
+        if self.path is not None and self.path.poses:
+            requested_index = min(requested_index, len(self.path.poses) - 1)
+        if requested_index == self.path_index:
+            return
+        self.path_index = requested_index
+        self._publish_state(force=True)
 
     def _tick(self) -> None:
         if self.path is None or not self.path.poses:
             return
         if self.start_enabled and self.path_index < len(self.path.poses) - 1:
             self.path_index += 1
+            self._publish_state()
+
+    def _publish_state(self, force: bool = False) -> None:
+        if self.path is None or not self.path.poses:
+            return
+        if not force and self.path_index == self._last_published_index:
+            return
         self.index_pub.publish(Int32(data=self.path_index))
         self.goal_pose_pub.publish(self.path.poses[self.path_index])
         self.normal_pub.publish(self.normal)
+        self._last_published_index = self.path_index
 
 
 def main(args=None) -> None:

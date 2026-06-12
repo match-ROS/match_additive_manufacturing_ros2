@@ -5,23 +5,36 @@ import rclpy
 from geometry_msgs.msg import PoseStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool, Float32, Int32
 
 
 StatusCallback = Callable[[bool, bool], None]
+PathIndexCallback = Callable[[int], None]
 
 
 class OperatorGuiNode(Node):
-    def __init__(self, status_callback: Optional[StatusCallback] = None) -> None:
+    def __init__(
+        self,
+        status_callback: Optional[StatusCallback] = None,
+        path_index_callback: Optional[PathIndexCallback] = None,
+    ) -> None:
         super().__init__('am_operator_gui')
         self._status_callback = status_callback
+        self._path_index_callback = path_index_callback
         self._has_path = False
         self._has_robot_pose = False
 
-        self._path_index_pub = self.create_publisher(Int32, '/path_index', 10)
+        path_index_qos = QoSProfile(
+            depth=1,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+        )
+        self._path_index_pub = self.create_publisher(Int32, '/path_index', path_index_qos)
         self._start_condition_pub = self.create_publisher(Bool, '/start_condition', 10)
         self._velocity_override_pub = self.create_publisher(Float32, '/velocity_override', 10)
         self._nozzle_height_pub = self.create_publisher(Float32, '/nozzle_height_override', 10)
+        self.create_subscription(Int32, '/path_index', self._path_index_cb, path_index_qos)
         self.create_subscription(Path, '/base_path', self._base_path_cb, 10)
         self.create_subscription(PoseStamped, '/robot_pose', self._robot_pose_cb, 10)
 
@@ -53,21 +66,30 @@ class OperatorGuiNode(Node):
         self._has_robot_pose = True
         self._emit_status()
 
+    def _path_index_cb(self, msg: Int32) -> None:
+        if self._path_index_callback is not None:
+            self._path_index_callback(int(msg.data))
+
     def _emit_status(self) -> None:
         if self._status_callback is not None:
             self._status_callback(self._has_path, self._has_robot_pose)
 
 
 class RosBridge:
-    def __init__(self, status_callback: Optional[StatusCallback] = None) -> None:
+    def __init__(
+        self,
+        status_callback: Optional[StatusCallback] = None,
+        path_index_callback: Optional[PathIndexCallback] = None,
+    ) -> None:
         self._status_callback = status_callback
+        self._path_index_callback = path_index_callback
         self._node: Optional[OperatorGuiNode] = None
         self._executor_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
         if not rclpy.ok():
             rclpy.init(args=None)
-        self._node = OperatorGuiNode(self._status_callback)
+        self._node = OperatorGuiNode(self._status_callback, self._path_index_callback)
         self._executor_thread = threading.Thread(target=rclpy.spin, args=(self._node,), daemon=True)
         self._executor_thread.start()
 

@@ -176,7 +176,7 @@ def generate_launch_description():
             'robot_pose_topic': LaunchConfiguration('robot_pose_topic'),
             'robot_pose_type': 'pose_stamped',
             'cmd_vel_topic': LaunchConfiguration('cmd_vel_topic'),
-            'path_index': 0,
+            'path_index': LaunchConfiguration('initial_path_index'),
             'publish_start_condition': LaunchConfiguration('publish_start_pose_reached'),
             'start_condition_topic': LaunchConfiguration('start_pose_reached_topic'),
             'distance_tolerance': LaunchConfiguration('start_distance_tolerance'),
