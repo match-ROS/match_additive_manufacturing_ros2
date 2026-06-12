@@ -131,6 +131,7 @@ def _launch_setup(context, *args, **kwargs):
                 'joint_state_topic': LaunchConfiguration('joint_states_topic'),
                 'path_index_topic': path_index_topic,
                 'lift_joint_name': LaunchConfiguration('lift_joint_name'),
+                'default_velocity': LaunchConfiguration('default_velocity'),
             }],
             remappings=[
                 ('path', path_topic),
@@ -259,6 +260,7 @@ def generate_launch_description():
         DeclareLaunchArgument('path_index_topic', default_value='/path_index'),
         DeclareLaunchArgument('path_index_rate', default_value='10.0'),
         DeclareLaunchArgument('initial_path_index', default_value='0'),
+        DeclareLaunchArgument('default_velocity', default_value='-1.0'),
         DeclareLaunchArgument('start_condition_topic', default_value='/start_condition'),
         DeclareLaunchArgument('wait_for_start_condition', default_value='false'),
         DeclareLaunchArgument('use_current_pose', default_value='true'),

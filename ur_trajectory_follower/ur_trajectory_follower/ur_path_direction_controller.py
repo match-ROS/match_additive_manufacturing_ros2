@@ -41,6 +41,7 @@ class DirectionController(Node):
         self.declare_parameter('wait_for_start_condition', True)
         self.declare_parameter('initial_path_index', -1)
         self.declare_parameter('path_index_topic', '/path_index')
+        self.declare_parameter('default_velocity', -1.0)
 
         self.nozzle_height_default = float(self.get_parameter('nozzle_height_default').value)
         self.nozzle_height_override = 0.0
@@ -63,6 +64,7 @@ class DirectionController(Node):
         self.command_old_twist = Twist()
         self.current_index = 1
         self.trajectory_velocity = 0.0
+        self.default_velocity = max(0.0, float(self.get_parameter('default_velocity').value))
         self.velocity_override = 1.0
         self.current_lift_height = 0.0
         self.current_pose: Optional[PoseStamped] = None
@@ -231,7 +233,9 @@ class DirectionController(Node):
         t_last = Time.from_msg(last_waypoint.header.stamp)
         t_next = Time.from_msg(next_waypoint.header.stamp)
         dt = (t_next - t_last).nanoseconds / 1e9
-        if dt > 0.0:
+        if self.default_velocity > 0.0:
+            self.trajectory_velocity = self.default_velocity
+        elif dt > 0.0:
             self.trajectory_velocity = segment_speed(last_position, next_position, dt)
         else:
             self.get_logger().warn(

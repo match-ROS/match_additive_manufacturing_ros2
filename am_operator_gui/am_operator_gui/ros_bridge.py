@@ -1,4 +1,6 @@
 import threading
+import math
+import statistics
 from typing import Callable, Optional
 
 import rclpy
@@ -25,6 +27,7 @@ class OperatorGuiNode(Node):
         self._has_path = False
         self._has_robot_pose = False
         self._latest_ur_path_rate: Optional[float] = None
+        self._latest_ur_path_median_segment_length: Optional[float] = None
         self._path_rate_lock = threading.Lock()
 
         path_index_qos = QoSProfile(
@@ -66,6 +69,11 @@ class OperatorGuiNode(Node):
         with self._path_rate_lock:
             return self._latest_ur_path_rate
 
+    @property
+    def latest_ur_path_median_segment_length(self) -> Optional[float]:
+        with self._path_rate_lock:
+            return self._latest_ur_path_median_segment_length
+
     def _base_path_cb(self, _msg: Path) -> None:
         self._has_path = True
         self._emit_status()
@@ -76,8 +84,10 @@ class OperatorGuiNode(Node):
 
     def _ur_path_cb(self, msg: Path) -> None:
         rate = self._mean_path_timestamp_rate(msg)
+        median_segment_length = self._median_path_segment_length(msg)
         with self._path_rate_lock:
             self._latest_ur_path_rate = rate
+            self._latest_ur_path_median_segment_length = median_segment_length
 
     def _path_index_cb(self, msg: Int32) -> None:
         if self._path_index_callback is not None:
@@ -106,6 +116,27 @@ class OperatorGuiNode(Node):
         if not deltas:
             return None
         return len(deltas) / sum(deltas)
+
+    @staticmethod
+    def _median_path_segment_length(msg: Path) -> Optional[float]:
+        if len(msg.poses) < 2:
+            return None
+
+        lengths = []
+        previous = msg.poses[0].pose.position
+        for pose in msg.poses[1:]:
+            current = pose.pose.position
+            length = math.dist(
+                (previous.x, previous.y, previous.z),
+                (current.x, current.y, current.z),
+            )
+            if length > 0.0:
+                lengths.append(length)
+            previous = current
+
+        if not lengths:
+            return None
+        return float(statistics.median(lengths))
 
 
 class RosBridge:
@@ -165,3 +196,9 @@ class RosBridge:
         if self._node is None:
             return None
         return self._node.latest_ur_path_rate
+
+    @property
+    def latest_ur_path_median_segment_length(self) -> Optional[float]:
+        if self._node is None:
+            return None
+        return self._node.latest_ur_path_median_segment_length

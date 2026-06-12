@@ -43,6 +43,7 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('max_vx', 0.4)
         self.declare_parameter('max_vy', 0.4)
         self.declare_parameter('max_wz', 0.8)
+        self.declare_parameter('default_linear_velocity', -1.0)
         self.declare_parameter('xy_goal_tolerance', 0.05)
         self.declare_parameter('yaw_goal_tolerance', 0.08)
 
@@ -167,6 +168,7 @@ class SimpleBaseFollower(Node):
             self._gains(),
             self._limits(),
             self._tolerances(),
+            self._default_linear_velocity(),
         )
         self.goal_reached = command.reached_goal
         if self.goal_reached:
@@ -221,6 +223,10 @@ class SimpleBaseFollower(Node):
             xy_goal_tolerance=float(self.get_parameter('xy_goal_tolerance').value),
             yaw_goal_tolerance=float(self.get_parameter('yaw_goal_tolerance').value),
         )
+
+    def _default_linear_velocity(self) -> Optional[float]:
+        velocity = float(self.get_parameter('default_linear_velocity').value)
+        return velocity if velocity > 0.0 else None
 
     @staticmethod
     def _pose2d_from_pose_stamped(msg: PoseStamped) -> Pose2D:

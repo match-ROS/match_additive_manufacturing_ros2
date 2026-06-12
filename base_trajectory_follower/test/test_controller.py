@@ -55,3 +55,20 @@ def test_compute_velocity_reports_reached_goal():
     assert command.vx == 0.0
     assert command.vy == 0.0
     assert command.wz == 0.0
+
+
+def test_compute_velocity_can_use_default_linear_speed():
+    robot = Pose2D(0.0, 0.0, 0.0)
+    target = Pose2D(3.0, 4.0, 0.0)
+    command = compute_velocity_command(
+        robot,
+        target,
+        Pose2D(10.0, 0.0, 0.0),
+        FollowerGains(kp_x=10.0, kp_y=10.0, kp_yaw=1.0),
+        FollowerLimits(max_vx=2.0, max_vy=2.0, max_wz=2.0),
+        FollowerTolerances(xy_goal_tolerance=0.01, yaw_goal_tolerance=0.01),
+        default_linear_velocity=0.5,
+    )
+
+    assert math.isclose(command.vx, 0.3, abs_tol=1e-6)
+    assert math.isclose(command.vy, 0.4, abs_tol=1e-6)

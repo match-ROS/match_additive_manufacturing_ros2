@@ -80,6 +80,7 @@ def compute_velocity_command(
     gains: FollowerGains,
     limits: FollowerLimits,
     tolerances: FollowerTolerances,
+    default_linear_velocity: Optional[float] = None,
 ) -> VelocityCommand:
     goal_distance = distance_xy(robot_pose, final_pose)
     goal_yaw_error = wrap_to_pi(final_pose.yaw - robot_pose.yaw)
@@ -98,10 +99,22 @@ def compute_velocity_command(
 
     yaw_target = final_pose.yaw if target_pose is final_pose else target_pose.yaw
     yaw_error = wrap_to_pi(yaw_target - robot_pose.yaw)
+    linear_speed = float(default_linear_velocity or 0.0)
+    if linear_speed > 0.0:
+        distance_to_target = math.hypot(dx_robot, dy_robot)
+        if distance_to_target > 1e-9:
+            vx = dx_robot / distance_to_target * linear_speed
+            vy = dy_robot / distance_to_target * linear_speed
+        else:
+            vx = 0.0
+            vy = 0.0
+    else:
+        vx = gains.kp_x * dx_robot
+        vy = gains.kp_y * dy_robot
 
     return VelocityCommand(
-        vx=clamp(gains.kp_x * dx_robot, limits.max_vx),
-        vy=clamp(gains.kp_y * dy_robot, limits.max_vy),
+        vx=clamp(vx, limits.max_vx),
+        vy=clamp(vy, limits.max_vy),
         wz=clamp(gains.kp_yaw * yaw_error, limits.max_wz),
         reached_goal=False,
     )

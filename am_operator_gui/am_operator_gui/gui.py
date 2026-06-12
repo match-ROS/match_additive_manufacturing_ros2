@@ -1,5 +1,7 @@
 import json
+import math
 import signal
+import statistics
 import sys
 from pathlib import Path
 from typing import Callable, Optional
@@ -34,6 +36,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_COMPONENTS_DIR = REPO_ROOT / 'components'
 DEFAULT_TRAJECTORY_DIR = DEFAULT_COMPONENTS_DIR / 'robotnik_paired_demo'
 DEFAULT_PATH_INDEX_RATE = 5.0
+DEFAULT_DEFAULT_VELOCITY = 0.1
 CONFIG_PATH = Path.home() / '.config' / 'am_operator_gui' / 'operator_gui_config.json'
 LAUNCH_ALL_NAME = 'launch_all'
 SIM_NAME = 'launch_sim'
@@ -109,6 +112,16 @@ class OperatorWindow(QMainWindow):
             return DEFAULT_PATH_INDEX_RATE
         return max(0.01, min(1000.0, rate))
 
+    def _configured_default_velocity(self) -> float:
+        try:
+            velocity = float(self._config.get('default_velocity', DEFAULT_DEFAULT_VELOCITY))
+        except (TypeError, ValueError):
+            return DEFAULT_DEFAULT_VELOCITY
+        return max(0.001, min(10.0, velocity))
+
+    def _configured_default_velocity_enabled(self) -> bool:
+        return bool(self._config.get('default_velocity_enabled', False))
+
     def _build_ui(self) -> None:
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -159,6 +172,15 @@ class OperatorWindow(QMainWindow):
         self.path_index_rate_spin.setSuffix(' Hz')
         self.path_index_rate_spin.setValue(self._configured_path_index_rate())
         self.calculate_path_index_rate_button = QPushButton('Calculate Index Rate')
+        self.default_velocity_checkbox = QCheckBox('Default velocity')
+        self.default_velocity_checkbox.setChecked(self._configured_default_velocity_enabled())
+        self.default_velocity_spin = QDoubleSpinBox()
+        self.default_velocity_spin.setRange(0.001, 10.0)
+        self.default_velocity_spin.setDecimals(3)
+        self.default_velocity_spin.setSingleStep(0.01)
+        self.default_velocity_spin.setSuffix(' m/s')
+        self.default_velocity_spin.setValue(self._configured_default_velocity())
+        self.default_velocity_spin.setEnabled(self.default_velocity_checkbox.isChecked())
 
         component_layout.addWidget(self.publish_path_button, 0, 0)
         component_layout.addWidget(self.path_index_button, 0, 1)
@@ -170,6 +192,8 @@ class OperatorWindow(QMainWindow):
         component_layout.addWidget(QLabel('Index rate'), 3, 0)
         component_layout.addWidget(self.path_index_rate_spin, 3, 1)
         component_layout.addWidget(self.calculate_path_index_rate_button, 3, 2)
+        component_layout.addWidget(self.default_velocity_checkbox, 4, 0)
+        component_layout.addWidget(self.default_velocity_spin, 4, 1)
 
         motion_group = QGroupBox('Motion')
         motion_layout = QGridLayout(motion_group)
@@ -251,6 +275,8 @@ class OperatorWindow(QMainWindow):
         self.index_spin.valueChanged.connect(self._publish_path_index)
         self.velocity_slider.valueChanged.connect(self._publish_overrides)
         self.path_index_rate_spin.valueChanged.connect(self._set_path_index_rate)
+        self.default_velocity_checkbox.toggled.connect(self._set_default_velocity_enabled)
+        self.default_velocity_spin.valueChanged.connect(self._set_default_velocity)
         self.nozzle_reference.valueChanged.connect(self._publish_overrides)
         self.nozzle_offset.valueChanged.connect(self._publish_overrides)
 
@@ -414,6 +440,7 @@ class OperatorWindow(QMainWindow):
             '-p', 'max_vx:=0.25',
             '-p', 'max_vy:=0.25',
             '-p', 'max_wz:=0.5',
+            '-p', f'default_linear_velocity:={self._ros_float_literal(self._default_velocity_param())}',
         ]
         self._append_process_output(BASE_FOLLOWER_NAME, ' '.join(command))
         self.processes.start(BASE_FOLLOWER_NAME, command)
@@ -463,6 +490,7 @@ class OperatorWindow(QMainWindow):
             'start_condition_topic:=/start_condition',
             f'initial_path_index:={self.index_spin.value()}',
             f'direction_control_mode:={self.direction_mode.currentText()}',
+            f'default_velocity:={self._ros_float_literal(self._default_velocity_param())}',
         ]
         self._append_process_output(ARM_FOLLOWER_NAME, ' '.join(command))
         self.processes.start(ARM_FOLLOWER_NAME, command)
@@ -674,6 +702,28 @@ class OperatorWindow(QMainWindow):
         self._append_process_output('ros', f'published /path_index {value}')
 
     def _calculate_path_index_rate(self) -> None:
+        if self.default_velocity_checkbox.isChecked():
+            velocity = self.default_velocity_spin.value()
+            median_segment_length = self.ros_bridge.latest_ur_path_median_segment_length
+            source = '/ur_path_transformed median segment length'
+            if median_segment_length is None or median_segment_length <= 0.0:
+                median_segment_length = self._arm_path_median_segment_length_from_file()
+                source = f'{Path(self.path_folder.text()) / "arm_path.json"} median segment length'
+            if median_segment_length is None or median_segment_length <= 0.0:
+                self._append_process_output(
+                    'gui',
+                    'cannot calculate index rate: no valid arm path segment lengths found',
+                )
+                return
+
+            rate = velocity / median_segment_length
+            self.path_index_rate_spin.setValue(rate)
+            self._append_process_output(
+                'gui',
+                f'calculated path index rate {rate:.3f} Hz from {velocity:.3f} m/s and {source}',
+            )
+            return
+
         rate = self.ros_bridge.latest_ur_path_rate
         source = '/ur_path_transformed'
         if rate is None or rate <= 0.0:
@@ -688,6 +738,34 @@ class OperatorWindow(QMainWindow):
 
         self.path_index_rate_spin.setValue(rate)
         self._append_process_output('gui', f'calculated path index rate {rate:.3f} Hz from {source}')
+
+    def _arm_path_median_segment_length_from_file(self) -> Optional[float]:
+        path_file = Path(self.path_folder.text()) / 'arm_path.json'
+        try:
+            data = json.loads(path_file.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError, TypeError):
+            return None
+
+        poses = data.get('poses') if isinstance(data, dict) else None
+        if not isinstance(poses, list) or len(poses) < 2:
+            return None
+
+        lengths = []
+        previous_position = self._pose_position(poses[0])
+        if previous_position is None:
+            return None
+        for pose in poses[1:]:
+            current_position = self._pose_position(pose)
+            if current_position is None:
+                return None
+            length = math.dist(previous_position, current_position)
+            if length > 0.0:
+                lengths.append(length)
+            previous_position = current_position
+
+        if not lengths:
+            return None
+        return float(statistics.median(lengths))
 
     def _path_index_rate_from_file(self) -> Optional[float]:
         path_file = Path(self.path_folder.text()) / 'arm_path.json'
@@ -719,6 +797,22 @@ class OperatorWindow(QMainWindow):
         return len(deltas) / sum(deltas)
 
     @staticmethod
+    def _pose_position(pose: object) -> Optional[tuple[float, float, float]]:
+        if not isinstance(pose, dict):
+            return None
+        position = pose.get('position')
+        if not isinstance(position, dict):
+            return None
+        try:
+            return (
+                float(position.get('x', 0.0)),
+                float(position.get('y', 0.0)),
+                float(position.get('z', 0.0)),
+            )
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
     def _stamp_seconds(stamp: object) -> Optional[float]:
         if not isinstance(stamp, dict):
             return None
@@ -734,6 +828,20 @@ class OperatorWindow(QMainWindow):
     def _set_path_index_rate(self, value: float) -> None:
         self._config['path_index_rate'] = float(value)
         self._save_config()
+
+    def _set_default_velocity_enabled(self, enabled: bool) -> None:
+        self.default_velocity_spin.setEnabled(enabled)
+        self._config['default_velocity_enabled'] = bool(enabled)
+        self._save_config()
+
+    def _set_default_velocity(self, value: float) -> None:
+        self._config['default_velocity'] = float(value)
+        self._save_config()
+
+    def _default_velocity_param(self) -> float:
+        if not self.default_velocity_checkbox.isChecked():
+            return -1.0
+        return self.default_velocity_spin.value()
 
     def _publish_overrides(self) -> None:
         velocity_percent = self.velocity_slider.value()
