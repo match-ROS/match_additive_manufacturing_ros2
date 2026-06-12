@@ -3,6 +3,7 @@ from typing import Dict
 
 import rclpy
 from geometry_msgs.msg import Twist, TwistStamped
+from std_msgs.msg import Bool
 from rclpy.node import Node
 
 from ur_trajectory_follower.ros2_utils import as_bool, as_string_list
@@ -16,10 +17,14 @@ class TwistCombiner(Node):
         self.declare_parameter('output_stamped', False)
         self.declare_parameter('frame_id', 'base_link')
         self.declare_parameter('publish_rate_hz', 50.0)
+        self.declare_parameter('wait_for_start_condition', False)
+        self.declare_parameter('start_condition_topic', '/start_condition')
 
         self.twist_topics = as_string_list(self.get_parameter('twist_topics').value)
         self.output_stamped = as_bool(self.get_parameter('output_stamped').value)
         self.frame_id = str(self.get_parameter('frame_id').value)
+        self.wait_for_start_condition = as_bool(self.get_parameter('wait_for_start_condition').value)
+        self.start_condition_received = not self.wait_for_start_condition
         self.twists: Dict[str, Twist] = {topic: Twist() for topic in self.twist_topics}
 
         topic = str(self.get_parameter('combined_twist_topic').value)
@@ -30,11 +35,24 @@ class TwistCombiner(Node):
                 Twist, twist_topic, self._make_callback(twist_topic), 10
             )
 
+        if self.wait_for_start_condition:
+            self.create_subscription(
+                Bool,
+                str(self.get_parameter('start_condition_topic').value),
+                self._start_condition_callback,
+                10,
+            )
+
         rate_hz = max(1.0, float(self.get_parameter('publish_rate_hz').value))
         self.create_timer(1.0 / rate_hz, self.publish_combined_twist)
         self.get_logger().info(
             f"Combining {self.twist_topics} into {topic}"
             + (" as TwistStamped." if self.output_stamped else ".")
+            + (
+                " Waiting for start condition."
+                if self.wait_for_start_condition
+                else ""
+            )
         )
 
     def _make_callback(self, topic: str):
@@ -43,7 +61,15 @@ class TwistCombiner(Node):
 
         return callback
 
+    def _start_condition_callback(self, msg: Bool) -> None:
+        self.start_condition_received = bool(msg.data)
+        if self.start_condition_received:
+            self.get_logger().info('Start condition received; publishing combined twist.')
+
     def publish_combined_twist(self) -> None:
+        if not self.start_condition_received:
+            return
+
         combined = Twist()
         for twist in self.twists.values():
             combined.linear.x += twist.linear.x

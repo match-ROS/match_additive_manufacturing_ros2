@@ -1,0 +1,35 @@
+test_path_generator:
+  ros__parameters:
+    path_type: line
+    frame_id: robotnik_simple
+    path_topic: /base_path
+    original_path_topic: /base_path_original
+    num_points: 80
+    time_step: 0.1
+    publish_rate: 1.0
+    publish_once: true
+    orientation_mode: tangent
+    line_start: [0.0, 0.0, 0.0]
+    line_end: [2.0, 0.0, 0.0]
+
+simple_base_follower:
+  ros__parameters:
+    path_topic: /base_path
+    robot_pose_topic: /robot_pose
+    robot_pose_type: pose_stamped
+    cmd_vel_topic: /robot/robotnik_base_control/cmd_vel_unstamped
+    output_stamped: false
+    command_frame_id: base_link
+    publish_rate: 20.0
+    lookahead_distance: 0.5
+    stale_pose_timeout: 0.5
+    stop_on_goal: true
+    allow_reverse: true
+    kp_x: 0.8
+    kp_y: 0.8
+    kp_yaw: 1.2
+    max_vx: 0.35
+    max_vy: 0.35
+    max_wz: 0.7
+    xy_goal_tolerance: 0.08
+    yaw_goal_tolerance: 0.1

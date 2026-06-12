@@ -1,0 +1,28 @@
+test_path_generator:
+  ros__parameters:
+    path_type: line
+    frame_id: map
+    path_topic: /test_path
+    original_path_topic: /test_path_original
+    normal_topic: /normal_vector
+    normal_vector: [0.0, 0.0, 1.0]
+    num_points: 50
+    time_step: 0.1
+    publish_rate: 1.0
+    publish_once: false
+    orientation_mode: tangent
+    fixed_yaw: 0.0
+
+    line_start: [0.0, 0.0, 0.0]
+    line_end: [1.0, 0.0, 0.0]
+
+    rectangle_center: [0.0, 0.0, 0.0]
+    rectangle_width: 1.0
+    rectangle_height: 1.0
+
+    circle_center: [0.0, 0.0, 0.0]
+    circle_radius: 0.5
+    closed_path: true
+
+    waypoints: [0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    interpolate_waypoints: true

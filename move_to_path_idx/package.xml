@@ -2,7 +2,7 @@
 <package format="3">
   <name>move_to_path_idx</name>
   <version>0.0.0</version>
-  <description>Move a mobile base to a selected path index using an external robot pose.</description>
+  <description>Move a mobile base or UR TCP to a selected path index using an external robot pose.</description>
   <maintainer email="rosmatch@todo.todo">rosmatch</maintainer>
   <license>TODO: License declaration</license>
 
@@ -12,6 +12,7 @@
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

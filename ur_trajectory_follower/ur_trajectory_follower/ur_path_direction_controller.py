@@ -12,6 +12,12 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import Bool, Float32, Int32
 from tf_transformations import quaternion_matrix
 
+from ur_trajectory_follower.direction_control import (
+    has_forward_segment,
+    segment_speed,
+    speed_dependent_orthogonal_command,
+)
+
 
 class DirectionController(Node):
     def __init__(self) -> None:
@@ -28,10 +34,14 @@ class DirectionController(Node):
         self.declare_parameter('output_smoothing_coeff', 0.0)
         self.declare_parameter('from_index_offset', -1)
         self.declare_parameter('goal_index_offset', 0)
+        self.declare_parameter('control_mode', 'goal_direction')
+        self.declare_parameter('orthogonal_kp', 1.0)
+        self.declare_parameter('orthogonal_max_velocity', 0.1)
         self.declare_parameter('start_condition_topic', '/start_condition')
         self.declare_parameter('wait_for_start_condition', True)
         self.declare_parameter('initial_path_index', -1)
         self.declare_parameter('path_index_topic', '/path_index')
+        self.declare_parameter('default_velocity', -1.0)
 
         self.nozzle_height_default = float(self.get_parameter('nozzle_height_default').value)
         self.nozzle_height_override = 0.0
@@ -54,6 +64,7 @@ class DirectionController(Node):
         self.command_old_twist = Twist()
         self.current_index = 1
         self.trajectory_velocity = 0.0
+        self.default_velocity = max(0.0, float(self.get_parameter('default_velocity').value))
         self.velocity_override = 1.0
         self.current_lift_height = 0.0
         self.current_pose: Optional[PoseStamped] = None
@@ -63,6 +74,21 @@ class DirectionController(Node):
 
         self.from_index_offset = int(self.get_parameter('from_index_offset').value)
         self.goal_index_offset = int(self.get_parameter('goal_index_offset').value)
+        self.control_mode = str(self.get_parameter('control_mode').value).strip().lower()
+        self.orthogonal_kp = float(self.get_parameter('orthogonal_kp').value)
+        self.orthogonal_max_velocity = float(
+            self.get_parameter('orthogonal_max_velocity').value
+        )
+        if self.control_mode not in {'goal_direction', 'speed_orthogonal'}:
+            self.get_logger().warn(
+                f"Unknown control_mode '{self.control_mode}', using goal_direction."
+            )
+            self.control_mode = 'goal_direction'
+        self.get_logger().info(
+            f"Direction control: mode={self.control_mode}, "
+            f"orthogonal_kp={self.orthogonal_kp}, "
+            f"orthogonal_max_velocity={self.orthogonal_max_velocity}"
+        )
         self.start_condition_topic = str(self.get_parameter('start_condition_topic').value)
         self.wait_for_start_condition = self._as_bool(
             self.get_parameter('wait_for_start_condition').value
@@ -202,15 +228,15 @@ class DirectionController(Node):
         last_waypoint = self.path.poses[last_idx]
         next_waypoint = self.path.poses[next_idx]
 
-        distance = (
-            (next_waypoint.pose.position.x - last_waypoint.pose.position.x) ** 2
-            + (next_waypoint.pose.position.y - last_waypoint.pose.position.y) ** 2
-        ) ** 0.5
+        last_position = self._pose_position(last_waypoint)
+        next_position = self._pose_position(next_waypoint)
         t_last = Time.from_msg(last_waypoint.header.stamp)
         t_next = Time.from_msg(next_waypoint.header.stamp)
         dt = (t_next - t_last).nanoseconds / 1e9
-        if dt > 0.0:
-            self.trajectory_velocity = distance / dt
+        if self.default_velocity > 0.0:
+            self.trajectory_velocity = self.default_velocity
+        elif dt > 0.0:
+            self.trajectory_velocity = segment_speed(last_position, next_position, dt)
         else:
             self.get_logger().warn(
                 "Non-positive time delta encountered in trajectory velocity calculation."
@@ -222,6 +248,23 @@ class DirectionController(Node):
             return None
         goal_idx = self._clamp_path_index(self.current_index + goal_offset)
         return self.path.poses[goal_idx]
+
+    def _get_from_pose(self, from_offset: int) -> Optional[PoseStamped]:
+        if not self.path.poses:
+            return None
+        from_idx = self._clamp_path_index(self.current_index + from_offset)
+        return self.path.poses[from_idx]
+
+    @staticmethod
+    def _pose_position(pose: PoseStamped) -> np.ndarray:
+        return np.array(
+            [
+                pose.pose.position.x,
+                pose.pose.position.y,
+                pose.pose.position.z,
+            ],
+            dtype=float,
+        )
 
     @staticmethod
     def _normalize_vector(vec: np.ndarray, fallback: np.ndarray) -> np.ndarray:
@@ -300,7 +343,31 @@ class DirectionController(Node):
         direction_plane_norm, error_spray, spray_axis = self.get_direction(
             from_offset, goal_offset
         )
-        v_plane = direction_plane_norm * self.trajectory_velocity * self.velocity_override
+        if (
+            self.control_mode == 'speed_orthogonal'
+            and has_forward_segment(self.current_index, len(self.path.poses))
+        ):
+            from_pose = self._get_from_pose(from_offset)
+            goal_pose = self._get_goal_pose(goal_offset)
+            if from_pose is None or goal_pose is None:
+                return
+            orthogonal_control = speed_dependent_orthogonal_command(
+                current=self._pose_position(self.current_pose),
+                segment_start=self._pose_position(from_pose),
+                segment_goal=self._pose_position(goal_pose),
+                spray_axis=spray_axis,
+                trajectory_speed=self.trajectory_velocity,
+                velocity_override=self.velocity_override,
+                orthogonal_kp=self.orthogonal_kp,
+                orthogonal_max_velocity=self.orthogonal_max_velocity,
+            )
+            v_plane = orthogonal_control.command
+        else:
+            v_plane = (
+                direction_plane_norm
+                * self.trajectory_velocity
+                * self.velocity_override
+            )
 
         error_spray += self.nozzle_height_default + self.nozzle_height_override
         v_spray = (
