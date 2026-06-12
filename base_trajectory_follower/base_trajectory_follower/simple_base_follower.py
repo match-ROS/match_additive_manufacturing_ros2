@@ -7,13 +7,15 @@ from geometry_msgs.msg import Pose, PoseStamped, Twist, TwistStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
-from std_msgs.msg import Bool, Int32
+from std_msgs.msg import Bool, Float32, Int32
 
 from base_trajectory_follower.controller import (
     FollowerGains,
     FollowerLimits,
     FollowerTolerances,
     Pose2D,
+    PurePursuitGains,
+    compute_pure_pursuit_command,
     compute_velocity_command,
     select_lookahead_index,
 )
@@ -33,6 +35,10 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('wait_for_start_condition', False)
         self.declare_parameter('start_condition_topic', '/start_condition')
         self.declare_parameter('publish_rate', 20.0)
+        self.declare_parameter('follower_type', 'pid')
+        self.declare_parameter('diff_drive_mode', False)
+        self.declare_parameter('velocity_override_topic', '/velocity_override')
+        self.declare_parameter('path_time_step', 0.1)
         self.declare_parameter('lookahead_distance', 0.4)
         self.declare_parameter('stale_pose_timeout', 0.5)
         self.declare_parameter('stop_on_goal', True)
@@ -46,14 +52,22 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('default_linear_velocity', -1.0)
         self.declare_parameter('xy_goal_tolerance', 0.05)
         self.declare_parameter('yaw_goal_tolerance', 0.08)
+        self.declare_parameter('pure_pursuit_kv', 1.0)
+        self.declare_parameter('pure_pursuit_kw', 1.0)
+        self.declare_parameter('pure_pursuit_ky', 0.3)
+        self.declare_parameter('pure_pursuit_k_distance', 0.0)
+        self.declare_parameter('pure_pursuit_k_orientation', 0.5)
+        self.declare_parameter('pure_pursuit_k_index', 0.02)
 
         self.path: List[Pose2D] = []
+        self.path_timestamps: List[float] = []
         self.robot_pose: Optional[Pose2D] = None
         self.last_pose_time = None
         self.current_index = 0
         self.external_path_index: Optional[int] = None
         self.goal_reached = False
         self.last_stop_reason = ''
+        self.velocity_override = 1.0
 
         self.path_topic = str(self.get_parameter('path_topic').value)
         self.robot_pose_topic = str(self.get_parameter('robot_pose_topic').value)
@@ -61,6 +75,8 @@ class SimpleBaseFollower(Node):
         self.output_stamped = self._as_bool(self.get_parameter('output_stamped').value)
         self.command_frame_id = str(self.get_parameter('command_frame_id').value)
         self.use_external_path_index = self._as_bool(self.get_parameter('use_external_path_index').value)
+        self.follower_type = str(self.get_parameter('follower_type').value).strip().lower()
+        self.diff_drive_mode = self._as_bool(self.get_parameter('diff_drive_mode').value)
         self.wait_for_start_condition = self._as_bool(
             self.get_parameter('wait_for_start_condition').value
         )
@@ -85,6 +101,12 @@ class SimpleBaseFollower(Node):
             self._start_condition_cb,
             10,
         )
+        self.create_subscription(
+            Float32,
+            str(self.get_parameter('velocity_override_topic').value),
+            self._velocity_override_cb,
+            10,
+        )
 
         pose_type = str(self.get_parameter('robot_pose_type').value).strip().lower()
         if pose_type in {'pose', 'geometry_msgs/msg/pose'}:
@@ -101,12 +123,18 @@ class SimpleBaseFollower(Node):
         self.create_timer(1.0 / rate, self._tick)
         self.get_logger().info(
             f"Simple base follower waiting for path={self.path_topic}, "
-            f"pose={self.robot_pose_topic}, cmd={self.cmd_vel_topic}."
+            f"pose={self.robot_pose_topic}, cmd={self.cmd_vel_topic}, "
+            f"type={self.follower_type}, diff_drive={self.diff_drive_mode}."
         )
 
     def _path_cb(self, msg: Path) -> None:
         poses = [self._pose2d_from_pose_stamped(pose) for pose in msg.poses]
+        timestamps = [
+            float(pose.header.stamp.sec) + float(pose.header.stamp.nanosec) / 1e9
+            for pose in msg.poses
+        ]
         self.path = poses
+        self.path_timestamps = timestamps
         self.current_index = 0
         if self.external_path_index is not None and self.path:
             self.current_index = max(0, min(self.external_path_index, len(self.path) - 1))
@@ -123,6 +151,9 @@ class SimpleBaseFollower(Node):
             self.get_logger().info("Base follower start condition received.")
         elif was_enabled and not self.control_enabled:
             self._publish_stop('start condition disabled')
+
+    def _velocity_override_cb(self, msg: Float32) -> None:
+        self.velocity_override = max(0.0, float(msg.data))
 
     def _pose_cb(self, msg: Pose) -> None:
         self.robot_pose = self._pose2d_from_pose(msg)
@@ -161,15 +192,39 @@ class SimpleBaseFollower(Node):
                 lookahead,
                 self.current_index,
             )
-        command = compute_velocity_command(
-            self.robot_pose,
-            self.path[self.current_index],
-            self.path[-1],
-            self._gains(),
-            self._limits(),
-            self._tolerances(),
-            self._default_linear_velocity(),
-        )
+        target_index = self.current_index
+        if self.follower_type == 'pure_pursuit':
+            lookahead = float(self.get_parameter('lookahead_distance').value)
+            target_index = select_lookahead_index(
+                self.path,
+                self.robot_pose,
+                lookahead,
+                self.current_index,
+            )
+            command = compute_pure_pursuit_command(
+                self.robot_pose,
+                self.path,
+                self.current_index,
+                target_index,
+                self.path_timestamps,
+                self._pure_pursuit_gains(),
+                self._limits(),
+                self._tolerances(),
+                self.velocity_override,
+                float(self.get_parameter('path_time_step').value),
+                self.diff_drive_mode,
+            )
+        else:
+            command = compute_velocity_command(
+                self.robot_pose,
+                self.path[self.current_index],
+                self.path[-1],
+                self._gains(),
+                self._limits(),
+                self._tolerances(),
+                self._default_linear_velocity(),
+                self.diff_drive_mode,
+            )
         self.goal_reached = command.reached_goal
         if self.goal_reached:
             self._publish_stop('goal reached')
@@ -178,7 +233,7 @@ class SimpleBaseFollower(Node):
 
         twist = Twist()
         twist.linear.x = command.vx if self._as_bool(self.get_parameter('allow_reverse').value) else max(0.0, command.vx)
-        twist.linear.y = command.vy
+        twist.linear.y = 0.0 if self.diff_drive_mode else command.vy
         twist.angular.z = command.wz
         self._publish_twist(twist)
         self.last_stop_reason = ''
@@ -222,6 +277,16 @@ class SimpleBaseFollower(Node):
         return FollowerTolerances(
             xy_goal_tolerance=float(self.get_parameter('xy_goal_tolerance').value),
             yaw_goal_tolerance=float(self.get_parameter('yaw_goal_tolerance').value),
+        )
+
+    def _pure_pursuit_gains(self) -> PurePursuitGains:
+        return PurePursuitGains(
+            kv=float(self.get_parameter('pure_pursuit_kv').value),
+            kw=float(self.get_parameter('pure_pursuit_kw').value),
+            ky=float(self.get_parameter('pure_pursuit_ky').value),
+            k_distance=float(self.get_parameter('pure_pursuit_k_distance').value),
+            k_orientation=float(self.get_parameter('pure_pursuit_k_orientation').value),
+            k_index=float(self.get_parameter('pure_pursuit_k_index').value),
         )
 
     def _default_linear_velocity(self) -> Optional[float]:

@@ -51,6 +51,39 @@ MOVE_ARM_NAME = 'move_arm_to_start'
 SWITCH_ARM_VELOCITY_NAME = 'switch_arm_velocity_controller'
 RVIZ_NAME = 'rviz'
 
+PLATFORM_PROFILES = {
+    'robotnik': {
+        'label': 'Robotnik',
+        'path_topic': '/base_path',
+        'robot_pose_topic': '/robot_pose',
+        'cmd_vel_topic': '/robot/robotnik_base_control/cmd_vel_unstamped',
+        'output_stamped': False,
+        'command_frame_id': 'base_link',
+        'path_frame': 'robotnik_simple',
+        'max_vx': 0.25,
+        'max_vy': 0.25,
+        'max_wz': 0.5,
+        'move_max_linear': 0.2,
+        'move_max_lateral': 0.2,
+        'move_max_angular': 0.5,
+    },
+    'bunker': {
+        'label': 'Bunker',
+        'path_topic': '/base_path',
+        'robot_pose_topic': '/robot_pose',
+        'cmd_vel_topic': '/diff_drive_controller/cmd_vel',
+        'output_stamped': True,
+        'command_frame_id': 'base_footprint',
+        'path_frame': 'map',
+        'max_vx': 0.25,
+        'max_vy': 0.0,
+        'max_wz': 0.6,
+        'move_max_linear': 0.2,
+        'move_max_lateral': 0.0,
+        'move_max_angular': 0.5,
+    },
+}
+
 
 class OperatorWindow(QMainWindow):
     ros_status_changed = pyqtSignal(bool, bool)
@@ -122,6 +155,19 @@ class OperatorWindow(QMainWindow):
     def _configured_default_velocity_enabled(self) -> bool:
         return bool(self._config.get('default_velocity_enabled', False))
 
+    def _configured_platform(self) -> str:
+        value = str(self._config.get('platform', 'robotnik')).strip().lower()
+        return value if value in PLATFORM_PROFILES else 'robotnik'
+
+    def _configured_follower_type(self) -> str:
+        value = str(self._config.get('follower_type', 'pid')).strip().lower()
+        return value if value in {'pid', 'pure_pursuit'} else 'pid'
+
+    def _configured_diff_drive_mode(self) -> bool:
+        if self._configured_platform() == 'bunker':
+            return True
+        return bool(self._config.get('diff_drive_mode', False))
+
     def _build_ui(self) -> None:
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -130,6 +176,19 @@ class OperatorWindow(QMainWindow):
         launch_group = QGroupBox('System')
         launch_layout = QGridLayout(launch_group)
         self.simulation_checkbox = QCheckBox('Simulation')
+        self.platform_combo = QComboBox()
+        for key, profile in PLATFORM_PROFILES.items():
+            self.platform_combo.addItem(str(profile['label']), key)
+        self.platform_combo.setCurrentIndex(self.platform_combo.findData(self._configured_platform()))
+        self.follower_type_combo = QComboBox()
+        self.follower_type_combo.addItem('PID', 'pid')
+        self.follower_type_combo.addItem('Pure Pursuit', 'pure_pursuit')
+        self.follower_type_combo.setCurrentIndex(
+            self.follower_type_combo.findData(self._configured_follower_type())
+        )
+        self.diff_drive_checkbox = QCheckBox('Diff drive mode')
+        self.diff_drive_checkbox.setChecked(self._configured_diff_drive_mode())
+        self._sync_diff_drive_checkbox()
         self.direction_mode = QComboBox()
         self.direction_mode.addItems(['goal_direction', 'speed_orthogonal'])
         self.direction_mode.setCurrentText('goal_direction')
@@ -147,16 +206,21 @@ class OperatorWindow(QMainWindow):
         self.rviz_button = QPushButton('Open RViz')
 
         launch_layout.addWidget(self.simulation_checkbox, 0, 0)
-        launch_layout.addWidget(QLabel('Direction'), 0, 1)
-        launch_layout.addWidget(self.direction_mode, 0, 2)
-        launch_layout.addWidget(QLabel('Current index'), 0, 3)
-        launch_layout.addWidget(self.index_spin, 0, 4)
-        launch_layout.addWidget(QLabel('Path folder'), 1, 0)
-        launch_layout.addWidget(self.path_folder, 1, 1, 1, 3)
-        launch_layout.addWidget(self.browse_button, 1, 4)
-        launch_layout.addWidget(self.launch_button, 2, 0)
-        launch_layout.addWidget(self.launch_sim_button, 2, 1)
-        launch_layout.addWidget(self.rviz_button, 2, 2)
+        launch_layout.addWidget(QLabel('Platform'), 0, 1)
+        launch_layout.addWidget(self.platform_combo, 0, 2)
+        launch_layout.addWidget(QLabel('Follower'), 0, 3)
+        launch_layout.addWidget(self.follower_type_combo, 0, 4)
+        launch_layout.addWidget(self.diff_drive_checkbox, 0, 5)
+        launch_layout.addWidget(QLabel('Direction'), 1, 0)
+        launch_layout.addWidget(self.direction_mode, 1, 1)
+        launch_layout.addWidget(QLabel('Current index'), 1, 2)
+        launch_layout.addWidget(self.index_spin, 1, 3)
+        launch_layout.addWidget(QLabel('Path folder'), 2, 0)
+        launch_layout.addWidget(self.path_folder, 2, 1, 1, 4)
+        launch_layout.addWidget(self.browse_button, 2, 5)
+        launch_layout.addWidget(self.launch_button, 3, 0)
+        launch_layout.addWidget(self.launch_sim_button, 3, 1)
+        launch_layout.addWidget(self.rviz_button, 3, 2)
 
         component_group = QGroupBox('Components')
         component_layout = QGridLayout(component_group)
@@ -257,6 +321,9 @@ class OperatorWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         self.browse_button.clicked.connect(self._choose_path_folder)
+        self.platform_combo.currentIndexChanged.connect(self._set_platform)
+        self.follower_type_combo.currentIndexChanged.connect(self._set_follower_type)
+        self.diff_drive_checkbox.toggled.connect(self._set_diff_drive_mode)
         self.launch_button.clicked.connect(self._toggle_launch_all)
         self.launch_sim_button.clicked.connect(self._toggle_sim)
         self.publish_path_button.clicked.connect(self._publish_path)
@@ -279,6 +346,52 @@ class OperatorWindow(QMainWindow):
         self.default_velocity_spin.valueChanged.connect(self._set_default_velocity)
         self.nozzle_reference.valueChanged.connect(self._publish_overrides)
         self.nozzle_offset.valueChanged.connect(self._publish_overrides)
+
+    def _current_platform_key(self) -> str:
+        value = self.platform_combo.currentData()
+        key = str(value).strip().lower()
+        return key if key in PLATFORM_PROFILES else 'robotnik'
+
+    def _current_platform_profile(self) -> dict:
+        return PLATFORM_PROFILES[self._current_platform_key()]
+
+    def _current_follower_type(self) -> str:
+        value = self.follower_type_combo.currentData()
+        follower_type = str(value).strip().lower()
+        return follower_type if follower_type in {'pid', 'pure_pursuit'} else 'pid'
+
+    def _diff_drive_mode(self) -> bool:
+        return self._current_platform_key() == 'bunker' or self.diff_drive_checkbox.isChecked()
+
+    def _sync_diff_drive_checkbox(self) -> None:
+        is_bunker = self._current_platform_key() == 'bunker'
+        self.diff_drive_checkbox.blockSignals(True)
+        if is_bunker:
+            self.diff_drive_checkbox.setChecked(True)
+        self.diff_drive_checkbox.setEnabled(not is_bunker)
+        self.diff_drive_checkbox.blockSignals(False)
+
+    def _set_platform(self, *_args) -> None:
+        platform = self._current_platform_key()
+        previous_platform = str(self._config.get('platform', 'robotnik')).strip().lower()
+        if platform == 'robotnik' and previous_platform == 'bunker':
+            self.diff_drive_checkbox.blockSignals(True)
+            self.diff_drive_checkbox.setChecked(False)
+            self.diff_drive_checkbox.blockSignals(False)
+        self._config['platform'] = platform
+        self._sync_diff_drive_checkbox()
+        self._config['diff_drive_mode'] = self._diff_drive_mode()
+        self._save_config()
+        profile = self._current_platform_profile()
+        self.path_status.setText(f"{profile['path_topic']}: ready" if self._has_path else f"{profile['path_topic']}: waiting")
+
+    def _set_follower_type(self, *_args) -> None:
+        self._config['follower_type'] = self._current_follower_type()
+        self._save_config()
+
+    def _set_diff_drive_mode(self, enabled: bool) -> None:
+        self._config['diff_drive_mode'] = bool(enabled)
+        self._save_config()
 
     def _choose_path_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
@@ -372,15 +485,26 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_sim(self) -> None:
-        gui_value = 'true' if self.simulation_checkbox.isChecked() else 'false'
-        command = [
-            'ros2',
-            'launch',
-            'rbvogui_ur_sim_setup',
-            'rbvogui_ur_standard_control.launch.py',
-            f'gui:={gui_value}',
-            'robot_id:=robot',
-        ]
+        if self._current_platform_key() == 'bunker':
+            headless_value = 'false' if self.simulation_checkbox.isChecked() else 'true'
+            command = [
+                'ros2',
+                'launch',
+                'bunker_description',
+                'spawn_with_controllers.launch.py',
+                f'headless:={headless_value}',
+                'launch_rviz:=false',
+            ]
+        else:
+            gui_value = 'true' if self.simulation_checkbox.isChecked() else 'false'
+            command = [
+                'ros2',
+                'launch',
+                'rbvogui_ur_sim_setup',
+                'rbvogui_ur_standard_control.launch.py',
+                f'gui:={gui_value}',
+                'robot_id:=robot',
+            ]
         self._append_process_output(SIM_NAME, ' '.join(command))
         self.processes.start(SIM_NAME, command)
 
@@ -420,6 +544,8 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_base_follower(self) -> None:
+        profile = self._current_platform_profile()
+        diff_drive = self._diff_drive_mode()
         command = [
             'ros2',
             'run',
@@ -427,19 +553,23 @@ class OperatorWindow(QMainWindow):
             'simple_base_follower',
             '--ros-args',
             '-p', 'use_sim_time:=true',
-            '-p', 'path_topic:=/base_path',
-            '-p', 'robot_pose_topic:=/robot_pose',
+            '-p', f"path_topic:={profile['path_topic']}",
+            '-p', f"robot_pose_topic:={profile['robot_pose_topic']}",
             '-p', 'robot_pose_type:=pose_stamped',
-            '-p', 'cmd_vel_topic:=/robot/robotnik_base_control/cmd_vel_unstamped',
-            '-p', 'output_stamped:=false',
+            '-p', f"cmd_vel_topic:={profile['cmd_vel_topic']}",
+            '-p', f"output_stamped:={str(bool(profile['output_stamped'])).lower()}",
+            '-p', f"command_frame_id:={profile['command_frame_id']}",
+            '-p', f'follower_type:={self._current_follower_type()}',
+            '-p', f'diff_drive_mode:={str(diff_drive).lower()}',
             '-p', 'use_external_path_index:=true',
             '-p', 'path_index_topic:=/path_index',
             '-p', 'wait_for_start_condition:=true',
             '-p', 'start_condition_topic:=/start_condition',
+            '-p', 'velocity_override_topic:=/velocity_override',
             '-p', 'lookahead_distance:=0.3',
-            '-p', 'max_vx:=0.25',
-            '-p', 'max_vy:=0.25',
-            '-p', 'max_wz:=0.5',
+            '-p', f"max_vx:={self._ros_float_literal(float(profile['max_vx']))}",
+            '-p', f"max_vy:={self._ros_float_literal(float(profile['max_vy']))}",
+            '-p', f"max_wz:={self._ros_float_literal(float(profile['max_wz']))}",
             '-p', f'default_linear_velocity:={self._ros_float_literal(self._default_velocity_param())}',
         ]
         self._append_process_output(BASE_FOLLOWER_NAME, ' '.join(command))
@@ -602,6 +732,8 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_move_base_to_start(self, publish_start_condition: bool = False) -> None:
+        profile = self._current_platform_profile()
+        diff_drive = self._diff_drive_mode()
         command = [
             'ros2',
             'run',
@@ -609,17 +741,21 @@ class OperatorWindow(QMainWindow):
             'move_to_path_idx',
             '--ros-args',
             '-p', 'use_sim_time:=true',
-            '-p', 'path_topic:=/base_path',
-            '-p', 'robot_pose_topic:=/robot_pose',
+            '-p', f"path_topic:={profile['path_topic']}",
+            '-p', f"robot_pose_topic:={profile['robot_pose_topic']}",
             '-p', 'robot_pose_type:=pose_stamped',
-            '-p', 'cmd_vel_topic:=/robot/robotnik_base_control/cmd_vel_unstamped',
+            '-p', f"cmd_vel_topic:={profile['cmd_vel_topic']}",
+            '-p', f"output_stamped:={str(bool(profile['output_stamped'])).lower()}",
+            '-p', f"command_frame_id:={profile['command_frame_id']}",
+            '-p', f'diff_drive_mode:={str(diff_drive).lower()}',
             '-p', f'path_index:={self.index_spin.value()}',
             '-p', f'publish_start_condition:={str(publish_start_condition).lower()}',
             '-p', 'start_condition_topic:=/start_pose_reached',
             '-p', 'distance_tolerance:=0.06',
             '-p', 'yaw_tolerance:=0.08',
-            '-p', 'max_linear_velocity:=0.2',
-            '-p', 'max_angular_velocity:=0.5',
+            '-p', f"max_linear_velocity:={self._ros_float_literal(float(profile['move_max_linear']))}",
+            '-p', f"max_lateral_velocity:={self._ros_float_literal(float(profile['move_max_lateral']))}",
+            '-p', f"max_angular_velocity:={self._ros_float_literal(float(profile['move_max_angular']))}",
         ]
         self._append_process_output(MOVE_BASE_NAME, ' '.join(command))
         self.processes.start(MOVE_BASE_NAME, command)
@@ -870,8 +1006,11 @@ class OperatorWindow(QMainWindow):
     def _set_ros_status(self, has_path: bool, has_robot_pose: bool) -> None:
         self._has_path = has_path
         self._has_robot_pose = has_robot_pose
-        self.path_status.setText('/base_path: ready' if has_path else '/base_path: waiting')
-        self.pose_status.setText('/robot_pose: ready' if has_robot_pose else '/robot_pose: waiting')
+        profile = self._current_platform_profile()
+        path_topic = str(profile['path_topic'])
+        pose_topic = str(profile['robot_pose_topic'])
+        self.path_status.setText(f'{path_topic}: ready' if has_path else f'{path_topic}: waiting')
+        self.pose_status.setText(f'{pose_topic}: ready' if has_robot_pose else f'{pose_topic}: waiting')
         self._refresh_process_states()
 
     def _set_path_index_from_ros(self, value: int) -> None:
