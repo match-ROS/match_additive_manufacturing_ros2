@@ -102,6 +102,7 @@ def _launch_setup(context, *args, **kwargs):
                 'initial_path_index': LaunchConfiguration('initial_path_index'),
                 'path_topic': path_topic,
                 'publish_rate': LaunchConfiguration('path_index_rate'),
+                'velocity_override_topic': LaunchConfiguration('velocity_override_topic'),
                 'start_condition_topic': start_condition_topic,
                 'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
             }],
@@ -194,6 +195,7 @@ def _launch_setup(context, *args, **kwargs):
             executable='transform_twist_stamped',
             name='transform_twist_to_command_frame',
             output='screen',
+            condition=IfCondition(LaunchConfiguration('start_command_transform')),
             parameters=[{
                 'use_sim_time': use_sim_time,
                 'input_topic': combined_twist_source_topic,
@@ -244,6 +246,7 @@ def generate_launch_description():
         DeclareLaunchArgument('joint_states_topic', default_value='/joint_states'),
         DeclareLaunchArgument('velocity_command_topic', default_value='/ur_forward_velocity_controller/commands'),
         DeclareLaunchArgument('start_jparse_controller', default_value='true'),
+        DeclareLaunchArgument('start_command_transform', default_value='true'),
         DeclareLaunchArgument('publish_current_pose_from_tf', default_value='true'),
         DeclareLaunchArgument('current_pose_topic', default_value='/current_tcp_pose'),
         DeclareLaunchArgument('pose_publish_rate', default_value='50.0'),

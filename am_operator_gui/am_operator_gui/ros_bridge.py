@@ -24,6 +24,8 @@ class OperatorGuiNode(Node):
         self._path_index_callback = path_index_callback
         self._has_path = False
         self._has_robot_pose = False
+        self._latest_ur_path_rate: Optional[float] = None
+        self._path_rate_lock = threading.Lock()
 
         path_index_qos = QoSProfile(
             depth=1,
@@ -36,6 +38,7 @@ class OperatorGuiNode(Node):
         self._nozzle_height_pub = self.create_publisher(Float32, '/nozzle_height_override', 10)
         self.create_subscription(Int32, '/path_index', self._path_index_cb, path_index_qos)
         self.create_subscription(Path, '/base_path', self._base_path_cb, 10)
+        self.create_subscription(Path, '/ur_path_transformed', self._ur_path_cb, path_index_qos)
         self.create_subscription(PoseStamped, '/robot_pose', self._robot_pose_cb, 10)
 
     def publish_path_index(self, value: int) -> None:
@@ -58,6 +61,11 @@ class OperatorGuiNode(Node):
     def has_robot_pose(self) -> bool:
         return self._has_robot_pose
 
+    @property
+    def latest_ur_path_rate(self) -> Optional[float]:
+        with self._path_rate_lock:
+            return self._latest_ur_path_rate
+
     def _base_path_cb(self, _msg: Path) -> None:
         self._has_path = True
         self._emit_status()
@@ -66,6 +74,11 @@ class OperatorGuiNode(Node):
         self._has_robot_pose = True
         self._emit_status()
 
+    def _ur_path_cb(self, msg: Path) -> None:
+        rate = self._mean_path_timestamp_rate(msg)
+        with self._path_rate_lock:
+            self._latest_ur_path_rate = rate
+
     def _path_index_cb(self, msg: Int32) -> None:
         if self._path_index_callback is not None:
             self._path_index_callback(int(msg.data))
@@ -73,6 +86,26 @@ class OperatorGuiNode(Node):
     def _emit_status(self) -> None:
         if self._status_callback is not None:
             self._status_callback(self._has_path, self._has_robot_pose)
+
+    @staticmethod
+    def _mean_path_timestamp_rate(msg: Path) -> Optional[float]:
+        if len(msg.poses) < 2:
+            return None
+
+        deltas = []
+        previous_stamp = msg.poses[0].header.stamp
+        previous_time = float(previous_stamp.sec) + float(previous_stamp.nanosec) / 1e9
+        for pose in msg.poses[1:]:
+            stamp = pose.header.stamp
+            current_time = float(stamp.sec) + float(stamp.nanosec) / 1e9
+            delta = current_time - previous_time
+            if delta > 0.0:
+                deltas.append(delta)
+            previous_time = current_time
+
+        if not deltas:
+            return None
+        return len(deltas) / sum(deltas)
 
 
 class RosBridge:
@@ -126,3 +159,9 @@ class RosBridge:
     @property
     def has_robot_pose(self) -> bool:
         return bool(self._node and self._node.has_robot_pose)
+
+    @property
+    def latest_ur_path_rate(self) -> Optional[float]:
+        if self._node is None:
+            return None
+        return self._node.latest_ur_path_rate

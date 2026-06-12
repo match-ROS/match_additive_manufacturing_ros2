@@ -1,3 +1,4 @@
+import json
 import signal
 import sys
 from pathlib import Path
@@ -32,12 +33,16 @@ from am_operator_gui.ros_bridge import RosBridge
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_COMPONENTS_DIR = REPO_ROOT / 'components'
 DEFAULT_TRAJECTORY_DIR = DEFAULT_COMPONENTS_DIR / 'robotnik_paired_demo'
+DEFAULT_PATH_INDEX_RATE = 5.0
+CONFIG_PATH = Path.home() / '.config' / 'am_operator_gui' / 'operator_gui_config.json'
 LAUNCH_ALL_NAME = 'launch_all'
 SIM_NAME = 'launch_sim'
 PUBLISH_PATH_NAME = 'publish_path'
 BASE_FOLLOWER_NAME = 'base_follower'
 ARM_FOLLOWER_NAME = 'arm_follower'
 PATH_INDEX_NAME = 'path_index'
+CURRENT_TCP_POSE_NAME = 'current_tcp_pose'
+ARM_CONTROLLERS_NAME = 'arm_controllers'
 MOVE_BASE_NAME = 'move_base_to_start'
 MOVE_ARM_NAME = 'move_arm_to_start'
 SWITCH_ARM_VELOCITY_NAME = 'switch_arm_velocity_controller'
@@ -57,6 +62,7 @@ class OperatorWindow(QMainWindow):
         self._has_robot_pose = False
         self._launch_all_active = False
         self._launch_all_timers: list[QTimer] = []
+        self._config = self._load_config()
 
         self.processes = ProcessRegistry(output_callback=self._on_process_output)
         self.ros_bridge = RosBridge(
@@ -78,6 +84,30 @@ class OperatorWindow(QMainWindow):
 
         self._publish_overrides()
         self._refresh_process_states()
+
+    def _load_config(self) -> dict:
+        try:
+            with CONFIG_PATH.open('r', encoding='utf-8') as config_file:
+                data = json.load(config_file)
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _save_config(self) -> None:
+        try:
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with CONFIG_PATH.open('w', encoding='utf-8') as config_file:
+                json.dump(self._config, config_file, indent=2, sort_keys=True)
+                config_file.write('\n')
+        except OSError as exc:
+            self._append_process_output('gui', f'failed to save config: {exc}')
+
+    def _configured_path_index_rate(self) -> float:
+        try:
+            rate = float(self._config.get('path_index_rate', DEFAULT_PATH_INDEX_RATE))
+        except (TypeError, ValueError):
+            return DEFAULT_PATH_INDEX_RATE
+        return max(0.01, min(1000.0, rate))
 
     def _build_ui(self) -> None:
         root = QWidget()
@@ -120,13 +150,26 @@ class OperatorWindow(QMainWindow):
         self.base_follower_button = QPushButton('Launch Base Follower')
         self.arm_follower_button = QPushButton('Launch Arm Follower')
         self.path_index_button = QPushButton('Launch Path Index')
+        self.current_tcp_pose_button = QPushButton('Launch TCP Pose')
+        self.arm_controllers_button = QPushButton('Start Controllers')
         self.switch_arm_velocity_button = QPushButton('Switch Arm Velocity')
+        self.path_index_rate_spin = QDoubleSpinBox()
+        self.path_index_rate_spin.setRange(0.01, 1000.0)
+        self.path_index_rate_spin.setDecimals(3)
+        self.path_index_rate_spin.setSuffix(' Hz')
+        self.path_index_rate_spin.setValue(self._configured_path_index_rate())
+        self.calculate_path_index_rate_button = QPushButton('Calculate Index Rate')
 
         component_layout.addWidget(self.publish_path_button, 0, 0)
         component_layout.addWidget(self.path_index_button, 0, 1)
         component_layout.addWidget(self.base_follower_button, 1, 0)
         component_layout.addWidget(self.arm_follower_button, 1, 1)
-        component_layout.addWidget(self.switch_arm_velocity_button, 2, 0)
+        component_layout.addWidget(self.current_tcp_pose_button, 2, 0)
+        component_layout.addWidget(self.arm_controllers_button, 2, 1)
+        component_layout.addWidget(self.switch_arm_velocity_button, 2, 2)
+        component_layout.addWidget(QLabel('Index rate'), 3, 0)
+        component_layout.addWidget(self.path_index_rate_spin, 3, 1)
+        component_layout.addWidget(self.calculate_path_index_rate_button, 3, 2)
 
         motion_group = QGroupBox('Motion')
         motion_layout = QGridLayout(motion_group)
@@ -196,6 +239,9 @@ class OperatorWindow(QMainWindow):
         self.base_follower_button.clicked.connect(self._toggle_base_follower)
         self.arm_follower_button.clicked.connect(self._toggle_arm_follower)
         self.path_index_button.clicked.connect(self._toggle_path_index)
+        self.current_tcp_pose_button.clicked.connect(self._toggle_current_tcp_pose)
+        self.arm_controllers_button.clicked.connect(self._toggle_arm_controllers)
+        self.calculate_path_index_rate_button.clicked.connect(self._calculate_path_index_rate)
         self.switch_arm_velocity_button.clicked.connect(self._switch_arm_velocity_controller)
         self.move_base_button.clicked.connect(self._move_base_to_start)
         self.move_arm_button.clicked.connect(self._move_arm_to_start)
@@ -204,6 +250,7 @@ class OperatorWindow(QMainWindow):
         self.rviz_button.clicked.connect(self._open_rviz)
         self.index_spin.valueChanged.connect(self._publish_path_index)
         self.velocity_slider.valueChanged.connect(self._publish_overrides)
+        self.path_index_rate_spin.valueChanged.connect(self._set_path_index_rate)
         self.nozzle_reference.valueChanged.connect(self._publish_overrides)
         self.nozzle_offset.valueChanged.connect(self._publish_overrides)
 
@@ -229,7 +276,10 @@ class OperatorWindow(QMainWindow):
         self._append_process_output(LAUNCH_ALL_NAME, 'starting managed component set')
         if self.simulation_checkbox.isChecked():
             self._start_sim()
+        else:
+            self._start_current_tcp_pose()
         self._start_publish_path()
+        self._start_arm_controllers()
         self._start_move_arm_to_start(wait_for_start_condition=True)
         self._start_path_index()
         self._start_base_follower()
@@ -237,7 +287,6 @@ class OperatorWindow(QMainWindow):
         self._schedule_launch_all_action(13000, lambda: self._start_move_base_to_start(
             publish_start_condition=True,
         ))
-        self._schedule_launch_all_action(13000, self._start_switch_arm_velocity_controller)
 
     def _stop_launch_all_components(self) -> None:
         for timer in self._launch_all_timers:
@@ -250,14 +299,19 @@ class OperatorWindow(QMainWindow):
         self._append_process_output(LAUNCH_ALL_NAME, 'stopped managed component set')
         self._refresh_process_states()
 
-    def _schedule_launch_all_action(self, delay_ms: int, callback: Callable[[], None]) -> None:
+    def _schedule_launch_all_action(
+        self,
+        delay_ms: int,
+        callback: Callable[[], None],
+        require_launch_all_active: bool = True,
+    ) -> None:
         timer = QTimer(self)
         timer.setSingleShot(True)
 
         def _run() -> None:
             if timer in self._launch_all_timers:
                 self._launch_all_timers.remove(timer)
-            if self._launch_all_active:
+            if self._launch_all_active or not require_launch_all_active:
                 callback()
             timer.deleteLater()
             self._refresh_process_states()
@@ -272,6 +326,8 @@ class OperatorWindow(QMainWindow):
             PUBLISH_PATH_NAME,
             MOVE_ARM_NAME,
             PATH_INDEX_NAME,
+            CURRENT_TCP_POSE_NAME,
+            ARM_CONTROLLERS_NAME,
             BASE_FOLLOWER_NAME,
             ARM_FOLLOWER_NAME,
             MOVE_BASE_NAME,
@@ -389,7 +445,8 @@ class OperatorWindow(QMainWindow):
             'robot_description_topic:=/robot/robot_description',
             'joint_states_topic:=/robot/joint_states',
             'velocity_command_topic:=/robot/arm_forward_velocity_controller/commands',
-            'start_jparse_controller:=true',
+            'start_jparse_controller:=false',
+            'start_command_transform:=false',
             'publish_current_pose_from_tf:=false',
             'publish_path:=false',
             'publish_path_index:=false',
@@ -434,12 +491,76 @@ class OperatorWindow(QMainWindow):
             '-p', 'normal_topic:=/normal_vector',
             '-p', f'initial_path_index:={self.index_spin.value()}',
             '-p', 'path_topic:=/ur_path_transformed',
-            '-p', 'publish_rate:=5.0',
+            '-p', f'publish_rate:={self._ros_float_literal(self.path_index_rate_spin.value())}',
+            '-p', 'velocity_override_topic:=/velocity_override',
             '-p', 'start_condition_topic:=/start_condition',
             '-p', 'wait_for_start_condition:=true',
         ]
         self._append_process_output(PATH_INDEX_NAME, ' '.join(command))
         self.processes.start(PATH_INDEX_NAME, command)
+
+    def _toggle_current_tcp_pose(self) -> None:
+        process = self.processes.get(CURRENT_TCP_POSE_NAME)
+        if process is not None and process.is_running():
+            self.processes.stop(CURRENT_TCP_POSE_NAME)
+            self._append_process_output(CURRENT_TCP_POSE_NAME, 'stopped by operator')
+            self._refresh_process_states()
+            return
+
+        self._start_current_tcp_pose()
+        self._refresh_process_states()
+
+    def _start_current_tcp_pose(self) -> None:
+        command = [
+            'ros2',
+            'run',
+            'ur_trajectory_follower',
+            'current_pose_from_tf',
+            '--ros-args',
+            '-p', 'use_sim_time:=true',
+            '-p', 'target_frame:=robotnik_simple',
+            '-p', 'source_frame:=robot_arm_tool0',
+            '-p', 'pose_topic:=/current_tcp_pose',
+            '-p', 'publish_rate:=20.0',
+        ]
+        self._append_process_output(CURRENT_TCP_POSE_NAME, ' '.join(command))
+        self.processes.start(CURRENT_TCP_POSE_NAME, command)
+
+    def _toggle_arm_controllers(self) -> None:
+        process = self.processes.get(ARM_CONTROLLERS_NAME)
+        if process is not None and process.is_running():
+            self.processes.stop(ARM_CONTROLLERS_NAME)
+            self._append_process_output(ARM_CONTROLLERS_NAME, 'stopped by operator')
+            self._refresh_process_states()
+            return
+
+        self._start_arm_controllers()
+        self._refresh_process_states()
+
+    def _start_arm_controllers(self) -> None:
+        command = [
+            'ros2',
+            'launch',
+            'am_operator_gui',
+            'arm_velocity_controller_stack.launch.py',
+            'use_sim_time:=true',
+            'robot_name:=robot',
+            'arm:=arm',
+            'base_link:=robot_arm_base_link',
+            'tip_link:=robot_arm_tool0',
+            'path_frame:=robotnik_simple',
+            'robot_description_topic:=/robot/robot_description',
+            'joint_states_topic:=/robot/joint_states',
+            'source_twist_topic:=/jparse_velocity_controller_ur/twist_cmd_world',
+            'controller_twist_topic:=/jparse_velocity_controller_ur/twist_cmd',
+            'velocity_command_topic:=/robot/arm_forward_velocity_controller/commands',
+            'controller_manager:=/robot/controller_manager',
+            'deactivate_controller:=joint_trajectory_controller',
+            'activate_controller:=arm_forward_velocity_controller',
+            'switch_delay:=13.0',
+        ]
+        self._append_process_output(ARM_CONTROLLERS_NAME, ' '.join(command))
+        self.processes.start(ARM_CONTROLLERS_NAME, command)
 
     def _move_base_to_start(self) -> None:
         process = self.processes.get(MOVE_BASE_NAME)
@@ -552,6 +673,68 @@ class OperatorWindow(QMainWindow):
         self.ros_bridge.publish_path_index(value)
         self._append_process_output('ros', f'published /path_index {value}')
 
+    def _calculate_path_index_rate(self) -> None:
+        rate = self.ros_bridge.latest_ur_path_rate
+        source = '/ur_path_transformed'
+        if rate is None or rate <= 0.0:
+            rate = self._path_index_rate_from_file()
+            source = str(Path(self.path_folder.text()) / 'arm_path.json')
+        if rate is None or rate <= 0.0:
+            self._append_process_output(
+                'gui',
+                'cannot calculate index rate: no valid /ur_path_transformed or arm_path.json timestamps found',
+            )
+            return
+
+        self.path_index_rate_spin.setValue(rate)
+        self._append_process_output('gui', f'calculated path index rate {rate:.3f} Hz from {source}')
+
+    def _path_index_rate_from_file(self) -> Optional[float]:
+        path_file = Path(self.path_folder.text()) / 'arm_path.json'
+        try:
+            data = json.loads(path_file.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError, TypeError):
+            return None
+
+        poses = data.get('poses') if isinstance(data, dict) else None
+        if not isinstance(poses, list) or len(poses) < 2:
+            return None
+
+        deltas = []
+        previous_time = self._stamp_seconds(poses[0].get('stamp') if isinstance(poses[0], dict) else None)
+        if previous_time is None:
+            return None
+        for pose in poses[1:]:
+            stamp = pose.get('stamp') if isinstance(pose, dict) else None
+            current_time = self._stamp_seconds(stamp)
+            if current_time is None:
+                return None
+            delta = current_time - previous_time
+            if delta > 0.0:
+                deltas.append(delta)
+            previous_time = current_time
+
+        if not deltas:
+            return None
+        return len(deltas) / sum(deltas)
+
+    @staticmethod
+    def _stamp_seconds(stamp: object) -> Optional[float]:
+        if not isinstance(stamp, dict):
+            return None
+        try:
+            return float(stamp.get('sec', 0.0)) + float(stamp.get('nanosec', 0.0)) / 1e9
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _ros_float_literal(value: float) -> str:
+        return f'{float(value):.6f}'
+
+    def _set_path_index_rate(self, value: float) -> None:
+        self._config['path_index_rate'] = float(value)
+        self._save_config()
+
     def _publish_overrides(self) -> None:
         velocity_percent = self.velocity_slider.value()
         velocity_scale = velocity_percent / 100.0
@@ -593,6 +776,8 @@ class OperatorWindow(QMainWindow):
         self._set_sim_button_state()
         self._set_publish_path_state()
         self._set_path_index_button_state()
+        self._set_current_tcp_pose_button_state()
+        self._set_arm_controllers_button_state()
         self._set_base_follower_button_state()
         self._set_arm_follower_button_state()
         self._set_move_base_state()
@@ -620,6 +805,22 @@ class OperatorWindow(QMainWindow):
 
     def _set_path_index_button_state(self) -> None:
         self._set_process_toggle_button(self.path_index_button, PATH_INDEX_NAME, 'Stop Path Index', 'Launch Path Index')
+
+    def _set_current_tcp_pose_button_state(self) -> None:
+        self._set_process_toggle_button(
+            self.current_tcp_pose_button,
+            CURRENT_TCP_POSE_NAME,
+            'Stop TCP Pose',
+            'Launch TCP Pose',
+        )
+
+    def _set_arm_controllers_button_state(self) -> None:
+        self._set_process_toggle_button(
+            self.arm_controllers_button,
+            ARM_CONTROLLERS_NAME,
+            'Stop Controllers',
+            'Start Controllers',
+        )
 
     def _set_base_follower_button_state(self) -> None:
         self._set_process_toggle_button(

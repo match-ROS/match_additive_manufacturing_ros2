@@ -6,7 +6,7 @@ from geometry_msgs.msg import PoseStamped, Vector3
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
-from std_msgs.msg import Bool, Int32
+from std_msgs.msg import Bool, Float32, Int32
 
 from ur_trajectory_follower.ros2_utils import as_bool
 
@@ -20,6 +20,7 @@ class IncrementPathIndex(Node):
         self.declare_parameter('initial_path_index', 0)
         self.declare_parameter('path_topic', '/ur_path_transformed')
         self.declare_parameter('publish_rate', 10.0)
+        self.declare_parameter('velocity_override_topic', '/velocity_override')
         self.declare_parameter('start_condition_topic', '/start_condition')
         self.declare_parameter('wait_for_start_condition', True)
 
@@ -28,6 +29,9 @@ class IncrementPathIndex(Node):
         self._last_published_index: Optional[int] = None
         self.start_enabled = not as_bool(self.get_parameter('wait_for_start_condition').value)
         self.normal = Vector3(x=0.0, y=0.0, z=1.0)
+        self.base_publish_rate = max(0.0, float(self.get_parameter('publish_rate').value))
+        self.velocity_override = 1.0
+        self._timer = None
 
         latch_qos = QoSProfile(
             depth=1,
@@ -50,9 +54,14 @@ class IncrementPathIndex(Node):
         self.create_subscription(Path, str(self.get_parameter('path_topic').value), self._path_cb, latch_qos)
         self.create_subscription(Vector3, str(self.get_parameter('normal_topic').value), self._normal_cb, latch_qos)
         self.create_subscription(Int32, self.path_index_topic, self._external_index_cb, 10)
+        self.create_subscription(
+            Float32,
+            str(self.get_parameter('velocity_override_topic').value),
+            self._velocity_override_cb,
+            10,
+        )
         self.create_subscription(Bool, str(self.get_parameter('start_condition_topic').value), self._start_cb, 10)
-        rate = max(0.1, float(self.get_parameter('publish_rate').value))
-        self.create_timer(1.0 / rate, self._tick)
+        self._update_timer()
 
     def _path_cb(self, msg: Path) -> None:
         if not msg.poses:
@@ -72,6 +81,32 @@ class IncrementPathIndex(Node):
 
     def _start_cb(self, msg: Bool) -> None:
         self.start_enabled = bool(msg.data)
+
+    def _velocity_override_cb(self, msg: Float32) -> None:
+        new_override = max(0.0, float(msg.data))
+        if abs(new_override - self.velocity_override) < 1e-6:
+            return
+        self.velocity_override = new_override
+        self._update_timer()
+
+    def _update_timer(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+            self.destroy_timer(self._timer)
+            self._timer = None
+
+        effective_rate = self.base_publish_rate * self.velocity_override
+        if effective_rate <= 0.0:
+            self.get_logger().info(
+                "Path index advancement paused because effective publish rate is zero."
+            )
+            return
+
+        self._timer = self.create_timer(1.0 / effective_rate, self._tick)
+        self.get_logger().info(
+            f"Path index advancement rate set to {effective_rate:.3f} Hz "
+            f"({self.base_publish_rate:.3f} Hz * velocity_override {self.velocity_override:.3f})."
+        )
 
     def _external_index_cb(self, msg: Int32) -> None:
         requested_index = max(0, int(msg.data))
