@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -7,6 +7,11 @@ from launch_ros.actions import Node
 def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
+        DeclareLaunchArgument('ros_domain_id', default_value='38'),
+        SetEnvironmentVariable(
+            'ROS_DOMAIN_ID',
+            LaunchConfiguration('ros_domain_id'),
+        ),
         Node(
             package='am_operator_gui',
             executable='am_operator_gui',

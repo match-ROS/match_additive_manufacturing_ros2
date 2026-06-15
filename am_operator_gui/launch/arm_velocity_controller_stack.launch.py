@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, TimerAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -8,7 +8,7 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description() -> LaunchDescription:
     return LaunchDescription([
-        DeclareLaunchArgument('use_sim_time', default_value='true'),
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('robot_name', default_value='robot'),
         DeclareLaunchArgument('arm', default_value='arm'),
         DeclareLaunchArgument('base_link', default_value='robot_arm_base_link'),
@@ -18,11 +18,21 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('joint_states_topic', default_value='/robot/joint_states'),
         DeclareLaunchArgument('source_twist_topic', default_value='/jparse_velocity_controller_ur/twist_cmd_world'),
         DeclareLaunchArgument('controller_twist_topic', default_value='/jparse_velocity_controller_ur/twist_cmd'),
-        DeclareLaunchArgument('velocity_command_topic', default_value='/robot/arm_forward_velocity_controller/commands'),
-        DeclareLaunchArgument('controller_manager', default_value='/robot/controller_manager'),
+        DeclareLaunchArgument(
+            'velocity_command_topic',
+            default_value='/robot/arm/forward_velocity_controller/commands',
+        ),
+        DeclareLaunchArgument('controller_manager', default_value='/robot/arm/controller_manager'),
         DeclareLaunchArgument('deactivate_controller', default_value='joint_trajectory_controller'),
-        DeclareLaunchArgument('activate_controller', default_value='arm_forward_velocity_controller'),
-        DeclareLaunchArgument('switch_delay', default_value='13.0'),
+        DeclareLaunchArgument('activate_controller', default_value='forward_velocity_controller'),
+        DeclareLaunchArgument('jparse_readiness_topic', default_value='/am/jparse_ready'),
+        DeclareLaunchArgument('controller_readiness_topic', default_value='/am/arm_controller_ready'),
+        DeclareLaunchArgument(
+            'command_joint_names_csv',
+            default_value='robot_arm_shoulder_pan_joint,robot_arm_shoulder_lift_joint,'
+                          'robot_arm_elbow_joint,robot_arm_wrist_1_joint,'
+                          'robot_arm_wrist_2_joint,robot_arm_wrist_3_joint',
+        ),
         Node(
             package='ur_trajectory_follower',
             executable='transform_twist_stamped',
@@ -54,25 +64,22 @@ def generate_launch_description() -> LaunchDescription:
                 'twist_topic': LaunchConfiguration('controller_twist_topic'),
                 'command_topic': LaunchConfiguration('velocity_command_topic'),
                 'joint_states_topic': LaunchConfiguration('joint_states_topic'),
+                'readiness_topic': LaunchConfiguration('jparse_readiness_topic'),
+                'command_joint_names_csv': LaunchConfiguration('command_joint_names_csv'),
             }.items(),
         ),
-        TimerAction(
-            period=LaunchConfiguration('switch_delay'),
-            actions=[
-                ExecuteProcess(
-                    cmd=[
-                        'ros2',
-                        'control',
-                        'switch_controllers',
-                        '--controller-manager',
-                        LaunchConfiguration('controller_manager'),
-                        '--deactivate',
-                        LaunchConfiguration('deactivate_controller'),
-                        '--activate',
-                        LaunchConfiguration('activate_controller'),
-                    ],
-                    output='screen',
-                ),
-            ],
+        Node(
+            package='am_operator_gui',
+            executable='controller_switch_guard',
+            name='operator_arm_controller_guard',
+            output='screen',
+            parameters=[{
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
+                'controller_manager': LaunchConfiguration('controller_manager'),
+                'activate_controller': LaunchConfiguration('activate_controller'),
+                'deactivate_controller': LaunchConfiguration('deactivate_controller'),
+                'ready_topic': LaunchConfiguration('controller_readiness_topic'),
+                'switch_on_start': True,
+            }],
         ),
     ])

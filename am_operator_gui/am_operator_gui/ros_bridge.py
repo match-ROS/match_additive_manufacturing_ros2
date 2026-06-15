@@ -4,14 +4,14 @@ import statistics
 from typing import Callable, Optional
 
 import rclpy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool, Float32, Int32
 
 
-StatusCallback = Callable[[bool, bool], None]
+StatusCallback = Callable[[bool, bool, bool, bool, bool], None]
 PathIndexCallback = Callable[[int], None]
 
 
@@ -25,7 +25,16 @@ class OperatorGuiNode(Node):
         self._status_callback = status_callback
         self._path_index_callback = path_index_callback
         self._has_path = False
+        self._has_base_path = False
+        self._has_arm_path = False
         self._has_robot_pose = False
+        self._has_arm_pose = False
+        self._jparse_ready = False
+        self._controller_ready = False
+        self._last_robot_pose_time = None
+        self._last_arm_pose_time = None
+        self._last_jparse_ready_time = None
+        self._last_controller_ready_time = None
         self._latest_ur_path_rate: Optional[float] = None
         self._latest_ur_path_median_segment_length: Optional[float] = None
         self._path_rate_lock = threading.Lock()
@@ -43,6 +52,25 @@ class OperatorGuiNode(Node):
         self.create_subscription(Path, '/base_path', self._base_path_cb, 10)
         self.create_subscription(Path, '/ur_path_transformed', self._ur_path_cb, path_index_qos)
         self.create_subscription(PoseStamped, '/robot_pose', self._robot_pose_cb, 10)
+        self.create_subscription(PoseStamped, '/current_tcp_pose', self._arm_pose_cb, 10)
+        self.create_subscription(Bool, '/am/jparse_ready', self._jparse_ready_cb, path_index_qos)
+        self.create_subscription(
+            Bool,
+            '/am/arm_controller_ready',
+            self._controller_ready_cb,
+            path_index_qos,
+        )
+        self._base_stop_pub = self.create_publisher(
+            Twist,
+            '/robot/robotnik_base_control/cmd_vel_unstamped',
+            10,
+        )
+        self._arm_stop_pub = self.create_publisher(
+            TwistStamped,
+            '/jparse_velocity_controller_ur/twist_cmd_world',
+            10,
+        )
+        self.create_timer(0.1, self._freshness_tick)
 
     def publish_path_index(self, value: int) -> None:
         self._path_index_pub.publish(Int32(data=int(value)))
@@ -56,6 +84,13 @@ class OperatorGuiNode(Node):
     def publish_nozzle_height(self, value: float) -> None:
         self._nozzle_height_pub.publish(Float32(data=float(value)))
 
+    def publish_stop_commands(self, arm_frame: str) -> None:
+        self._base_stop_pub.publish(Twist())
+        arm_stop = TwistStamped()
+        arm_stop.header.stamp = self.get_clock().now().to_msg()
+        arm_stop.header.frame_id = arm_frame
+        self._arm_stop_pub.publish(arm_stop)
+
     @property
     def has_path(self) -> bool:
         return self._has_path
@@ -63,6 +98,18 @@ class OperatorGuiNode(Node):
     @property
     def has_robot_pose(self) -> bool:
         return self._has_robot_pose
+
+    @property
+    def has_arm_pose(self) -> bool:
+        return self._has_arm_pose
+
+    @property
+    def jparse_ready(self) -> bool:
+        return self._jparse_ready
+
+    @property
+    def controller_ready(self) -> bool:
+        return self._controller_ready
 
     @property
     def latest_ur_path_rate(self) -> Optional[float]:
@@ -74,15 +121,24 @@ class OperatorGuiNode(Node):
         with self._path_rate_lock:
             return self._latest_ur_path_median_segment_length
 
-    def _base_path_cb(self, _msg: Path) -> None:
-        self._has_path = True
+    def _base_path_cb(self, msg: Path) -> None:
+        self._has_base_path = bool(msg.poses)
+        self._has_path = self._has_base_path and self._has_arm_path
         self._emit_status()
 
     def _robot_pose_cb(self, _msg: PoseStamped) -> None:
         self._has_robot_pose = True
+        self._last_robot_pose_time = self.get_clock().now()
+        self._emit_status()
+
+    def _arm_pose_cb(self, _msg: PoseStamped) -> None:
+        self._has_arm_pose = True
+        self._last_arm_pose_time = self.get_clock().now()
         self._emit_status()
 
     def _ur_path_cb(self, msg: Path) -> None:
+        self._has_arm_path = bool(msg.poses)
+        self._has_path = self._has_base_path and self._has_arm_path
         rate = self._mean_path_timestamp_rate(msg)
         median_segment_length = self._median_path_segment_length(msg)
         with self._path_rate_lock:
@@ -93,9 +149,39 @@ class OperatorGuiNode(Node):
         if self._path_index_callback is not None:
             self._path_index_callback(int(msg.data))
 
+    def _jparse_ready_cb(self, msg: Bool) -> None:
+        self._jparse_ready = bool(msg.data)
+        self._last_jparse_ready_time = self.get_clock().now()
+        self._emit_status()
+
+    def _controller_ready_cb(self, msg: Bool) -> None:
+        self._controller_ready = bool(msg.data)
+        self._last_controller_ready_time = self.get_clock().now()
+        self._emit_status()
+
+    def _freshness_tick(self) -> None:
+        now = self.get_clock().now()
+        if self._last_robot_pose_time is not None:
+            self._has_robot_pose = (now - self._last_robot_pose_time).nanoseconds / 1e9 <= 0.75
+        if self._last_arm_pose_time is not None:
+            self._has_arm_pose = (now - self._last_arm_pose_time).nanoseconds / 1e9 <= 0.75
+        if self._last_jparse_ready_time is not None:
+            fresh = (now - self._last_jparse_ready_time).nanoseconds / 1e9 <= 2.5
+            self._jparse_ready = self._jparse_ready and fresh
+        if self._last_controller_ready_time is not None:
+            fresh = (now - self._last_controller_ready_time).nanoseconds / 1e9 <= 2.5
+            self._controller_ready = self._controller_ready and fresh
+        self._emit_status()
+
     def _emit_status(self) -> None:
         if self._status_callback is not None:
-            self._status_callback(self._has_path, self._has_robot_pose)
+            self._status_callback(
+                self._has_path,
+                self._has_robot_pose,
+                self._has_arm_pose,
+                self._jparse_ready,
+                self._controller_ready,
+            )
 
     @staticmethod
     def _mean_path_timestamp_rate(msg: Path) -> Optional[float]:
@@ -183,6 +269,10 @@ class RosBridge:
         if self._node is not None:
             self._node.publish_nozzle_height(value)
 
+    def publish_stop_commands(self, arm_frame: str) -> None:
+        if self._node is not None:
+            self._node.publish_stop_commands(arm_frame)
+
     @property
     def has_path(self) -> bool:
         return bool(self._node and self._node.has_path)
@@ -190,6 +280,18 @@ class RosBridge:
     @property
     def has_robot_pose(self) -> bool:
         return bool(self._node and self._node.has_robot_pose)
+
+    @property
+    def has_arm_pose(self) -> bool:
+        return bool(self._node and self._node.has_arm_pose)
+
+    @property
+    def jparse_ready(self) -> bool:
+        return bool(self._node and self._node.jparse_ready)
+
+    @property
+    def controller_ready(self) -> bool:
+        return bool(self._node and self._node.controller_ready)
 
     @property
     def latest_ur_path_rate(self) -> Optional[float]:

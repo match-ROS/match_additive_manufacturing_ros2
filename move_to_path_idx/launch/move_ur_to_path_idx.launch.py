@@ -6,6 +6,7 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     return LaunchDescription([
+        DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('path_topic', default_value='/ur_path_transformed'),
         DeclareLaunchArgument('current_pose_topic', default_value='/current_tcp_pose'),
         DeclareLaunchArgument('path_index', default_value='0'),
@@ -27,6 +28,7 @@ def generate_launch_description():
             name='move_ur_to_path_idx',
             output='screen',
             parameters=[{
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
                 'path_topic': LaunchConfiguration('path_topic'),
                 'current_pose_topic': LaunchConfiguration('current_pose_topic'),
                 'path_index': LaunchConfiguration('path_index'),

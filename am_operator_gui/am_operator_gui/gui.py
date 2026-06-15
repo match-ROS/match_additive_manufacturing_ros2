@@ -45,6 +45,8 @@ BASE_FOLLOWER_NAME = 'base_follower'
 ARM_FOLLOWER_NAME = 'arm_follower'
 PATH_INDEX_NAME = 'path_index'
 CURRENT_TCP_POSE_NAME = 'current_tcp_pose'
+BASE_POSE_ADAPTER_NAME = 'base_pose_adapter'
+ARM_POSE_ADAPTER_NAME = 'arm_pose_adapter'
 ARM_CONTROLLERS_NAME = 'arm_controllers'
 MOVE_BASE_NAME = 'move_base_to_start'
 MOVE_ARM_NAME = 'move_arm_to_start'
@@ -86,7 +88,7 @@ PLATFORM_PROFILES = {
 
 
 class OperatorWindow(QMainWindow):
-    ros_status_changed = pyqtSignal(bool, bool)
+    ros_status_changed = pyqtSignal(bool, bool, bool, bool, bool)
     path_index_changed = pyqtSignal(int)
     process_output = pyqtSignal(str, str)
 
@@ -96,6 +98,9 @@ class OperatorWindow(QMainWindow):
         self.resize(980, 720)
         self._has_path = False
         self._has_robot_pose = False
+        self._has_arm_pose = False
+        self._jparse_ready = False
+        self._controller_ready = False
         self._launch_all_active = False
         self._launch_all_timers: list[QTimer] = []
         self._config = self._load_config()
@@ -168,6 +173,16 @@ class OperatorWindow(QMainWindow):
             return True
         return bool(self._config.get('diff_drive_mode', False))
 
+    def _configured_base_pose_topic(self) -> str:
+        return str(self._config.get('base_pose_topic', '/vicon/Base_RB/Base_RB'))
+
+    def _configured_arm_pose_topic(self) -> str:
+        return str(self._config.get('arm_pose_topic', '/vicon/robot_ee/robot_ee'))
+
+    def _configured_control_frame(self) -> str:
+        configured = str(self._config.get('control_frame', '')).strip()
+        return configured or self._path_frame_from_folder(Path(DEFAULT_TRAJECTORY_DIR))
+
     def _build_ui(self) -> None:
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -218,9 +233,18 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(QLabel('Path folder'), 2, 0)
         launch_layout.addWidget(self.path_folder, 2, 1, 1, 4)
         launch_layout.addWidget(self.browse_button, 2, 5)
-        launch_layout.addWidget(self.launch_button, 3, 0)
-        launch_layout.addWidget(self.launch_sim_button, 3, 1)
-        launch_layout.addWidget(self.rviz_button, 3, 2)
+        self.base_pose_topic = QLineEdit(self._configured_base_pose_topic())
+        self.arm_pose_topic = QLineEdit(self._configured_arm_pose_topic())
+        self.control_frame = QLineEdit(self._configured_control_frame())
+        launch_layout.addWidget(QLabel('Base pose topic'), 3, 0)
+        launch_layout.addWidget(self.base_pose_topic, 3, 1, 1, 2)
+        launch_layout.addWidget(QLabel('EE pose topic'), 3, 3)
+        launch_layout.addWidget(self.arm_pose_topic, 3, 4, 1, 2)
+        launch_layout.addWidget(QLabel('Control frame'), 4, 0)
+        launch_layout.addWidget(self.control_frame, 4, 1, 1, 2)
+        launch_layout.addWidget(self.launch_button, 5, 0)
+        launch_layout.addWidget(self.launch_sim_button, 5, 1)
+        launch_layout.addWidget(self.rviz_button, 5, 2)
 
         component_group = QGroupBox('Components')
         component_layout = QGridLayout(component_group)
@@ -303,8 +327,12 @@ class OperatorWindow(QMainWindow):
         status_layout = QHBoxLayout(status_group)
         self.path_status = QLabel('/base_path: waiting')
         self.pose_status = QLabel('/robot_pose: waiting')
+        self.arm_pose_status = QLabel('/current_tcp_pose: waiting')
+        self.arm_control_status = QLabel('arm control: waiting')
         status_layout.addWidget(self.path_status)
         status_layout.addWidget(self.pose_status)
+        status_layout.addWidget(self.arm_pose_status)
+        status_layout.addWidget(self.arm_control_status)
         status_layout.addStretch(1)
 
         self.log = QPlainTextEdit()
@@ -321,6 +349,10 @@ class OperatorWindow(QMainWindow):
 
     def _connect_signals(self) -> None:
         self.browse_button.clicked.connect(self._choose_path_folder)
+        self.base_pose_topic.editingFinished.connect(self._save_hardware_topics)
+        self.arm_pose_topic.editingFinished.connect(self._save_hardware_topics)
+        self.control_frame.editingFinished.connect(self._save_hardware_topics)
+        self.simulation_checkbox.toggled.connect(self._simulation_mode_changed)
         self.platform_combo.currentIndexChanged.connect(self._set_platform)
         self.follower_type_combo.currentIndexChanged.connect(self._set_follower_type)
         self.diff_drive_checkbox.toggled.connect(self._set_diff_drive_mode)
@@ -401,6 +433,34 @@ class OperatorWindow(QMainWindow):
         )
         if folder:
             self.path_folder.setText(folder)
+            frame = self._path_frame_from_folder(Path(folder))
+            if frame:
+                self.control_frame.setText(frame)
+            self._save_hardware_topics()
+
+    @staticmethod
+    def _path_frame_from_folder(folder: Path) -> str:
+        for filename in ('base_path.json', 'arm_path.json'):
+            try:
+                data = json.loads((folder / filename).read_text(encoding='utf-8'))
+            except (OSError, json.JSONDecodeError, TypeError):
+                continue
+            frame = str(data.get('frame_id', '')).strip() if isinstance(data, dict) else ''
+            if frame:
+                return frame
+        return 'robotnik_simple'
+
+    def _save_hardware_topics(self) -> None:
+        self._config['base_pose_topic'] = self.base_pose_topic.text().strip()
+        self._config['arm_pose_topic'] = self.arm_pose_topic.text().strip()
+        self._config['control_frame'] = self.control_frame.text().strip()
+        self._save_config()
+
+    def _simulation_mode_changed(self, _enabled: bool) -> None:
+        self._refresh_process_states()
+
+    def _use_sim_time(self) -> str:
+        return 'true' if self.simulation_checkbox.isChecked() else 'false'
 
     def _toggle_launch_all(self) -> None:
         if self._launch_all_active:
@@ -413,21 +473,27 @@ class OperatorWindow(QMainWindow):
     def _start_launch_all_components(self) -> None:
         self._launch_all_active = True
         self._append_process_output(LAUNCH_ALL_NAME, 'starting managed component set')
+        self.ros_bridge.publish_start_condition(False)
+        self.ros_bridge.publish_stop_commands(self.control_frame.text().strip())
         if self.simulation_checkbox.isChecked():
             self._start_sim()
-        else:
             self._start_current_tcp_pose()
+        else:
+            self._start_pose_adapters()
         self._start_publish_path()
         self._start_arm_controllers()
-        self._start_move_arm_to_start(wait_for_start_condition=True)
         self._start_path_index()
         self._start_base_follower()
-        self._start_arm_follower(move_to_start_pose=True)
-        self._schedule_launch_all_action(13000, lambda: self._start_move_base_to_start(
-            publish_start_condition=True,
-        ))
+        self._start_arm_follower(move_to_start_pose=False)
+        if self.simulation_checkbox.isChecked():
+            self._start_move_arm_to_start(wait_for_start_condition=True)
+            self._schedule_launch_all_action(13000, lambda: self._start_move_base_to_start(
+                publish_start_condition=True,
+            ))
 
     def _stop_launch_all_components(self) -> None:
+        self.ros_bridge.publish_start_condition(False)
+        self.ros_bridge.publish_stop_commands(self.control_frame.text().strip())
         for timer in self._launch_all_timers:
             timer.stop()
             timer.deleteLater()
@@ -466,6 +532,8 @@ class OperatorWindow(QMainWindow):
             MOVE_ARM_NAME,
             PATH_INDEX_NAME,
             CURRENT_TCP_POSE_NAME,
+            BASE_POSE_ADAPTER_NAME,
+            ARM_POSE_ADAPTER_NAME,
             ARM_CONTROLLERS_NAME,
             BASE_FOLLOWER_NAME,
             ARM_FOLLOWER_NAME,
@@ -525,6 +593,8 @@ class OperatorWindow(QMainWindow):
             'launch',
             'parse_paths',
             'robotnik_base_arm_paths.launch.py',
+            f'use_sim_time:={self._use_sim_time()}',
+            f'frame_id:={self.control_frame.text().strip()}',
             'load_exported_trajectories:=true',
             f'trajectory_directory:={self.path_folder.text()}',
             'publish_once:=false',
@@ -552,7 +622,7 @@ class OperatorWindow(QMainWindow):
             'base_trajectory_follower',
             'simple_base_follower',
             '--ros-args',
-            '-p', 'use_sim_time:=true',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', f"path_topic:={profile['path_topic']}",
             '-p', f"robot_pose_topic:={profile['robot_pose_topic']}",
             '-p', 'robot_pose_type:=pose_stamped',
@@ -592,23 +662,23 @@ class OperatorWindow(QMainWindow):
             'launch',
             'ur_trajectory_follower',
             'sideways_arm_control.launch.py',
-            'use_sim_time:=true',
+            f'use_sim_time:={self._use_sim_time()}',
             'robot_name:=robot',
             'arm:=arm',
             'joint_prefix:=robot_arm_',
             'base_link:=robot_arm_base_link',
             'tip_link:=robot_arm_tool0',
-            'path_frame:=robotnik_simple',
+            f'path_frame:={self.control_frame.text().strip()}',
             'robot_description_topic:=/robot/robot_description',
             'joint_states_topic:=/robot/joint_states',
-            'velocity_command_topic:=/robot/arm_forward_velocity_controller/commands',
+            f"velocity_command_topic:={self._arm_velocity_command_topic()}",
             'start_jparse_controller:=false',
             'start_command_transform:=false',
             'publish_current_pose_from_tf:=false',
             'publish_path:=false',
             'publish_path_index:=false',
             f'move_to_start_pose:={str(move_to_start_pose).lower()}',
-            'start_pose_trajectory_topic:=/robot/joint_trajectory_controller/joint_trajectory',
+            f"start_pose_trajectory_topic:={self._arm_trajectory_topic()}",
             'start_pose_publish_delay:=8.0',
             'current_pose_topic:=/current_tcp_pose',
             'path_topic:=/ur_path_transformed',
@@ -643,7 +713,7 @@ class OperatorWindow(QMainWindow):
             'ur_trajectory_follower',
             'increment_path_index',
             '--ros-args',
-            '-p', 'use_sim_time:=true',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', 'path_index_topic:=/path_index',
             '-p', 'next_goal_topic:=/next_goal',
             '-p', 'normal_topic:=/normal_vector',
@@ -658,6 +728,18 @@ class OperatorWindow(QMainWindow):
         self.processes.start(PATH_INDEX_NAME, command)
 
     def _toggle_current_tcp_pose(self) -> None:
+        if not self.simulation_checkbox.isChecked():
+            running = any(
+                (process := self.processes.get(name)) is not None and process.is_running()
+                for name in (BASE_POSE_ADAPTER_NAME, ARM_POSE_ADAPTER_NAME)
+            )
+            if running:
+                self.processes.stop(BASE_POSE_ADAPTER_NAME)
+                self.processes.stop(ARM_POSE_ADAPTER_NAME)
+            else:
+                self._start_pose_adapters()
+            self._refresh_process_states()
+            return
         process = self.processes.get(CURRENT_TCP_POSE_NAME)
         if process is not None and process.is_running():
             self.processes.stop(CURRENT_TCP_POSE_NAME)
@@ -675,14 +757,47 @@ class OperatorWindow(QMainWindow):
             'ur_trajectory_follower',
             'current_pose_from_tf',
             '--ros-args',
-            '-p', 'use_sim_time:=true',
-            '-p', 'target_frame:=robotnik_simple',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
+            '-p', f'target_frame:={self.control_frame.text().strip()}',
             '-p', 'source_frame:=robot_arm_tool0',
             '-p', 'pose_topic:=/current_tcp_pose',
             '-p', 'publish_rate:=20.0',
         ]
         self._append_process_output(CURRENT_TCP_POSE_NAME, ' '.join(command))
         self.processes.start(CURRENT_TCP_POSE_NAME, command)
+
+    def _start_pose_adapters(self) -> None:
+        adapters = (
+            (
+                BASE_POSE_ADAPTER_NAME,
+                self.base_pose_topic.text().strip(),
+                '/robot_pose',
+                '/am/base_pose_ready',
+            ),
+            (
+                ARM_POSE_ADAPTER_NAME,
+                self.arm_pose_topic.text().strip(),
+                '/current_tcp_pose',
+                '/am/arm_pose_ready',
+            ),
+        )
+        for name, input_topic, output_topic, ready_topic in adapters:
+            command = [
+                'ros2',
+                'run',
+                'am_operator_gui',
+                'pose_stamped_adapter',
+                '--ros-args',
+                '-r', f'__node:={name}',
+                '-p', f'use_sim_time:={self._use_sim_time()}',
+                '-p', f'input_topic:={input_topic}',
+                '-p', f'output_topic:={output_topic}',
+                '-p', f'target_frame:={self.control_frame.text().strip()}',
+                '-p', f'ready_topic:={ready_topic}',
+                '-p', 'stale_timeout:=0.5',
+            ]
+            self._append_process_output(name, ' '.join(command))
+            self.processes.start(name, command)
 
     def _toggle_arm_controllers(self) -> None:
         process = self.processes.get(ARM_CONTROLLERS_NAME)
@@ -696,26 +811,31 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_arm_controllers(self) -> None:
+        simulation = self.simulation_checkbox.isChecked()
         command = [
             'ros2',
             'launch',
             'am_operator_gui',
             'arm_velocity_controller_stack.launch.py',
-            'use_sim_time:=true',
+            f'use_sim_time:={self._use_sim_time()}',
             'robot_name:=robot',
             'arm:=arm',
             'base_link:=robot_arm_base_link',
             'tip_link:=robot_arm_tool0',
-            'path_frame:=robotnik_simple',
+            f'path_frame:={self.control_frame.text().strip()}',
             'robot_description_topic:=/robot/robot_description',
             'joint_states_topic:=/robot/joint_states',
             'source_twist_topic:=/jparse_velocity_controller_ur/twist_cmd_world',
             'controller_twist_topic:=/jparse_velocity_controller_ur/twist_cmd',
-            'velocity_command_topic:=/robot/arm_forward_velocity_controller/commands',
-            'controller_manager:=/robot/controller_manager',
+            f"velocity_command_topic:={self._arm_velocity_command_topic()}",
+            f"controller_manager:={self._arm_controller_manager()}",
             'deactivate_controller:=joint_trajectory_controller',
-            'activate_controller:=arm_forward_velocity_controller',
-            'switch_delay:=13.0',
+            f"activate_controller:={'arm_forward_velocity_controller' if simulation else 'forward_velocity_controller'}",
+            'jparse_readiness_topic:=/am/jparse_ready',
+            'controller_readiness_topic:=/am/arm_controller_ready',
+            'command_joint_names_csv:=robot_arm_shoulder_pan_joint,robot_arm_shoulder_lift_joint,'
+            'robot_arm_elbow_joint,robot_arm_wrist_1_joint,robot_arm_wrist_2_joint,'
+            'robot_arm_wrist_3_joint',
         ]
         self._append_process_output(ARM_CONTROLLERS_NAME, ' '.join(command))
         self.processes.start(ARM_CONTROLLERS_NAME, command)
@@ -740,7 +860,7 @@ class OperatorWindow(QMainWindow):
             'move_to_path_idx',
             'move_to_path_idx',
             '--ros-args',
-            '-p', 'use_sim_time:=true',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', f"path_topic:={profile['path_topic']}",
             '-p', f"robot_pose_topic:={profile['robot_pose_topic']}",
             '-p', 'robot_pose_type:=pose_stamped',
@@ -777,13 +897,14 @@ class OperatorWindow(QMainWindow):
             'launch',
             'move_to_path_idx',
             'move_ur_to_path_idx.launch.py',
+            f'use_sim_time:={self._use_sim_time()}',
             'path_topic:=/ur_path_transformed',
             'current_pose_topic:=/current_tcp_pose',
             f'path_index:={self.index_spin.value()}',
             f'wait_for_start_condition:={str(wait_for_start_condition).lower()}',
             'start_condition_topic:=/start_pose_reached',
             'cmd_vel_topic:=/jparse_velocity_controller_ur/twist_cmd_world',
-            'path_frame:=robotnik_simple',
+            f'path_frame:={self.control_frame.text().strip()}',
         ]
         self._append_process_output(MOVE_ARM_NAME, ' '.join(command))
         self.processes.start(MOVE_ARM_NAME, command)
@@ -798,16 +919,19 @@ class OperatorWindow(QMainWindow):
             'control',
             'switch_controllers',
             '--controller-manager',
-            '/robot/controller_manager',
+            self._arm_controller_manager(),
             '--deactivate',
             'joint_trajectory_controller',
             '--activate',
-            'arm_forward_velocity_controller',
+            'arm_forward_velocity_controller' if self.simulation_checkbox.isChecked() else 'forward_velocity_controller',
         ]
         self._append_process_output(SWITCH_ARM_VELOCITY_NAME, ' '.join(command))
         self.processes.start(SWITCH_ARM_VELOCITY_NAME, command)
 
     def _start_following(self) -> None:
+        if not self._motion_ready():
+            self._append_process_output('safety', self._motion_not_ready_reason())
+            return
         self.ros_bridge.publish_path_index(self.index_spin.value())
         self._append_process_output('ros', f'published /path_index {self.index_spin.value()}')
         self._start_condition_publish_count = 5
@@ -817,6 +941,11 @@ class OperatorWindow(QMainWindow):
     def _stop_following(self) -> None:
         self._start_condition_publish_count = 5
         self._publish_start_condition_once(False)
+        for delay_ms in range(0, 1000, 100):
+            QTimer.singleShot(
+                delay_ms,
+                lambda: self.ros_bridge.publish_stop_commands(self.control_frame.text().strip()),
+            )
         self._style_button(self.stop_following_button, 'red')
 
     def _publish_start_condition_once(self, value: bool) -> None:
@@ -828,7 +957,7 @@ class OperatorWindow(QMainWindow):
 
     def _open_rviz(self) -> None:
         rviz_config = Path(get_package_share_directory('am_operator_gui')) / 'rviz' / 'robotnik_operator.rviz'
-        command = ['rviz2', '-d', str(rviz_config)]
+        command = ['rviz2', '-d', str(rviz_config), '-f', self.control_frame.text().strip()]
         self._append_process_output(RVIZ_NAME, ' '.join(command))
         self.processes.start(RVIZ_NAME, command)
         self._refresh_process_states()
@@ -997,20 +1126,50 @@ class OperatorWindow(QMainWindow):
     def _append_process_output(self, name: str, line: str) -> None:
         self.log.appendPlainText(f'[{name}] {line}')
 
-    def _on_ros_status(self, has_path: bool, has_robot_pose: bool) -> None:
-        self.ros_status_changed.emit(has_path, has_robot_pose)
+    def _on_ros_status(
+        self,
+        has_path: bool,
+        has_robot_pose: bool,
+        has_arm_pose: bool,
+        jparse_ready: bool,
+        controller_ready: bool,
+    ) -> None:
+        self.ros_status_changed.emit(
+            has_path,
+            has_robot_pose,
+            has_arm_pose,
+            jparse_ready,
+            controller_ready,
+        )
 
     def _on_path_index(self, value: int) -> None:
         self.path_index_changed.emit(value)
 
-    def _set_ros_status(self, has_path: bool, has_robot_pose: bool) -> None:
+    def _set_ros_status(
+        self,
+        has_path: bool,
+        has_robot_pose: bool,
+        has_arm_pose: bool,
+        jparse_ready: bool,
+        controller_ready: bool,
+    ) -> None:
         self._has_path = has_path
         self._has_robot_pose = has_robot_pose
+        self._has_arm_pose = has_arm_pose
+        self._jparse_ready = jparse_ready
+        self._controller_ready = controller_ready
         profile = self._current_platform_profile()
         path_topic = str(profile['path_topic'])
         pose_topic = str(profile['robot_pose_topic'])
         self.path_status.setText(f'{path_topic}: ready' if has_path else f'{path_topic}: waiting')
         self.pose_status.setText(f'{pose_topic}: ready' if has_robot_pose else f'{pose_topic}: waiting')
+        self.arm_pose_status.setText(
+            '/current_tcp_pose: ready' if has_arm_pose else '/current_tcp_pose: waiting'
+        )
+        arm_ready = jparse_ready and controller_ready
+        self.arm_control_status.setText(
+            'arm control: ready' if arm_ready else 'arm control: waiting'
+        )
         self._refresh_process_states()
 
     def _set_path_index_from_ros(self, value: int) -> None:
@@ -1137,8 +1296,54 @@ class OperatorWindow(QMainWindow):
     def _set_start_following_state(self) -> None:
         if getattr(self, '_start_condition_publish_count', 0) > 0:
             return
-        self._style_button(self.start_following_button, 'grey')
+        self.start_following_button.setEnabled(self._motion_ready())
+        self._style_button(self.start_following_button, 'green' if self._motion_ready() else 'grey')
         self._style_button(self.stop_following_button, 'grey')
+
+    def _motion_ready(self) -> bool:
+        return (
+            self._has_path
+            and self._has_robot_pose
+            and self._has_arm_pose
+            and self._jparse_ready
+            and self._controller_ready
+            and self._control_processes_running()
+        )
+
+    def _motion_not_ready_reason(self) -> str:
+        missing = []
+        if not self._has_path:
+            missing.append('base and arm paths')
+        if not self._has_robot_pose:
+            missing.append('fresh transformed base pose')
+        if not self._has_arm_pose:
+            missing.append('fresh transformed end-effector pose')
+        if not self._jparse_ready:
+            missing.append('J-PARSE chain/joint states')
+        if not self._controller_ready:
+            missing.append('active arm velocity controller')
+        if not self._control_processes_running():
+            missing.append('running path index and base/arm followers')
+        return 'motion blocked; waiting for ' + ', '.join(missing)
+
+    def _control_processes_running(self) -> bool:
+        return all(
+            (process := self.processes.get(name)) is not None and process.is_running()
+            for name in (PATH_INDEX_NAME, BASE_FOLLOWER_NAME, ARM_FOLLOWER_NAME)
+        )
+
+    def _arm_controller_manager(self) -> str:
+        return '/robot/controller_manager' if self.simulation_checkbox.isChecked() else '/robot/arm/controller_manager'
+
+    def _arm_velocity_command_topic(self) -> str:
+        if self.simulation_checkbox.isChecked():
+            return '/robot/arm_forward_velocity_controller/commands'
+        return '/robot/arm/forward_velocity_controller/commands'
+
+    def _arm_trajectory_topic(self) -> str:
+        if self.simulation_checkbox.isChecked():
+            return '/robot/joint_trajectory_controller/joint_trajectory'
+        return '/robot/arm/joint_trajectory_controller/joint_trajectory'
 
     def _set_rviz_state(self) -> None:
         process = self.processes.get(RVIZ_NAME)

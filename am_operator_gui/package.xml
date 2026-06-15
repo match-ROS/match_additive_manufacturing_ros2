@@ -10,12 +10,21 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
 
+  <exec_depend>base_trajectory_follower</exec_depend>
+  <exec_depend>controllers_ros2</exec_depend>
+  <exec_depend>move_to_path_idx</exec_depend>
+  <exec_depend>parse_paths</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>builtin_interfaces</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>controller_manager_msgs</exec_depend>
   <exec_depend>python3-pyqt5</exec_depend>
+  <exec_depend>tf2_geometry_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>ur_trajectory_follower</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

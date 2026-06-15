@@ -227,6 +227,8 @@ def _launch_setup(context, *args, **kwargs):
                     'twist_topic': LaunchConfiguration('combined_twist_topic'),
                     'command_topic': LaunchConfiguration('velocity_command_topic'),
                     'joint_states_topic': LaunchConfiguration('joint_states_topic'),
+                    'readiness_topic': LaunchConfiguration('jparse_readiness_topic'),
+                    'command_joint_names_csv': LaunchConfiguration('command_joint_names_csv'),
                 }.items(),
             )
         )
@@ -292,6 +294,8 @@ def generate_launch_description():
         DeclareLaunchArgument('combined_twist_source_topic', default_value='/jparse_velocity_controller_ur/twist_cmd_world'),
         DeclareLaunchArgument('combined_twist_topic', default_value='/jparse_velocity_controller_ur/twist_cmd'),
         DeclareLaunchArgument('combined_twist_rate', default_value='100.0'),
+        DeclareLaunchArgument('jparse_readiness_topic', default_value='/am/jparse_ready'),
+        DeclareLaunchArgument('command_joint_names_csv', default_value=''),
         DeclareLaunchArgument('kp_orientation', default_value='1.0'),
         DeclareLaunchArgument('ki_orientation', default_value='0.0'),
         DeclareLaunchArgument('kd_orientation', default_value='0.0'),

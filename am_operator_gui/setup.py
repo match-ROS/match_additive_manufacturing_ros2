@@ -25,6 +25,8 @@ setup(
     entry_points={
         'console_scripts': [
             'am_operator_gui = am_operator_gui.main:main',
+            'controller_switch_guard = am_operator_gui.controller_switch_guard:main',
+            'pose_stamped_adapter = am_operator_gui.pose_stamped_adapter:main',
         ],
     },
 )
