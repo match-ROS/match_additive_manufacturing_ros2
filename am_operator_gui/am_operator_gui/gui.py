@@ -177,7 +177,7 @@ class OperatorWindow(QMainWindow):
         return str(self._config.get('base_pose_topic', '/vicon/Base_RB/Base_RB'))
 
     def _configured_arm_pose_topic(self) -> str:
-        return str(self._config.get('arm_pose_topic', '/vicon/robot_ee/robot_ee'))
+        return str(self._config.get('arm_pose_topic', 'vicon/Tool_Flange/Tool_Flange'))
 
     def _configured_control_frame(self) -> str:
         configured = str(self._config.get('control_frame', '')).strip()
