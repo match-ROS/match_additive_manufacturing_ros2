@@ -9,6 +9,7 @@ from am_operator_gui.gui import (
     PATH_INDEX_NAME,
     SYNC_REMOTE_TARGET,
     SYNC_WORKSPACE_NAME,
+    VICON_EE_STATIC_TF_NAME,
     WORKSPACE_SRC_ROOT,
 )
 
@@ -200,7 +201,7 @@ def test_hardware_pose_adapters_start_external_base_reference() -> None:
     fake = SimpleNamespace(
         processes=processes,
         base_pose_topic=FakeLineEdit('/vicon/Base_RB/Base_RB'),
-        arm_pose_topic=FakeLineEdit('/vicon/Tool_Flange/Tool_Flange'),
+        arm_pose_topic=FakeLineEdit('/vicon/tool_transformed'),
         control_frame=FakeLineEdit('map'),
         external_map_frame=FakeLineEdit('map'),
         robot_base_frame=FakeLineEdit('base_link'),
@@ -211,8 +212,13 @@ def test_hardware_pose_adapters_start_external_base_reference() -> None:
 
     OperatorWindow._start_pose_adapters(fake)
 
-    base_command = processes.started[0][1]
-    arm_command = processes.started[1][1]
+    vicon_command = processes.started[0][1]
+    base_command = processes.started[1][1]
+    arm_command = processes.started[2][1]
+    assert processes.started[0][0] == VICON_EE_STATIC_TF_NAME
+    assert 'vicon_ee_static_tf' in vicon_command
+    assert 'input_topic:=/vicon/Tool_Flange/Tool_Flange' in vicon_command
+    assert 'output_topic:=/vicon/tool_transformed' in vicon_command
     assert 'external_base_reference' in base_command
     assert 'input_topic:=/vicon/Base_RB/Base_RB' in base_command
     assert 'output_topic:=/robot_pose' in base_command
@@ -220,7 +226,7 @@ def test_hardware_pose_adapters_start_external_base_reference() -> None:
     assert 'robot_base_frame:=base_link' in base_command
     assert 'robot_tree_root_frame:=odom' in base_command
     assert 'pose_stamped_adapter' in arm_command
-    assert 'input_topic:=/vicon/Tool_Flange/Tool_Flange' in arm_command
+    assert 'input_topic:=/vicon/tool_transformed' in arm_command
     assert 'target_frame:=map' in arm_command
 
 

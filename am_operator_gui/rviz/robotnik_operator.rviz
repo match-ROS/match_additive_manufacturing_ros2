@@ -7,6 +7,7 @@ Panels:
         - /Global Options1
         - /Status1
         - /Base Path1
+        - /Current TCP Pose1
       Splitter Ratio: 0.5
     Tree Height: 664
 Visualization Manager:
@@ -41,6 +42,8 @@ Visualization Manager:
           Value: true
         TS_DCS_TS_DCS:
           Value: true
+        Tool_Flange:
+          Value: true
         Tool_Flange_Tool_Flange:
           Value: true
         map:
@@ -62,6 +65,8 @@ Visualization Manager:
         robot_arm_tool0:
           Value: true
         robot_arm_tool0_controller:
+          Value: true
+        robot_arm_tool0_controller_raw:
           Value: true
         robot_arm_upper_arm_link:
           Value: true
@@ -137,6 +142,8 @@ Visualization Manager:
           Value: true
         robot_odom:
           Value: true
+        tool_transformed:
+          Value: true
         vicon:
           Value: true
       Marker Scale: 0.3499999940395355
@@ -146,6 +153,8 @@ Visualization Manager:
       Show Names: true
       Tree:
         map:
+          Tool_Flange:
+            {}
           robot_odom:
             robot_base_footprint:
               robot_base_link:
@@ -190,8 +199,9 @@ Visualization Manager:
                     robot_lift_link:
                       robot_arm_base_link:
                         robot_arm_base:
-                          robot_arm_tool0_controller:
-                            {}
+                          robot_arm_tool0_controller_raw:
+                            robot_arm_tool0_controller:
+                              {}
                         robot_arm_base_link_inertia:
                           robot_arm_shoulder_link:
                             robot_arm_upper_arm_link:
@@ -210,6 +220,8 @@ Visualization Manager:
                 robot_front_right_base_wheel:
                   robot_front_right_wheel:
                     {}
+          tool_transformed:
+            {}
           vicon:
             Base_RB_Base_RB:
               {}
@@ -395,7 +407,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /current_tcp_pose
+        Value: /vicon/tool_transformed
       Value: true
   Enabled: true
   Global Options:
@@ -418,25 +430,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 7.420393466949463
+      Distance: 0.6101117134094238
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0
-        Y: 0
-        Z: 0.6000000238418579
+        X: 0.9217517971992493
+        Y: 0.4006804823875427
+        Z: 1.936476230621338
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5850000977516174
+      Pitch: 0.5050000548362732
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 3.156813859939575
+      Yaw: 3.1618096828460693
     Saved: ~
 Window Geometry:
   Displays:
@@ -446,5 +458,5 @@ Window Geometry:
   Hide Right Dock: true
   QMainWindow State: 000000ff00000000fd00000001000000000000015600000326fc0200000001fb000000100044006900730070006c006100790073010000003f00000326000000cc00ffffff0000041c0000032600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Width: 1400
-  X: 433
-  Y: 102
+  X: 363
+  Y: 119

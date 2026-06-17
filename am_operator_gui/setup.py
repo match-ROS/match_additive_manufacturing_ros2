@@ -28,6 +28,7 @@ setup(
             'controller_switch_guard = am_operator_gui.controller_switch_guard:main',
             'external_base_reference = am_operator_gui.external_base_reference:main',
             'pose_stamped_adapter = am_operator_gui.pose_stamped_adapter:main',
+            'vicon_ee_static_tf = am_operator_gui.vicon_ee_static_tf:main',
         ],
     },
 )

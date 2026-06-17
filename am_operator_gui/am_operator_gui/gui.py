@@ -56,6 +56,7 @@ PATH_INDEX_NAME = 'path_index'
 CURRENT_TCP_POSE_NAME = 'current_tcp_pose'
 BASE_POSE_ADAPTER_NAME = 'base_pose_adapter'
 ARM_POSE_ADAPTER_NAME = 'arm_pose_adapter'
+VICON_EE_STATIC_TF_NAME = 'vicon_ee_static_tf'
 ARM_CONTROLLERS_NAME = 'arm_controllers'
 MOVE_BASE_NAME = 'move_base_to_start'
 MOVE_ARM_NAME = 'move_arm_to_start'
@@ -359,7 +360,10 @@ class OperatorWindow(QMainWindow):
         return str(self._config.get('base_pose_topic', '/vicon/Base_RB/Base_RB'))
 
     def _configured_arm_pose_topic(self) -> str:
-        return str(self._config.get('arm_pose_topic', 'vicon/Tool_Flange/Tool_Flange'))
+        topic = str(self._config.get('arm_pose_topic', '/vicon/tool_transformed')).strip()
+        if topic in {'vicon/Tool_Flange/Tool_Flange', '/vicon/Tool_Flange/Tool_Flange'}:
+            return '/vicon/tool_transformed'
+        return topic
 
     def _configured_external_map_frame(self) -> str:
         configured = str(self._config.get('external_map_frame', '')).strip()
@@ -850,6 +854,7 @@ class OperatorWindow(QMainWindow):
             CURRENT_TCP_POSE_NAME,
             BASE_POSE_ADAPTER_NAME,
             ARM_POSE_ADAPTER_NAME,
+            VICON_EE_STATIC_TF_NAME,
             ARM_CONTROLLERS_NAME,
             BASE_FOLLOWER_NAME,
             ARM_FOLLOWER_NAME,
@@ -1082,9 +1087,10 @@ class OperatorWindow(QMainWindow):
         if not self.simulation_checkbox.isChecked():
             running = any(
                 (process := self.processes.get(name)) is not None and process.is_running()
-                for name in (BASE_POSE_ADAPTER_NAME, ARM_POSE_ADAPTER_NAME)
+                for name in (VICON_EE_STATIC_TF_NAME, BASE_POSE_ADAPTER_NAME, ARM_POSE_ADAPTER_NAME)
             )
             if running:
+                self.processes.stop(VICON_EE_STATIC_TF_NAME)
                 self.processes.stop(BASE_POSE_ADAPTER_NAME)
                 self.processes.stop(ARM_POSE_ADAPTER_NAME)
             else:
@@ -1118,6 +1124,19 @@ class OperatorWindow(QMainWindow):
         self.processes.start(CURRENT_TCP_POSE_NAME, command)
 
     def _start_pose_adapters(self) -> None:
+        vicon_transform_command = [
+            'ros2',
+            'run',
+            'am_operator_gui',
+            'vicon_ee_static_tf',
+            '--ros-args',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
+            '-p', 'input_topic:=/vicon/Tool_Flange/Tool_Flange',
+            '-p', 'output_topic:=/vicon/tool_transformed',
+        ]
+        self._append_process_output(VICON_EE_STATIC_TF_NAME, ' '.join(vicon_transform_command))
+        self.processes.start(VICON_EE_STATIC_TF_NAME, vicon_transform_command)
+
         base_command = [
             'ros2',
             'run',
@@ -1600,6 +1619,16 @@ class OperatorWindow(QMainWindow):
         self._set_process_toggle_button(self.path_index_button, PATH_INDEX_NAME, 'Stop Path Index', 'Launch Path Index')
 
     def _set_current_tcp_pose_button_state(self) -> None:
+        if not self.simulation_checkbox.isChecked():
+            running = any(
+                (process := self.processes.get(name)) is not None and process.is_running()
+                for name in (VICON_EE_STATIC_TF_NAME, BASE_POSE_ADAPTER_NAME, ARM_POSE_ADAPTER_NAME)
+            )
+            self.current_tcp_pose_button.setText(
+                'Stop Transformations' if running else 'Launch Transformations'
+            )
+            self._style_button(self.current_tcp_pose_button, 'green' if running else 'grey')
+            return
         self._set_process_toggle_button(
             self.current_tcp_pose_button,
             CURRENT_TCP_POSE_NAME,
