@@ -46,6 +46,8 @@ def generate_launch_description():
         DeclareLaunchArgument('base_trajectory_filename', default_value='base_path.json'),
         DeclareLaunchArgument('arm_trajectory_filename', default_value='arm_path.json'),
         DeclareLaunchArgument('normal_filename', default_value='normal_vector.json'),
+        DeclareLaunchArgument('path_transform_xyz', default_value='[0.0, 0.0, 0.0]'),
+        DeclareLaunchArgument('path_transform_yaw_deg', default_value='0.0'),
         Node(
             package='parse_paths',
             executable='publish_robotnik_base_arm_paths',
@@ -85,6 +87,8 @@ def generate_launch_description():
                 'base_trajectory_filename': LaunchConfiguration('base_trajectory_filename'),
                 'arm_trajectory_filename': LaunchConfiguration('arm_trajectory_filename'),
                 'normal_filename': LaunchConfiguration('normal_filename'),
+                'path_transform_xyz': LaunchConfiguration('path_transform_xyz'),
+                'path_transform_yaw_deg': LaunchConfiguration('path_transform_yaw_deg'),
             }],
         ),
     ])

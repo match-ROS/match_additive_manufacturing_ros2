@@ -40,6 +40,12 @@ DEFAULT_COMPONENTS_DIR = REPO_ROOT / 'components'
 DEFAULT_TRAJECTORY_DIR = DEFAULT_COMPONENTS_DIR / 'robotnik_paired_demo'
 DEFAULT_PATH_INDEX_RATE = 5.0
 DEFAULT_DEFAULT_VELOCITY = 0.1
+DEFAULT_PATH_TRANSFORM = {
+    'x': 0.0,
+    'y': 0.0,
+    'z': 0.0,
+    'yaw_deg': 0.0,
+}
 CONFIG_PATH = Path.home() / '.config' / 'am_operator_gui' / 'operator_gui_config.json'
 LAUNCH_ALL_NAME = 'launch_all'
 SIM_NAME = 'launch_sim'
@@ -324,6 +330,18 @@ class OperatorWindow(QMainWindow):
     def _configured_default_velocity_enabled(self) -> bool:
         return bool(self._config.get('default_velocity_enabled', False))
 
+    def _configured_path_transform(self) -> dict[str, float]:
+        configured = self._config.get('path_transform', {})
+        transform = dict(DEFAULT_PATH_TRANSFORM)
+        if not isinstance(configured, dict):
+            return transform
+        for key, default in DEFAULT_PATH_TRANSFORM.items():
+            try:
+                transform[key] = float(configured.get(key, default))
+            except (TypeError, ValueError):
+                transform[key] = default
+        return transform
+
     def _configured_platform(self) -> str:
         value = str(self._config.get('platform', 'robotnik')).strip().lower()
         return value if value in PLATFORM_PROFILES else 'robotnik'
@@ -402,6 +420,26 @@ class OperatorWindow(QMainWindow):
         self.path_folder = QLineEdit(str(DEFAULT_TRAJECTORY_DIR))
         self.path_folder.setReadOnly(True)
         self.browse_button = QPushButton('Browse')
+        path_transform = self._configured_path_transform()
+        self.path_transform_x_spin = QDoubleSpinBox()
+        self.path_transform_y_spin = QDoubleSpinBox()
+        self.path_transform_z_spin = QDoubleSpinBox()
+        self.path_transform_yaw_spin = QDoubleSpinBox()
+        for spin, key in (
+            (self.path_transform_x_spin, 'x'),
+            (self.path_transform_y_spin, 'y'),
+            (self.path_transform_z_spin, 'z'),
+        ):
+            spin.setRange(-10000.0, 10000.0)
+            spin.setDecimals(4)
+            spin.setSingleStep(0.01)
+            spin.setSuffix(' m')
+            spin.setValue(path_transform[key])
+        self.path_transform_yaw_spin.setRange(-36000.0, 36000.0)
+        self.path_transform_yaw_spin.setDecimals(3)
+        self.path_transform_yaw_spin.setSingleStep(1.0)
+        self.path_transform_yaw_spin.setSuffix(' deg')
+        self.path_transform_yaw_spin.setValue(path_transform['yaw_deg'])
 
         self.launch_button = QPushButton('Launch All')
         self.launch_sim_button = QPushButton('Launch Sim')
@@ -423,29 +461,37 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(QLabel('Path folder'), 2, 0)
         launch_layout.addWidget(self.path_folder, 2, 1, 1, 4)
         launch_layout.addWidget(self.browse_button, 2, 5)
+        launch_layout.addWidget(QLabel('Path transform X'), 3, 0)
+        launch_layout.addWidget(self.path_transform_x_spin, 3, 1)
+        launch_layout.addWidget(QLabel('Y'), 3, 2)
+        launch_layout.addWidget(self.path_transform_y_spin, 3, 3)
+        launch_layout.addWidget(QLabel('Z'), 3, 4)
+        launch_layout.addWidget(self.path_transform_z_spin, 3, 5)
+        launch_layout.addWidget(QLabel('Path rotation'), 4, 0)
+        launch_layout.addWidget(self.path_transform_yaw_spin, 4, 1)
         self.base_pose_topic = QLineEdit(self._configured_base_pose_topic())
         self.arm_pose_topic = QLineEdit(self._configured_arm_pose_topic())
         self.control_frame = QLineEdit(self._configured_control_frame())
         self.external_map_frame = QLineEdit(self._configured_external_map_frame())
         self.robot_base_frame = QLineEdit(self._configured_robot_base_frame())
         self.robot_tree_root_frame = QLineEdit(self._configured_robot_tree_root_frame())
-        launch_layout.addWidget(QLabel('Base pose topic'), 3, 0)
-        launch_layout.addWidget(self.base_pose_topic, 3, 1, 1, 2)
-        launch_layout.addWidget(QLabel('EE pose topic'), 3, 3)
-        launch_layout.addWidget(self.arm_pose_topic, 3, 4, 1, 2)
-        launch_layout.addWidget(QLabel('Control frame'), 4, 0)
-        launch_layout.addWidget(self.control_frame, 4, 1, 1, 2)
-        launch_layout.addWidget(QLabel('External map'), 4, 3)
-        launch_layout.addWidget(self.external_map_frame, 4, 4, 1, 2)
-        launch_layout.addWidget(QLabel('Robot base frame'), 5, 0)
-        launch_layout.addWidget(self.robot_base_frame, 5, 1, 1, 2)
-        launch_layout.addWidget(QLabel('Robot TF root'), 5, 3)
-        launch_layout.addWidget(self.robot_tree_root_frame, 5, 4, 1, 2)
-        launch_layout.addWidget(self.launch_button, 6, 0)
-        launch_layout.addWidget(self.launch_sim_button, 6, 1)
-        launch_layout.addWidget(self.rviz_button, 6, 2)
-        launch_layout.addWidget(self.pid_gains_button, 6, 3)
-        launch_layout.addWidget(self.sync_workspace_button, 6, 4)
+        launch_layout.addWidget(QLabel('Base pose topic'), 5, 0)
+        launch_layout.addWidget(self.base_pose_topic, 5, 1, 1, 2)
+        launch_layout.addWidget(QLabel('EE pose topic'), 5, 3)
+        launch_layout.addWidget(self.arm_pose_topic, 5, 4, 1, 2)
+        launch_layout.addWidget(QLabel('Control frame'), 6, 0)
+        launch_layout.addWidget(self.control_frame, 6, 1, 1, 2)
+        launch_layout.addWidget(QLabel('External map'), 6, 3)
+        launch_layout.addWidget(self.external_map_frame, 6, 4, 1, 2)
+        launch_layout.addWidget(QLabel('Robot base frame'), 7, 0)
+        launch_layout.addWidget(self.robot_base_frame, 7, 1, 1, 2)
+        launch_layout.addWidget(QLabel('Robot TF root'), 7, 3)
+        launch_layout.addWidget(self.robot_tree_root_frame, 7, 4, 1, 2)
+        launch_layout.addWidget(self.launch_button, 8, 0)
+        launch_layout.addWidget(self.launch_sim_button, 8, 1)
+        launch_layout.addWidget(self.rviz_button, 8, 2)
+        launch_layout.addWidget(self.pid_gains_button, 8, 3)
+        launch_layout.addWidget(self.sync_workspace_button, 8, 4)
 
         component_group = QGroupBox('Components')
         component_layout = QGridLayout(component_group)
@@ -582,6 +628,10 @@ class OperatorWindow(QMainWindow):
         self.path_index_rate_spin.valueChanged.connect(self._set_path_index_rate)
         self.default_velocity_checkbox.toggled.connect(self._set_default_velocity_enabled)
         self.default_velocity_spin.valueChanged.connect(self._set_default_velocity)
+        self.path_transform_x_spin.valueChanged.connect(self._set_path_transform)
+        self.path_transform_y_spin.valueChanged.connect(self._set_path_transform)
+        self.path_transform_z_spin.valueChanged.connect(self._set_path_transform)
+        self.path_transform_yaw_spin.valueChanged.connect(self._set_path_transform)
         self.nozzle_reference.valueChanged.connect(self._publish_overrides)
         self.nozzle_offset.valueChanged.connect(self._publish_overrides)
 
@@ -629,6 +679,15 @@ class OperatorWindow(QMainWindow):
 
     def _set_diff_drive_mode(self, enabled: bool) -> None:
         self._config['diff_drive_mode'] = bool(enabled)
+        self._save_config()
+
+    def _set_path_transform(self, *_args) -> None:
+        self._config['path_transform'] = {
+            'x': float(self.path_transform_x_spin.value()),
+            'y': float(self.path_transform_y_spin.value()),
+            'z': float(self.path_transform_z_spin.value()),
+            'yaw_deg': float(self.path_transform_yaw_spin.value()),
+        }
         self._save_config()
 
     def _choose_path_folder(self) -> None:
@@ -698,6 +757,20 @@ class OperatorWindow(QMainWindow):
                 f'{name}:={self._ros_float_literal(self._pid_gain(f"{key_prefix}.{name}"))}',
             ])
         return parameters
+
+    def _path_transform_launch_arguments(self) -> list[str]:
+        return [
+            (
+                'path_transform_xyz:='
+                f'[{self._ros_float_literal(self.path_transform_x_spin.value())}, '
+                f'{self._ros_float_literal(self.path_transform_y_spin.value())}, '
+                f'{self._ros_float_literal(self.path_transform_z_spin.value())}]'
+            ),
+            (
+                'path_transform_yaw_deg:='
+                f'{self._ros_float_literal(self.path_transform_yaw_spin.value())}'
+            ),
+        ]
 
     def _simulation_mode_changed(self, _enabled: bool) -> None:
         self._refresh_process_states()
@@ -842,6 +915,7 @@ class OperatorWindow(QMainWindow):
             f'trajectory_directory:={self.path_folder.text()}',
             'publish_once:=false',
         ]
+        command.extend(self._path_transform_launch_arguments())
         self._append_process_output(PUBLISH_PATH_NAME, ' '.join(command))
         self.processes.start(PUBLISH_PATH_NAME, command)
 
