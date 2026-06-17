@@ -294,7 +294,51 @@ def test_motion_readiness_requires_every_gate() -> None:
 
     for process_name in (PATH_INDEX_NAME, BASE_FOLLOWER_NAME, ARM_FOLLOWER_NAME):
         fake.processes.running.remove(process_name)
-        assert not OperatorWindow._motion_ready(fake)
+        assert OperatorWindow._motion_ready(fake)
+        fake.processes.running.add(process_name)
+
+
+def test_start_following_warns_but_publishes_when_follower_missing() -> None:
+    calls = []
+    processes = FakeProcesses(running=(PATH_INDEX_NAME, BASE_FOLLOWER_NAME))
+    fake = SimpleNamespace(
+        _has_path=True,
+        _has_robot_pose=True,
+        _has_arm_pose=True,
+        _jparse_ready=True,
+        _controller_ready=True,
+        processes=processes,
+        index_spin=FakeSpinBox(12),
+        ros_bridge=SimpleNamespace(
+            publish_path_index=lambda value: calls.append(('path_index', value)),
+        ),
+        start_following_button=object(),
+        _append_process_output=lambda *args: calls.append(args),
+        _publish_start_condition_once=lambda value: calls.append(('start_condition', value)),
+        _style_button=lambda *_args: None,
+    )
+    fake._motion_ready = lambda: OperatorWindow._motion_ready(fake)
+    fake._motion_not_ready_reason = lambda: OperatorWindow._motion_not_ready_reason(fake)
+    fake._missing_control_process_names = lambda: OperatorWindow._missing_control_process_names(fake)
+
+    OperatorWindow._start_following(fake)
+
+    assert ('path_index', 12) in calls
+    assert ('start_condition', True) in calls
+    assert any(
+        call[0] == 'safety' and ARM_FOLLOWER_NAME in call[1]
+        for call in calls
+        if isinstance(call, tuple) and len(call) == 2
+    )
+
+
+def test_control_processes_running_reports_missing_followers() -> None:
+    fake = SimpleNamespace(processes=FakeProcesses())
+    fake._missing_control_process_names = lambda: OperatorWindow._missing_control_process_names(fake)
+    for process_name in (PATH_INDEX_NAME, BASE_FOLLOWER_NAME, ARM_FOLLOWER_NAME):
+        fake.processes.running.remove(process_name)
+        assert not OperatorWindow._control_processes_running(fake)
+        assert process_name in OperatorWindow._missing_control_process_names(fake)
         fake.processes.running.add(process_name)
 
 

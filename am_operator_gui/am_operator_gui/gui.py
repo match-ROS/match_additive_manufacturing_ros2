@@ -1314,6 +1314,13 @@ class OperatorWindow(QMainWindow):
         if not self._motion_ready():
             self._append_process_output('safety', self._motion_not_ready_reason())
             return
+        missing_processes = self._missing_control_process_names()
+        if missing_processes:
+            self._append_process_output(
+                'safety',
+                'starting following with missing control process(es): '
+                + ', '.join(missing_processes),
+            )
         self.ros_bridge.publish_path_index(self.index_spin.value())
         self._append_process_output('ros', f'published /path_index {self.index_spin.value()}')
         self._start_condition_publish_count = 5
@@ -1712,8 +1719,13 @@ class OperatorWindow(QMainWindow):
     def _set_start_following_state(self) -> None:
         if getattr(self, '_start_condition_publish_count', 0) > 0:
             return
-        self.start_following_button.setEnabled(self._motion_ready())
-        self._style_button(self.start_following_button, 'green' if self._motion_ready() else 'grey')
+        motion_ready = self._motion_ready()
+        self.start_following_button.setEnabled(motion_ready)
+        if motion_ready:
+            color = 'green' if self._control_processes_running() else 'orange'
+        else:
+            color = 'grey'
+        self._style_button(self.start_following_button, color)
         self._style_button(self.stop_following_button, 'grey')
 
     def _motion_ready(self) -> bool:
@@ -1723,7 +1735,6 @@ class OperatorWindow(QMainWindow):
             and self._has_arm_pose
             and self._jparse_ready
             and self._controller_ready
-            and self._control_processes_running()
         )
 
     def _motion_not_ready_reason(self) -> str:
@@ -1738,15 +1749,16 @@ class OperatorWindow(QMainWindow):
             missing.append('J-PARSE chain/joint states')
         if not self._controller_ready:
             missing.append('active arm velocity controller')
-        if not self._control_processes_running():
-            missing.append('running path index and base/arm followers')
         return 'motion blocked; waiting for ' + ', '.join(missing)
 
     def _control_processes_running(self) -> bool:
-        return all(
-            (process := self.processes.get(name)) is not None and process.is_running()
-            for name in (PATH_INDEX_NAME, BASE_FOLLOWER_NAME, ARM_FOLLOWER_NAME)
-        )
+        return not self._missing_control_process_names()
+
+    def _missing_control_process_names(self) -> list[str]:
+        return [
+            name for name in (PATH_INDEX_NAME, BASE_FOLLOWER_NAME, ARM_FOLLOWER_NAME)
+            if (process := self.processes.get(name)) is None or not process.is_running()
+        ]
 
     def _arm_controller_manager(self) -> str:
         return '/robot/controller_manager' if self.simulation_checkbox.isChecked() else '/robot/arm/controller_manager'

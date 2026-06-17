@@ -7,6 +7,7 @@ Panels:
         - /Global Options1
         - /Status1
         - /Base Path1
+        - /Arm Path1
         - /Current TCP Pose1
       Splitter Ratio: 0.5
     Tree Height: 664
@@ -32,205 +33,21 @@ Visualization Manager:
       Reference Frame: <Fixed Frame>
       Value: true
     - Class: rviz_default_plugins/TF
-      Enabled: true
+      Enabled: false
       Filter (blacklist): ""
       Filter (whitelist): ""
       Frame Timeout: 15
       Frames:
         All Enabled: true
-        Base_RB_Base_RB:
-          Value: true
-        TS_DCS_TS_DCS:
-          Value: true
-        Tool_Flange:
-          Value: true
-        Tool_Flange_Tool_Flange:
-          Value: true
-        map:
-          Value: true
-        robot_arm_base:
-          Value: true
-        robot_arm_base_link:
-          Value: true
-        robot_arm_base_link_inertia:
-          Value: true
-        robot_arm_flange:
-          Value: true
-        robot_arm_forearm_link:
-          Value: true
-        robot_arm_ft_frame:
-          Value: true
-        robot_arm_shoulder_link:
-          Value: true
-        robot_arm_tool0:
-          Value: true
-        robot_arm_tool0_controller:
-          Value: true
-        robot_arm_tool0_controller_raw:
-          Value: true
-        robot_arm_upper_arm_link:
-          Value: true
-        robot_arm_wrist_1_link:
-          Value: true
-        robot_arm_wrist_2_link:
-          Value: true
-        robot_arm_wrist_3_link:
-          Value: true
-        robot_back_left_base_wheel:
-          Value: true
-        robot_back_left_wheel:
-          Value: true
-        robot_back_right_base_wheel:
-          Value: true
-        robot_back_right_wheel:
-          Value: true
-        robot_base_docking_contact:
-          Value: true
-        robot_base_footprint:
-          Value: true
-        robot_base_link:
-          Value: true
-        robot_base_logos_link:
-          Value: true
-        robot_battery_link:
-          Value: true
-        robot_chassis_link:
-          Value: true
-        robot_contactors_link:
-          Value: true
-        robot_front_3d_laser_base_link:
-          Value: true
-        robot_front_3d_laser_link:
-          Value: true
-        robot_front_left_base_wheel:
-          Value: true
-        robot_front_left_wheel:
-          Value: true
-        robot_front_rgbd_camera_base_link:
-          Value: true
-        robot_front_rgbd_camera_color_frame:
-          Value: true
-        robot_front_rgbd_camera_color_optical_frame:
-          Value: true
-        robot_front_rgbd_camera_depth_frame:
-          Value: true
-        robot_front_rgbd_camera_depth_optical_frame:
-          Value: true
-        robot_front_rgbd_camera_infra1_frame:
-          Value: true
-        robot_front_rgbd_camera_infra1_optical_frame:
-          Value: true
-        robot_front_rgbd_camera_infra2_frame:
-          Value: true
-        robot_front_rgbd_camera_infra2_optical_frame:
-          Value: true
-        robot_front_rgbd_camera_link:
-          Value: true
-        robot_front_right_base_wheel:
-          Value: true
-        robot_front_right_wheel:
-          Value: true
-        robot_imu_base_link:
-          Value: true
-        robot_imu_link:
-          Value: true
-        robot_leds_link:
-          Value: true
-        robot_lift_base_link:
-          Value: true
-        robot_lift_link:
-          Value: true
-        robot_odom:
-          Value: true
-        tool_transformed:
-          Value: true
-        vicon:
-          Value: true
       Marker Scale: 0.3499999940395355
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: true
       Tree:
-        map:
-          Tool_Flange:
-            {}
-          robot_odom:
-            robot_base_footprint:
-              robot_base_link:
-                robot_back_left_base_wheel:
-                  robot_back_left_wheel:
-                    {}
-                robot_back_right_base_wheel:
-                  robot_back_right_wheel:
-                    {}
-                robot_chassis_link:
-                  robot_base_docking_contact:
-                    {}
-                  robot_base_logos_link:
-                    {}
-                  robot_battery_link:
-                    {}
-                  robot_contactors_link:
-                    {}
-                  robot_front_3d_laser_base_link:
-                    robot_front_3d_laser_link:
-                      {}
-                  robot_front_rgbd_camera_base_link:
-                    robot_front_rgbd_camera_link:
-                      robot_front_rgbd_camera_color_frame:
-                        robot_front_rgbd_camera_color_optical_frame:
-                          {}
-                      robot_front_rgbd_camera_depth_frame:
-                        robot_front_rgbd_camera_depth_optical_frame:
-                          {}
-                      robot_front_rgbd_camera_infra1_frame:
-                        robot_front_rgbd_camera_infra1_optical_frame:
-                          {}
-                      robot_front_rgbd_camera_infra2_frame:
-                        robot_front_rgbd_camera_infra2_optical_frame:
-                          {}
-                  robot_imu_base_link:
-                    robot_imu_link:
-                      {}
-                  robot_leds_link:
-                    {}
-                  robot_lift_base_link:
-                    robot_lift_link:
-                      robot_arm_base_link:
-                        robot_arm_base:
-                          robot_arm_tool0_controller_raw:
-                            robot_arm_tool0_controller:
-                              {}
-                        robot_arm_base_link_inertia:
-                          robot_arm_shoulder_link:
-                            robot_arm_upper_arm_link:
-                              robot_arm_forearm_link:
-                                robot_arm_wrist_1_link:
-                                  robot_arm_wrist_2_link:
-                                    robot_arm_wrist_3_link:
-                                      robot_arm_flange:
-                                        robot_arm_tool0:
-                                          {}
-                                      robot_arm_ft_frame:
-                                        {}
-                robot_front_left_base_wheel:
-                  robot_front_left_wheel:
-                    {}
-                robot_front_right_base_wheel:
-                  robot_front_right_wheel:
-                    {}
-          tool_transformed:
-            {}
-          vicon:
-            Base_RB_Base_RB:
-              {}
-            TS_DCS_TS_DCS:
-              {}
-            Tool_Flange_Tool_Flange:
-              {}
+        {}
       Update Interval: 0
-      Value: true
+      Value: false
     - Alpha: 1
       Class: rviz_default_plugins/RobotModel
       Collision Enabled: false
@@ -320,7 +137,7 @@ Visualization Manager:
       Enabled: true
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
-      Length: 0.30000001192092896
+      Length: 0.15000000596046448
       Line Style: Lines
       Line Width: 0.03999999910593033
       Name: Arm Path
@@ -330,7 +147,7 @@ Visualization Manager:
         Z: 0
       Pose Color: 216; 67; 21
       Pose Style: Axes
-      Radius: 0.029999999329447746
+      Radius: 0.014999999664723873
       Shaft Diameter: 0.10000000149011612
       Shaft Length: 0.05999999865889549
       Topic:
@@ -430,7 +247,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 0.6101117134094238
+      Distance: 5.564075469970703
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -445,10 +262,10 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5050000548362732
+      Pitch: 0.3100000321865082
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 3.1618096828460693
+      Yaw: 5.941809177398682
     Saved: ~
 Window Geometry:
   Displays:
