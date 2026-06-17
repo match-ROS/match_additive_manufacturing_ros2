@@ -35,6 +35,7 @@ from am_operator_gui.ros_bridge import RosBridge
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+WORKSPACE_SRC_ROOT = REPO_ROOT.parent
 DEFAULT_COMPONENTS_DIR = REPO_ROOT / 'components'
 DEFAULT_TRAJECTORY_DIR = DEFAULT_COMPONENTS_DIR / 'robotnik_paired_demo'
 DEFAULT_PATH_INDEX_RATE = 5.0
@@ -54,6 +55,8 @@ MOVE_BASE_NAME = 'move_base_to_start'
 MOVE_ARM_NAME = 'move_arm_to_start'
 SWITCH_ARM_VELOCITY_NAME = 'switch_arm_velocity_controller'
 RVIZ_NAME = 'rviz'
+SYNC_WORKSPACE_NAME = 'sync_workspace'
+SYNC_REMOTE_TARGET = 'ite-dcs@192.168.0.222:~/workspaces/print_wattle_daub/src/'
 
 DEFAULT_PID_GAINS = {
     'base_follower.kp_x': 0.8,
@@ -168,6 +171,9 @@ PLATFORM_PROFILES = {
         'output_stamped': False,
         'command_frame_id': 'base_link',
         'path_frame': 'robotnik_simple',
+        'external_map_frame': 'map',
+        'robot_base_frame': 'base_link',
+        'robot_tree_root_frame': 'odom',
         'max_vx': 0.25,
         'max_vy': 0.25,
         'max_wz': 0.5,
@@ -183,6 +189,9 @@ PLATFORM_PROFILES = {
         'output_stamped': True,
         'command_frame_id': 'base_footprint',
         'path_frame': 'map',
+        'external_map_frame': 'map',
+        'robot_base_frame': 'base_footprint',
+        'robot_tree_root_frame': 'odom',
         'max_vx': 0.25,
         'max_vy': 0.0,
         'max_wz': 0.6,
@@ -334,6 +343,18 @@ class OperatorWindow(QMainWindow):
     def _configured_arm_pose_topic(self) -> str:
         return str(self._config.get('arm_pose_topic', 'vicon/Tool_Flange/Tool_Flange'))
 
+    def _configured_external_map_frame(self) -> str:
+        configured = str(self._config.get('external_map_frame', '')).strip()
+        return configured or str(self._current_platform_profile()['external_map_frame'])
+
+    def _configured_robot_base_frame(self) -> str:
+        configured = str(self._config.get('robot_base_frame', '')).strip()
+        return configured or str(self._current_platform_profile()['robot_base_frame'])
+
+    def _configured_robot_tree_root_frame(self) -> str:
+        configured = str(self._config.get('robot_tree_root_frame', '')).strip()
+        return configured or str(self._current_platform_profile()['robot_tree_root_frame'])
+
     def _configured_control_frame(self) -> str:
         configured = str(self._config.get('control_frame', '')).strip()
         return configured or self._path_frame_from_folder(Path(DEFAULT_TRAJECTORY_DIR))
@@ -387,6 +408,7 @@ class OperatorWindow(QMainWindow):
         self.publish_path_button = QPushButton('Publish Path')
         self.rviz_button = QPushButton('Open RViz')
         self.pid_gains_button = QPushButton('PID Gains...')
+        self.sync_workspace_button = QPushButton('Sync Workspace')
 
         launch_layout.addWidget(self.simulation_checkbox, 0, 0)
         launch_layout.addWidget(QLabel('Platform'), 0, 1)
@@ -404,23 +426,33 @@ class OperatorWindow(QMainWindow):
         self.base_pose_topic = QLineEdit(self._configured_base_pose_topic())
         self.arm_pose_topic = QLineEdit(self._configured_arm_pose_topic())
         self.control_frame = QLineEdit(self._configured_control_frame())
+        self.external_map_frame = QLineEdit(self._configured_external_map_frame())
+        self.robot_base_frame = QLineEdit(self._configured_robot_base_frame())
+        self.robot_tree_root_frame = QLineEdit(self._configured_robot_tree_root_frame())
         launch_layout.addWidget(QLabel('Base pose topic'), 3, 0)
         launch_layout.addWidget(self.base_pose_topic, 3, 1, 1, 2)
         launch_layout.addWidget(QLabel('EE pose topic'), 3, 3)
         launch_layout.addWidget(self.arm_pose_topic, 3, 4, 1, 2)
         launch_layout.addWidget(QLabel('Control frame'), 4, 0)
         launch_layout.addWidget(self.control_frame, 4, 1, 1, 2)
-        launch_layout.addWidget(self.launch_button, 5, 0)
-        launch_layout.addWidget(self.launch_sim_button, 5, 1)
-        launch_layout.addWidget(self.rviz_button, 5, 2)
-        launch_layout.addWidget(self.pid_gains_button, 5, 3)
+        launch_layout.addWidget(QLabel('External map'), 4, 3)
+        launch_layout.addWidget(self.external_map_frame, 4, 4, 1, 2)
+        launch_layout.addWidget(QLabel('Robot base frame'), 5, 0)
+        launch_layout.addWidget(self.robot_base_frame, 5, 1, 1, 2)
+        launch_layout.addWidget(QLabel('Robot TF root'), 5, 3)
+        launch_layout.addWidget(self.robot_tree_root_frame, 5, 4, 1, 2)
+        launch_layout.addWidget(self.launch_button, 6, 0)
+        launch_layout.addWidget(self.launch_sim_button, 6, 1)
+        launch_layout.addWidget(self.rviz_button, 6, 2)
+        launch_layout.addWidget(self.pid_gains_button, 6, 3)
+        launch_layout.addWidget(self.sync_workspace_button, 6, 4)
 
         component_group = QGroupBox('Components')
         component_layout = QGridLayout(component_group)
         self.base_follower_button = QPushButton('Launch Base Follower')
         self.arm_follower_button = QPushButton('Launch Arm Follower')
         self.path_index_button = QPushButton('Launch Path Index')
-        self.current_tcp_pose_button = QPushButton('Launch TCP Pose')
+        self.current_tcp_pose_button = QPushButton('Launch Transformations')
         self.arm_controllers_button = QPushButton('Start Controllers')
         self.switch_arm_velocity_button = QPushButton('Switch Arm Velocity')
         self.path_index_rate_spin = QDoubleSpinBox()
@@ -521,6 +553,9 @@ class OperatorWindow(QMainWindow):
         self.base_pose_topic.editingFinished.connect(self._save_hardware_topics)
         self.arm_pose_topic.editingFinished.connect(self._save_hardware_topics)
         self.control_frame.editingFinished.connect(self._save_hardware_topics)
+        self.external_map_frame.editingFinished.connect(self._save_hardware_topics)
+        self.robot_base_frame.editingFinished.connect(self._save_hardware_topics)
+        self.robot_tree_root_frame.editingFinished.connect(self._save_hardware_topics)
         self.simulation_checkbox.toggled.connect(self._simulation_mode_changed)
         self.platform_combo.currentIndexChanged.connect(self._set_platform)
         self.follower_type_combo.currentIndexChanged.connect(self._set_follower_type)
@@ -541,6 +576,7 @@ class OperatorWindow(QMainWindow):
         self.start_following_button.clicked.connect(self._start_following)
         self.stop_following_button.clicked.connect(self._stop_following)
         self.rviz_button.clicked.connect(self._open_rviz)
+        self.sync_workspace_button.clicked.connect(self._sync_workspace)
         self.index_spin.valueChanged.connect(self._publish_path_index)
         self.velocity_slider.valueChanged.connect(self._publish_overrides)
         self.path_index_rate_spin.valueChanged.connect(self._set_path_index_rate)
@@ -624,6 +660,9 @@ class OperatorWindow(QMainWindow):
         self._config['base_pose_topic'] = self.base_pose_topic.text().strip()
         self._config['arm_pose_topic'] = self.arm_pose_topic.text().strip()
         self._config['control_frame'] = self.control_frame.text().strip()
+        self._config['external_map_frame'] = self.external_map_frame.text().strip()
+        self._config['robot_base_frame'] = self.robot_base_frame.text().strip()
+        self._config['robot_tree_root_frame'] = self.robot_tree_root_frame.text().strip()
         self._save_config()
 
     def _open_pid_gains_window(self) -> None:
@@ -1005,37 +1044,41 @@ class OperatorWindow(QMainWindow):
         self.processes.start(CURRENT_TCP_POSE_NAME, command)
 
     def _start_pose_adapters(self) -> None:
-        adapters = (
-            (
-                BASE_POSE_ADAPTER_NAME,
-                self.base_pose_topic.text().strip(),
-                '/robot_pose',
-                '/am/base_pose_ready',
-            ),
-            (
-                ARM_POSE_ADAPTER_NAME,
-                self.arm_pose_topic.text().strip(),
-                '/current_tcp_pose',
-                '/am/arm_pose_ready',
-            ),
-        )
-        for name, input_topic, output_topic, ready_topic in adapters:
-            command = [
-                'ros2',
-                'run',
-                'am_operator_gui',
-                'pose_stamped_adapter',
-                '--ros-args',
-                '-r', f'__node:={name}',
-                '-p', f'use_sim_time:={self._use_sim_time()}',
-                '-p', f'input_topic:={input_topic}',
-                '-p', f'output_topic:={output_topic}',
-                '-p', f'target_frame:={self.control_frame.text().strip()}',
-                '-p', f'ready_topic:={ready_topic}',
-                '-p', 'stale_timeout:=0.5',
-            ]
-            self._append_process_output(name, ' '.join(command))
-            self.processes.start(name, command)
+        base_command = [
+            'ros2',
+            'run',
+            'am_operator_gui',
+            'external_base_reference',
+            '--ros-args',
+            '-r', f'__node:={BASE_POSE_ADAPTER_NAME}',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
+            '-p', f'input_topic:={self.base_pose_topic.text().strip()}',
+            '-p', 'output_topic:=/robot_pose',
+            '-p', f'map_frame:={self.external_map_frame.text().strip()}',
+            '-p', f'robot_base_frame:={self.robot_base_frame.text().strip()}',
+            '-p', f'robot_tree_root_frame:={self.robot_tree_root_frame.text().strip()}',
+            '-p', 'ready_topic:=/am/base_pose_ready',
+            '-p', 'stale_timeout:=0.5',
+        ]
+        self._append_process_output(BASE_POSE_ADAPTER_NAME, ' '.join(base_command))
+        self.processes.start(BASE_POSE_ADAPTER_NAME, base_command)
+
+        arm_command = [
+            'ros2',
+            'run',
+            'am_operator_gui',
+            'pose_stamped_adapter',
+            '--ros-args',
+            '-r', f'__node:={ARM_POSE_ADAPTER_NAME}',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
+            '-p', f'input_topic:={self.arm_pose_topic.text().strip()}',
+            '-p', 'output_topic:=/current_tcp_pose',
+            '-p', f'target_frame:={self.control_frame.text().strip()}',
+            '-p', 'ready_topic:=/am/arm_pose_ready',
+            '-p', 'stale_timeout:=0.5',
+        ]
+        self._append_process_output(ARM_POSE_ADAPTER_NAME, ' '.join(arm_command))
+        self.processes.start(ARM_POSE_ADAPTER_NAME, arm_command)
 
     def _toggle_arm_controllers(self) -> None:
         process = self.processes.get(ARM_CONTROLLERS_NAME)
@@ -1207,6 +1250,29 @@ class OperatorWindow(QMainWindow):
         self._append_process_output(RVIZ_NAME, ' '.join(command))
         self.processes.start(RVIZ_NAME, command)
         self._refresh_process_states()
+
+    def _sync_workspace(self) -> None:
+        process = self.processes.get(SYNC_WORKSPACE_NAME)
+        if process is not None and process.is_running():
+            self.processes.stop(SYNC_WORKSPACE_NAME)
+            self._append_process_output(SYNC_WORKSPACE_NAME, 'stopped by operator')
+            self._refresh_process_states()
+            return
+
+        self._start_sync_workspace()
+        self._refresh_process_states()
+
+    def _start_sync_workspace(self) -> None:
+        command = [
+            'rsync',
+            '-az',
+            '-e',
+            'ssh',
+            f'{WORKSPACE_SRC_ROOT}/',
+            SYNC_REMOTE_TARGET,
+        ]
+        self._append_process_output(SYNC_WORKSPACE_NAME, ' '.join(command))
+        self.processes.start(SYNC_WORKSPACE_NAME, command)
 
     def _publish_path_index(self, value: int) -> None:
         self.ros_bridge.publish_path_index(value)
@@ -1437,6 +1503,7 @@ class OperatorWindow(QMainWindow):
         self._set_switch_arm_velocity_state()
         self._set_start_following_state()
         self._set_rviz_state()
+        self._set_sync_workspace_state()
 
     def _set_launch_button_state(self) -> None:
         running = any(
@@ -1462,8 +1529,8 @@ class OperatorWindow(QMainWindow):
         self._set_process_toggle_button(
             self.current_tcp_pose_button,
             CURRENT_TCP_POSE_NAME,
-            'Stop TCP Pose',
-            'Launch TCP Pose',
+            'Stop Transformations',
+            'Launch Transformations',
         )
 
     def _set_arm_controllers_button_state(self) -> None:
@@ -1595,6 +1662,14 @@ class OperatorWindow(QMainWindow):
         process = self.processes.get(RVIZ_NAME)
         running = process is not None and process.is_running()
         self._style_button(self.rviz_button, 'green' if running else 'grey')
+
+    def _set_sync_workspace_state(self) -> None:
+        self._set_process_toggle_button(
+            self.sync_workspace_button,
+            SYNC_WORKSPACE_NAME,
+            'Stop Sync',
+            'Sync Workspace',
+        )
 
     def _set_process_toggle_button(
         self,

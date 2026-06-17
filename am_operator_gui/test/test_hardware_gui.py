@@ -7,6 +7,9 @@ from am_operator_gui.gui import (
     DEFAULT_PID_GAINS,
     OperatorWindow,
     PATH_INDEX_NAME,
+    SYNC_REMOTE_TARGET,
+    SYNC_WORKSPACE_NAME,
+    WORKSPACE_SRC_ROOT,
 )
 
 
@@ -192,6 +195,35 @@ def test_base_follower_uses_configured_pid_gains() -> None:
     assert 'kp_yaw:=1.300000' in command
 
 
+def test_hardware_pose_adapters_start_external_base_reference() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        base_pose_topic=FakeLineEdit('/vicon/Base_RB/Base_RB'),
+        arm_pose_topic=FakeLineEdit('/vicon/Tool_Flange/Tool_Flange'),
+        control_frame=FakeLineEdit('map'),
+        external_map_frame=FakeLineEdit('map'),
+        robot_base_frame=FakeLineEdit('base_link'),
+        robot_tree_root_frame=FakeLineEdit('odom'),
+        _use_sim_time=lambda: 'false',
+        _append_process_output=lambda *_args: None,
+    )
+
+    OperatorWindow._start_pose_adapters(fake)
+
+    base_command = processes.started[0][1]
+    arm_command = processes.started[1][1]
+    assert 'external_base_reference' in base_command
+    assert 'input_topic:=/vicon/Base_RB/Base_RB' in base_command
+    assert 'output_topic:=/robot_pose' in base_command
+    assert 'map_frame:=map' in base_command
+    assert 'robot_base_frame:=base_link' in base_command
+    assert 'robot_tree_root_frame:=odom' in base_command
+    assert 'pose_stamped_adapter' in arm_command
+    assert 'input_topic:=/vicon/Tool_Flange/Tool_Flange' in arm_command
+    assert 'target_frame:=map' in arm_command
+
+
 def test_arm_follower_uses_configured_pid_gains() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
@@ -266,3 +298,25 @@ def test_control_frame_defaults_from_path_json(tmp_path: Path) -> None:
         encoding='utf-8',
     )
     assert OperatorWindow._path_frame_from_folder(tmp_path) == 'vicon_world'
+
+
+def test_sync_workspace_uses_rsync_to_remote_src() -> None:
+    processes = FakeProcesses(running=())
+    fake = SimpleNamespace(
+        processes=processes,
+        _append_process_output=lambda *_args: None,
+    )
+
+    OperatorWindow._start_sync_workspace(fake)
+
+    assert processes.started == [(
+        SYNC_WORKSPACE_NAME,
+        [
+            'rsync',
+            '-az',
+            '-e',
+            'ssh',
+            f'{WORKSPACE_SRC_ROOT}/',
+            SYNC_REMOTE_TARGET,
+        ],
+    )]
