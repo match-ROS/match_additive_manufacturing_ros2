@@ -1,8 +1,8 @@
 {
-  "frame_id": "robotnik_simple",
+  "frame_id": "map",
   "poses": [
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 12,
         "nanosec": 660000000
@@ -20,7 +20,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 12,
         "nanosec": 986530612
@@ -38,7 +38,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 13,
         "nanosec": 313061224
@@ -56,7 +56,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 13,
         "nanosec": 639591837
@@ -74,7 +74,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 13,
         "nanosec": 966122449
@@ -92,7 +92,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 14,
         "nanosec": 292653061
@@ -110,7 +110,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 14,
         "nanosec": 619183673
@@ -128,7 +128,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 14,
         "nanosec": 945714286
@@ -146,7 +146,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 15,
         "nanosec": 272244898
@@ -164,7 +164,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 15,
         "nanosec": 598775510
@@ -182,7 +182,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 15,
         "nanosec": 925306122
@@ -200,7 +200,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 16,
         "nanosec": 251836735
@@ -218,7 +218,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 16,
         "nanosec": 578367347
@@ -236,7 +236,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 16,
         "nanosec": 904897959
@@ -254,7 +254,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 17,
         "nanosec": 231428571
@@ -272,7 +272,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 17,
         "nanosec": 557959184
@@ -290,7 +290,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 17,
         "nanosec": 884489796
@@ -308,7 +308,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 18,
         "nanosec": 211020408
@@ -326,7 +326,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 18,
         "nanosec": 537551020
@@ -344,7 +344,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 18,
         "nanosec": 864081633
@@ -362,7 +362,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 19,
         "nanosec": 190612245
@@ -380,7 +380,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 19,
         "nanosec": 517142857
@@ -398,7 +398,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 19,
         "nanosec": 843673469
@@ -416,7 +416,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 20,
         "nanosec": 170204082
@@ -434,7 +434,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 20,
         "nanosec": 496734694
@@ -452,7 +452,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 20,
         "nanosec": 798409643
@@ -470,7 +470,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 21,
         "nanosec": 124940256
@@ -488,7 +488,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 21,
         "nanosec": 451470868
@@ -506,7 +506,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 21,
         "nanosec": 778001480
@@ -524,7 +524,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 22,
         "nanosec": 104532092
@@ -542,7 +542,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 22,
         "nanosec": 431062704
@@ -560,7 +560,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 22,
         "nanosec": 757593317
@@ -578,7 +578,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 23,
         "nanosec": 84123929
@@ -596,7 +596,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 23,
         "nanosec": 410654541
@@ -614,7 +614,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 23,
         "nanosec": 737185153
@@ -632,7 +632,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 24,
         "nanosec": 63715766
@@ -650,7 +650,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 24,
         "nanosec": 390246378
@@ -668,7 +668,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 24,
         "nanosec": 716776990
@@ -686,7 +686,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 25,
         "nanosec": 43307602
@@ -704,7 +704,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 25,
         "nanosec": 369838215
@@ -722,7 +722,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 25,
         "nanosec": 696368827
@@ -740,7 +740,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 26,
         "nanosec": 22899439
@@ -758,7 +758,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 26,
         "nanosec": 349430051
@@ -776,7 +776,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 26,
         "nanosec": 675960664
@@ -794,7 +794,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 27,
         "nanosec": 2491276
@@ -812,7 +812,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 27,
         "nanosec": 329021888
@@ -830,7 +830,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 27,
         "nanosec": 655552500
@@ -848,7 +848,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 27,
         "nanosec": 982083113
@@ -866,7 +866,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 28,
         "nanosec": 308613725
@@ -884,7 +884,7 @@
       }
     },
     {
-      "frame_id": "robotnik_simple",
+      "frame_id": "map",
       "stamp": {
         "sec": 28,
         "nanosec": 635144337
