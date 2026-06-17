@@ -12,6 +12,8 @@ from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
@@ -53,6 +55,110 @@ MOVE_ARM_NAME = 'move_arm_to_start'
 SWITCH_ARM_VELOCITY_NAME = 'switch_arm_velocity_controller'
 RVIZ_NAME = 'rviz'
 
+DEFAULT_PID_GAINS = {
+    'base_follower.kp_x': 0.8,
+    'base_follower.kp_y': 0.8,
+    'base_follower.kp_yaw': 1.2,
+    'base_move.kp_linear': 0.6,
+    'base_move.kp_lateral': 0.6,
+    'base_move.kp_angular_to_point': 1.5,
+    'base_move.kp_angular_reorient': 1.2,
+    'arm_direction.kp_z': 0.7,
+    'arm_direction.ki_z': 0.0,
+    'arm_direction.kd_z': 0.0,
+    'arm_direction.orthogonal_kp': 1.0,
+    'arm_pid_twist.Kp_linear_x': 1.0,
+    'arm_pid_twist.Ki_linear_x': 0.0,
+    'arm_pid_twist.Kd_linear_x': 0.0,
+    'arm_pid_twist.Kp_linear_y': 1.0,
+    'arm_pid_twist.Ki_linear_y': 0.0,
+    'arm_pid_twist.Kd_linear_y': 0.0,
+    'arm_pid_twist.Kp_linear_z': 1.0,
+    'arm_pid_twist.Ki_linear_z': 0.0,
+    'arm_pid_twist.Kd_linear_z': 0.0,
+    'arm_pid_twist.Kp_angular_x': 1.0,
+    'arm_pid_twist.Ki_angular_x': 0.0,
+    'arm_pid_twist.Kd_angular_x': 0.0,
+    'arm_pid_twist.Kp_angular_y': 1.0,
+    'arm_pid_twist.Ki_angular_y': 0.0,
+    'arm_pid_twist.Kd_angular_y': 0.0,
+    'arm_pid_twist.Kp_angular_z': 1.0,
+    'arm_pid_twist.Ki_angular_z': 0.0,
+    'arm_pid_twist.Kd_angular_z': 0.0,
+    'arm_orientation.kp_orientation': 1.0,
+    'arm_orientation.ki_orientation': 0.0,
+    'arm_orientation.kd_orientation': 0.0,
+    'arm_move.kp_linear': 0.8,
+    'arm_move.kp_angular': 1.0,
+}
+
+PID_GAIN_GROUPS = (
+    (
+        'Mobile Base Follower',
+        (
+            ('base_follower.kp_x', 'Kp X'),
+            ('base_follower.kp_y', 'Kp Y'),
+            ('base_follower.kp_yaw', 'Kp yaw'),
+        ),
+    ),
+    (
+        'Mobile Base Move To Start',
+        (
+            ('base_move.kp_linear', 'Kp linear'),
+            ('base_move.kp_lateral', 'Kp lateral'),
+            ('base_move.kp_angular_to_point', 'Kp angular to point'),
+            ('base_move.kp_angular_reorient', 'Kp angular reorient'),
+        ),
+    ),
+    (
+        'Arm Path Direction',
+        (
+            ('arm_direction.kp_z', 'Kp Z'),
+            ('arm_direction.ki_z', 'Ki Z'),
+            ('arm_direction.kd_z', 'Kd Z'),
+            ('arm_direction.orthogonal_kp', 'Orthogonal Kp'),
+        ),
+    ),
+    (
+        'Arm Twist PID',
+        (
+            ('arm_pid_twist.Kp_linear_x', 'Kp linear X'),
+            ('arm_pid_twist.Ki_linear_x', 'Ki linear X'),
+            ('arm_pid_twist.Kd_linear_x', 'Kd linear X'),
+            ('arm_pid_twist.Kp_linear_y', 'Kp linear Y'),
+            ('arm_pid_twist.Ki_linear_y', 'Ki linear Y'),
+            ('arm_pid_twist.Kd_linear_y', 'Kd linear Y'),
+            ('arm_pid_twist.Kp_linear_z', 'Kp linear Z'),
+            ('arm_pid_twist.Ki_linear_z', 'Ki linear Z'),
+            ('arm_pid_twist.Kd_linear_z', 'Kd linear Z'),
+            ('arm_pid_twist.Kp_angular_x', 'Kp angular X'),
+            ('arm_pid_twist.Ki_angular_x', 'Ki angular X'),
+            ('arm_pid_twist.Kd_angular_x', 'Kd angular X'),
+            ('arm_pid_twist.Kp_angular_y', 'Kp angular Y'),
+            ('arm_pid_twist.Ki_angular_y', 'Ki angular Y'),
+            ('arm_pid_twist.Kd_angular_y', 'Kd angular Y'),
+            ('arm_pid_twist.Kp_angular_z', 'Kp angular Z'),
+            ('arm_pid_twist.Ki_angular_z', 'Ki angular Z'),
+            ('arm_pid_twist.Kd_angular_z', 'Kd angular Z'),
+        ),
+    ),
+    (
+        'Arm Orientation',
+        (
+            ('arm_orientation.kp_orientation', 'Kp orientation'),
+            ('arm_orientation.ki_orientation', 'Ki orientation'),
+            ('arm_orientation.kd_orientation', 'Kd orientation'),
+        ),
+    ),
+    (
+        'Arm Move To Start',
+        (
+            ('arm_move.kp_linear', 'Kp linear'),
+            ('arm_move.kp_angular', 'Kp angular'),
+        ),
+    ),
+)
+
 PLATFORM_PROFILES = {
     'robotnik': {
         'label': 'Robotnik',
@@ -87,6 +193,54 @@ PLATFORM_PROFILES = {
 }
 
 
+class PidGainsDialog(QDialog):
+
+    def __init__(self, parent: 'OperatorWindow', gains: dict[str, float]) -> None:
+        super().__init__(parent)
+        self.setWindowTitle('PID Gains')
+        self.resize(640, 720)
+        self._parent = parent
+        self._spins: dict[str, QDoubleSpinBox] = {}
+
+        layout = QVBoxLayout(self)
+        for group_name, fields in PID_GAIN_GROUPS:
+            group = QGroupBox(group_name)
+            grid = QGridLayout(group)
+            for index, (key, label) in enumerate(fields):
+                spin = QDoubleSpinBox()
+                spin.setRange(-10000.0, 10000.0)
+                spin.setDecimals(4)
+                spin.setSingleStep(0.05)
+                spin.setValue(float(gains.get(key, DEFAULT_PID_GAINS[key])))
+                self._spins[key] = spin
+                row = index // 3
+                column = (index % 3) * 2
+                grid.addWidget(QLabel(label), row, column)
+                grid.addWidget(spin, row, column + 1)
+            layout.addWidget(group)
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.Save | QDialogButtonBox.Cancel | QDialogButtonBox.Reset
+        )
+        button_box.accepted.connect(self._save)
+        button_box.rejected.connect(self.reject)
+        reset_button = button_box.button(QDialogButtonBox.Reset)
+        if reset_button is not None:
+            reset_button.clicked.connect(self._reset_defaults)
+        layout.addWidget(button_box)
+
+    def configured_gains(self) -> dict[str, float]:
+        return {key: float(spin.value()) for key, spin in self._spins.items()}
+
+    def _reset_defaults(self) -> None:
+        for key, spin in self._spins.items():
+            spin.setValue(DEFAULT_PID_GAINS[key])
+
+    def _save(self) -> None:
+        self._parent._set_pid_gains(self.configured_gains())
+        self.accept()
+
+
 class OperatorWindow(QMainWindow):
     ros_status_changed = pyqtSignal(bool, bool, bool, bool, bool)
     path_index_changed = pyqtSignal(int)
@@ -104,6 +258,7 @@ class OperatorWindow(QMainWindow):
         self._launch_all_active = False
         self._launch_all_timers: list[QTimer] = []
         self._config = self._load_config()
+        self._pid_gains_dialog: Optional[PidGainsDialog] = None
 
         self.processes = ProcessRegistry(output_callback=self._on_process_output)
         self.ros_bridge = RosBridge(
@@ -183,6 +338,18 @@ class OperatorWindow(QMainWindow):
         configured = str(self._config.get('control_frame', '')).strip()
         return configured or self._path_frame_from_folder(Path(DEFAULT_TRAJECTORY_DIR))
 
+    def _configured_pid_gains(self) -> dict[str, float]:
+        configured = self._config.get('pid_gains', {})
+        gains = dict(DEFAULT_PID_GAINS)
+        if not isinstance(configured, dict):
+            return gains
+        for key, default in DEFAULT_PID_GAINS.items():
+            try:
+                gains[key] = float(configured.get(key, default))
+            except (TypeError, ValueError):
+                gains[key] = default
+        return gains
+
     def _build_ui(self) -> None:
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -219,6 +386,7 @@ class OperatorWindow(QMainWindow):
         self.launch_sim_button = QPushButton('Launch Sim')
         self.publish_path_button = QPushButton('Publish Path')
         self.rviz_button = QPushButton('Open RViz')
+        self.pid_gains_button = QPushButton('PID Gains...')
 
         launch_layout.addWidget(self.simulation_checkbox, 0, 0)
         launch_layout.addWidget(QLabel('Platform'), 0, 1)
@@ -245,6 +413,7 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.launch_button, 5, 0)
         launch_layout.addWidget(self.launch_sim_button, 5, 1)
         launch_layout.addWidget(self.rviz_button, 5, 2)
+        launch_layout.addWidget(self.pid_gains_button, 5, 3)
 
         component_group = QGroupBox('Components')
         component_layout = QGridLayout(component_group)
@@ -358,6 +527,7 @@ class OperatorWindow(QMainWindow):
         self.diff_drive_checkbox.toggled.connect(self._set_diff_drive_mode)
         self.launch_button.clicked.connect(self._toggle_launch_all)
         self.launch_sim_button.clicked.connect(self._toggle_sim)
+        self.pid_gains_button.clicked.connect(self._open_pid_gains_window)
         self.publish_path_button.clicked.connect(self._publish_path)
         self.base_follower_button.clicked.connect(self._toggle_base_follower)
         self.arm_follower_button.clicked.connect(self._toggle_arm_follower)
@@ -455,6 +625,40 @@ class OperatorWindow(QMainWindow):
         self._config['arm_pose_topic'] = self.arm_pose_topic.text().strip()
         self._config['control_frame'] = self.control_frame.text().strip()
         self._save_config()
+
+    def _open_pid_gains_window(self) -> None:
+        if self._pid_gains_dialog is not None and self._pid_gains_dialog.isVisible():
+            self._pid_gains_dialog.raise_()
+            self._pid_gains_dialog.activateWindow()
+            return
+        self._pid_gains_dialog = PidGainsDialog(self, self._configured_pid_gains())
+        self._pid_gains_dialog.show()
+
+    def _set_pid_gains(self, gains: dict[str, float]) -> None:
+        self._config['pid_gains'] = {
+            key: float(gains.get(key, DEFAULT_PID_GAINS[key]))
+            for key in DEFAULT_PID_GAINS
+        }
+        self._save_config()
+        self._append_process_output('gui', 'saved PID gains; restart affected controllers to apply')
+
+    def _pid_gain(self, key: str) -> float:
+        return self._configured_pid_gains()[key]
+
+    def _pid_launch_arguments(self, key_prefix: str, names: tuple[str, ...]) -> list[str]:
+        return [
+            f'{name}:={self._ros_float_literal(self._pid_gain(f"{key_prefix}.{name}"))}'
+            for name in names
+        ]
+
+    def _pid_ros_parameters(self, key_prefix: str, names: tuple[str, ...]) -> list[str]:
+        parameters = []
+        for name in names:
+            parameters.extend([
+                '-p',
+                f'{name}:={self._ros_float_literal(self._pid_gain(f"{key_prefix}.{name}"))}',
+            ])
+        return parameters
 
     def _simulation_mode_changed(self, _enabled: bool) -> None:
         self._refresh_process_states()
@@ -637,6 +841,9 @@ class OperatorWindow(QMainWindow):
             '-p', 'start_condition_topic:=/start_condition',
             '-p', 'velocity_override_topic:=/velocity_override',
             '-p', 'lookahead_distance:=0.3',
+            '-p', f"kp_x:={self._ros_float_literal(self._pid_gain('base_follower.kp_x'))}",
+            '-p', f"kp_y:={self._ros_float_literal(self._pid_gain('base_follower.kp_y'))}",
+            '-p', f"kp_yaw:={self._ros_float_literal(self._pid_gain('base_follower.kp_yaw'))}",
             '-p', f"max_vx:={self._ros_float_literal(float(profile['max_vx']))}",
             '-p', f"max_vy:={self._ros_float_literal(float(profile['max_vy']))}",
             '-p', f"max_wz:={self._ros_float_literal(float(profile['max_wz']))}",
@@ -692,6 +899,37 @@ class OperatorWindow(QMainWindow):
             f'direction_control_mode:={self.direction_mode.currentText()}',
             f'default_velocity:={self._ros_float_literal(self._default_velocity_param())}',
         ]
+        command.extend(self._pid_launch_arguments(
+            'arm_direction',
+            ('kp_z', 'ki_z', 'kd_z', 'orthogonal_kp'),
+        ))
+        command.extend(self._pid_launch_arguments(
+            'arm_pid_twist',
+            (
+                'Kp_linear_x',
+                'Ki_linear_x',
+                'Kd_linear_x',
+                'Kp_linear_y',
+                'Ki_linear_y',
+                'Kd_linear_y',
+                'Kp_linear_z',
+                'Ki_linear_z',
+                'Kd_linear_z',
+                'Kp_angular_x',
+                'Ki_angular_x',
+                'Kd_angular_x',
+                'Kp_angular_y',
+                'Ki_angular_y',
+                'Kd_angular_y',
+                'Kp_angular_z',
+                'Ki_angular_z',
+                'Kd_angular_z',
+            ),
+        ))
+        command.extend(self._pid_launch_arguments(
+            'arm_orientation',
+            ('kp_orientation', 'ki_orientation', 'kd_orientation'),
+        ))
         self._append_process_output(ARM_FOLLOWER_NAME, ' '.join(command))
         self.processes.start(ARM_FOLLOWER_NAME, command)
 
@@ -873,6 +1111,10 @@ class OperatorWindow(QMainWindow):
             '-p', 'start_condition_topic:=/start_pose_reached',
             '-p', 'distance_tolerance:=0.06',
             '-p', 'yaw_tolerance:=0.08',
+            '-p', f"kp_linear:={self._ros_float_literal(self._pid_gain('base_move.kp_linear'))}",
+            '-p', f"kp_lateral:={self._ros_float_literal(self._pid_gain('base_move.kp_lateral'))}",
+            '-p', f"kp_angular_to_point:={self._ros_float_literal(self._pid_gain('base_move.kp_angular_to_point'))}",
+            '-p', f"kp_angular_reorient:={self._ros_float_literal(self._pid_gain('base_move.kp_angular_reorient'))}",
             '-p', f"max_linear_velocity:={self._ros_float_literal(float(profile['move_max_linear']))}",
             '-p', f"max_lateral_velocity:={self._ros_float_literal(float(profile['move_max_lateral']))}",
             '-p', f"max_angular_velocity:={self._ros_float_literal(float(profile['move_max_angular']))}",
@@ -906,6 +1148,10 @@ class OperatorWindow(QMainWindow):
             'cmd_vel_topic:=/jparse_velocity_controller_ur/twist_cmd_world',
             f'path_frame:={self.control_frame.text().strip()}',
         ]
+        command.extend(self._pid_launch_arguments(
+            'arm_move',
+            ('kp_linear', 'kp_angular'),
+        ))
         self._append_process_output(MOVE_ARM_NAME, ' '.join(command))
         self.processes.start(MOVE_ARM_NAME, command)
 

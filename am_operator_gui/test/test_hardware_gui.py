@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from am_operator_gui.gui import (
     ARM_FOLLOWER_NAME,
     BASE_FOLLOWER_NAME,
+    DEFAULT_PID_GAINS,
     OperatorWindow,
     PATH_INDEX_NAME,
 )
@@ -25,6 +26,28 @@ class FakeLineEdit:
 
     def text(self) -> str:
         return self._text
+
+
+class FakeComboBox:
+
+    def __init__(self, text: str = '', data: str = '') -> None:
+        self._text = text
+        self._data = data
+
+    def currentText(self) -> str:
+        return self._text
+
+    def currentData(self) -> str:
+        return self._data
+
+
+class FakeSpinBox:
+
+    def __init__(self, value: int) -> None:
+        self._value = value
+
+    def value(self) -> int:
+        return self._value
 
 
 class FakeProcess:
@@ -137,6 +160,75 @@ def test_simulation_arm_stack_keeps_sim_controller_names() -> None:
         'velocity_command_topic:=/robot/arm_forward_velocity_controller/commands'
         in command
     )
+
+
+def test_base_follower_uses_configured_pid_gains() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        platform_combo=FakeComboBox(data='robotnik'),
+        diff_drive_checkbox=FakeCheckBox(False),
+        follower_type_combo=FakeComboBox(data='pid'),
+        _use_sim_time=lambda: 'false',
+        _default_velocity_param=lambda: -1.0,
+        _pid_gain=lambda key: {
+            'base_follower.kp_x': 1.1,
+            'base_follower.kp_y': 1.2,
+            'base_follower.kp_yaw': 1.3,
+        }.get(key, DEFAULT_PID_GAINS[key]),
+        _ros_float_literal=OperatorWindow._ros_float_literal,
+        _append_process_output=lambda *_args: None,
+    )
+    fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
+    fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
+    fake._diff_drive_mode = lambda: OperatorWindow._diff_drive_mode(fake)
+    fake._current_follower_type = lambda: OperatorWindow._current_follower_type(fake)
+
+    OperatorWindow._start_base_follower(fake)
+
+    command = processes.started[0][1]
+    assert 'kp_x:=1.100000' in command
+    assert 'kp_y:=1.200000' in command
+    assert 'kp_yaw:=1.300000' in command
+
+
+def test_arm_follower_uses_configured_pid_gains() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        control_frame=FakeLineEdit('robotnik_simple'),
+        direction_mode=FakeComboBox(text='goal_direction'),
+        index_spin=FakeSpinBox(0),
+        _use_sim_time=lambda: 'false',
+        _arm_velocity_command_topic=lambda: '/robot/arm/forward_velocity_controller/commands',
+        _arm_trajectory_topic=lambda: '/robot/arm/joint_trajectory_controller/joint_trajectory',
+        _default_velocity_param=lambda: -1.0,
+        _pid_gain=lambda key: {
+            'arm_direction.kp_z': 2.1,
+            'arm_direction.ki_z': 2.2,
+            'arm_direction.kd_z': 2.3,
+            'arm_direction.orthogonal_kp': 2.4,
+            'arm_pid_twist.Kp_linear_x': 3.1,
+            'arm_orientation.kp_orientation': 4.1,
+            'arm_orientation.ki_orientation': 4.2,
+            'arm_orientation.kd_orientation': 4.3,
+        }.get(key, DEFAULT_PID_GAINS[key]),
+        _pid_launch_arguments=lambda prefix, names: OperatorWindow._pid_launch_arguments(fake, prefix, names),
+        _ros_float_literal=OperatorWindow._ros_float_literal,
+        _append_process_output=lambda *_args: None,
+    )
+
+    OperatorWindow._start_arm_follower(fake, move_to_start_pose=False)
+
+    command = processes.started[0][1]
+    assert 'kp_z:=2.100000' in command
+    assert 'ki_z:=2.200000' in command
+    assert 'kd_z:=2.300000' in command
+    assert 'orthogonal_kp:=2.400000' in command
+    assert 'Kp_linear_x:=3.100000' in command
+    assert 'kp_orientation:=4.100000' in command
+    assert 'ki_orientation:=4.200000' in command
+    assert 'kd_orientation:=4.300000' in command
 
 
 def test_motion_readiness_requires_every_gate() -> None:
