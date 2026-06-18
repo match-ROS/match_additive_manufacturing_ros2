@@ -6,6 +6,7 @@ simple_base_follower:
     cmd_vel_topic: /robot/robotnik_base_control/cmd_vel_unstamped
     output_stamped: false
     command_frame_id: base_link
+    external_path_index_stride: 10
     publish_rate: 20.0
     lookahead_distance: 0.4
     stale_pose_timeout: 0.5
@@ -20,9 +21,11 @@ simple_base_follower:
     max_vy: 0.4
     max_wz: 0.8
     smooth_velocity_commands: true
+    velocity_smoothing_method: accel_limit
     max_accel_x: 0.25
     max_accel_y: 0.25
     max_accel_wz: 0.5
+    moving_average_window_size: 5
 
     xy_goal_tolerance: 0.05
     yaw_goal_tolerance: 0.08

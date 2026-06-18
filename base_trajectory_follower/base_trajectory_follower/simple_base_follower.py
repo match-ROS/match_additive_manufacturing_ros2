@@ -32,6 +32,7 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('command_frame_id', 'base_link')
         self.declare_parameter('use_external_path_index', False)
         self.declare_parameter('path_index_topic', '/path_index')
+        self.declare_parameter('external_path_index_stride', 10)
         self.declare_parameter('wait_for_start_condition', False)
         self.declare_parameter('start_condition_topic', '/start_condition')
         self.declare_parameter('publish_rate', 20.0)
@@ -50,9 +51,11 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('max_vy', 0.4)
         self.declare_parameter('max_wz', 0.8)
         self.declare_parameter('smooth_velocity_commands', True)
+        self.declare_parameter('velocity_smoothing_method', 'accel_limit')
         self.declare_parameter('max_accel_x', 0.25)
         self.declare_parameter('max_accel_y', 0.25)
         self.declare_parameter('max_accel_wz', 0.5)
+        self.declare_parameter('moving_average_window_size', 5)
         self.declare_parameter('default_linear_velocity', -1.0)
         self.declare_parameter('xy_goal_tolerance', 0.05)
         self.declare_parameter('yaw_goal_tolerance', 0.08)
@@ -74,6 +77,7 @@ class SimpleBaseFollower(Node):
         self.velocity_override = 1.0
         self.last_twist = Twist()
         self.last_command_time = None
+        self.moving_average_history: List[Twist] = []
 
         self.path_topic = str(self.get_parameter('path_topic').value)
         self.robot_pose_topic = str(self.get_parameter('robot_pose_topic').value)
@@ -143,7 +147,7 @@ class SimpleBaseFollower(Node):
         self.path_timestamps = timestamps
         self.current_index = 0
         if self.external_path_index is not None and self.path:
-            self.current_index = max(0, min(self.external_path_index, len(self.path) - 1))
+            self.current_index = self._path_index_from_external_index(self.external_path_index)
         self.goal_reached = False
         self.get_logger().info(f"Received base path with {len(self.path)} poses.")
 
@@ -189,7 +193,7 @@ class SimpleBaseFollower(Node):
             if self.external_path_index is None:
                 self._publish_stop('no path index')
                 return
-            self.current_index = max(0, min(self.external_path_index, len(self.path) - 1))
+            self.current_index = self._path_index_from_external_index(self.external_path_index)
         else:
             lookahead = float(self.get_parameter('lookahead_distance').value)
             self.current_index = select_lookahead_index(
@@ -249,6 +253,10 @@ class SimpleBaseFollower(Node):
         age = (self.get_clock().now() - self.last_pose_time).nanoseconds / 1e9
         return age > timeout
 
+    def _path_index_from_external_index(self, external_index: int) -> int:
+        stride = max(1, int(self.get_parameter('external_path_index_stride').value))
+        return max(0, min(int(external_index) * stride, len(self.path) - 1))
+
     def _publish_stop(self, reason: str) -> None:
         self._reset_smoother()
         self._publish_twist(Twist())
@@ -260,7 +268,17 @@ class SimpleBaseFollower(Node):
         if not self._as_bool(self.get_parameter('smooth_velocity_commands').value):
             self.last_twist = target
             self.last_command_time = self.get_clock().now()
+            self.moving_average_history = []
             return target
+
+        method = str(self.get_parameter('velocity_smoothing_method').value).strip().lower()
+        if method in {'moving_average', 'moving-average', 'average', 'mean'}:
+            return self._smooth_twist_moving_average(target)
+        if method not in {'accel_limit', 'acceleration_limit', 'slew_rate', 'slew'}:
+            self.get_logger().warn(
+                f"Unknown velocity_smoothing_method '{method}', using accel_limit.",
+                throttle_duration_sec=5.0,
+            )
 
         now = self.get_clock().now()
         if self.last_command_time is None:
@@ -295,9 +313,29 @@ class SimpleBaseFollower(Node):
         self.last_command_time = now
         return out
 
+    def _smooth_twist_moving_average(self, target: Twist) -> Twist:
+        window_size = max(1, int(self.get_parameter('moving_average_window_size').value))
+        sample = Twist()
+        sample.linear.x = target.linear.x
+        sample.linear.y = target.linear.y
+        sample.angular.z = target.angular.z
+
+        self.moving_average_history.append(sample)
+        self.moving_average_history = self.moving_average_history[-window_size:]
+
+        out = Twist()
+        count = float(len(self.moving_average_history))
+        out.linear.x = sum(twist.linear.x for twist in self.moving_average_history) / count
+        out.linear.y = sum(twist.linear.y for twist in self.moving_average_history) / count
+        out.angular.z = sum(twist.angular.z for twist in self.moving_average_history) / count
+        self.last_twist = out
+        self.last_command_time = self.get_clock().now()
+        return out
+
     def _reset_smoother(self) -> None:
         self.last_twist = Twist()
         self.last_command_time = None
+        self.moving_average_history = []
 
     @staticmethod
     def _slew(previous: float, target: float, max_rate: float, dt: float) -> float:

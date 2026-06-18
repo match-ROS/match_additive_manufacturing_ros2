@@ -9,6 +9,7 @@ Panels:
         - /Base Path1
         - /Arm Path1
         - /Current TCP Pose1
+        - /Current TCP Pose2
       Splitter Ratio: 0.5
     Tree Height: 664
 Visualization Manager:
@@ -226,6 +227,46 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /vicon/tool_transformed
       Value: true
+    - Alpha: 1
+      Axes Length: 0.18000000715255737
+      Axes Radius: 0.014999999664723873
+      Class: rviz_default_plugins/Pose
+      Color: 156; 39; 176
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Current TCP Pose
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /start_pose_offset
+      Value: true
+    - Alpha: 1
+      Axes Length: 0.18000000715255737
+      Axes Radius: 0.014999999664723873
+      Class: rviz_default_plugins/Pose
+      Color: 156; 39; 176
+      Enabled: false
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: Current TCP Pose
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Axes
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /vicon/tool_transformed
+      Value: false
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -247,25 +288,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 7.558290958404541
+      Distance: 42.243839263916016
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 1.513698935508728
-        Y: -0.11986034363508224
-        Z: 0.6661781668663025
+        X: 0.7797067761421204
+        Y: 0.1831834316253662
+        Z: 0.3722688555717468
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.434999942779541
+      Pitch: 1.1650002002716064
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 5.80680513381958
+      Yaw: 4.8267974853515625
     Saved: ~
 Window Geometry:
   Displays:
@@ -275,5 +316,5 @@ Window Geometry:
   Hide Right Dock: true
   QMainWindow State: 000000ff00000000fd00000001000000000000015600000326fc0200000001fb000000100044006900730070006c006100790073010000003f00000326000000cc00ffffff0000041c0000032600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Width: 1400
-  X: 363
-  Y: 119
+  X: 452
+  Y: 110

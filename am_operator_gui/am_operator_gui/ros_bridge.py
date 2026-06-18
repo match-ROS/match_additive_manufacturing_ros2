@@ -1,6 +1,7 @@
 import threading
 import math
 import statistics
+from copy import deepcopy
 from typing import Callable, Optional
 
 import rclpy
@@ -38,6 +39,9 @@ class OperatorGuiNode(Node):
         self._latest_ur_path_rate: Optional[float] = None
         self._latest_ur_path_median_segment_length: Optional[float] = None
         self._path_rate_lock = threading.Lock()
+        self._latest_base_path: Optional[Path] = None
+        self._latest_robot_pose: Optional[PoseStamped] = None
+        self._latest_pose_lock = threading.Lock()
 
         path_index_qos = QoSProfile(
             depth=1,
@@ -121,14 +125,30 @@ class OperatorGuiNode(Node):
         with self._path_rate_lock:
             return self._latest_ur_path_median_segment_length
 
+    def latest_base_path_pose(self, index: int) -> Optional[PoseStamped]:
+        with self._latest_pose_lock:
+            if self._latest_base_path is None:
+                return None
+            if index < 0 or index >= len(self._latest_base_path.poses):
+                return None
+            return deepcopy(self._latest_base_path.poses[index])
+
+    def latest_robot_pose(self) -> Optional[PoseStamped]:
+        with self._latest_pose_lock:
+            return deepcopy(self._latest_robot_pose)
+
     def _base_path_cb(self, msg: Path) -> None:
         self._has_base_path = bool(msg.poses)
         self._has_path = self._has_base_path and self._has_arm_path
+        with self._latest_pose_lock:
+            self._latest_base_path = msg
         self._emit_status()
 
-    def _robot_pose_cb(self, _msg: PoseStamped) -> None:
+    def _robot_pose_cb(self, msg: PoseStamped) -> None:
         self._has_robot_pose = True
         self._last_robot_pose_time = self.get_clock().now()
+        with self._latest_pose_lock:
+            self._latest_robot_pose = msg
         self._emit_status()
 
     def _arm_pose_cb(self, _msg: PoseStamped) -> None:
@@ -304,3 +324,13 @@ class RosBridge:
         if self._node is None:
             return None
         return self._node.latest_ur_path_median_segment_length
+
+    def latest_base_path_pose(self, index: int) -> Optional[PoseStamped]:
+        if self._node is None:
+            return None
+        return self._node.latest_base_path_pose(index)
+
+    def latest_robot_pose(self) -> Optional[PoseStamped]:
+        if self._node is None:
+            return None
+        return self._node.latest_robot_pose()

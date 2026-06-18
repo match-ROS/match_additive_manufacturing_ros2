@@ -48,21 +48,29 @@ DEFAULT_PATH_TRANSFORM = {
 }
 DEFAULT_BASE_SMOOTHING = {
     'enabled': True,
+    'method': 'moving_average',
     'max_accel_x': 0.25,
     'max_accel_y': 0.25,
     'max_accel_wz': 0.5,
+    'moving_average_window_size': 5,
+    'external_path_index_stride': 10,
 }
+BASE_SMOOTHING_METHODS = (
+    ('moving_average', 'Moving average'),
+    ('accel_limit', 'Acceleration limit'),
+)
 VICON_BASE_MARKER_FRAME = 'Base_RB_Base_RB'
+VICON_BASE_REFERENCE_FRAME = 'robot_base_vicon_reference'
 VICON_BASE_STATIC_TF = (
-    '-0.022345829',
-    '0.008706478',
-    '0.007544809',
-    '-0.004459784',
-    '0.006515752',
-    '-0.009033290',
+    '0.022595781',
+    '-0.008234146',
+    '-0.007327516',
+    '0.004459784',
+    '-0.006515752',
+    '0.009033290',
     '0.999928025',
     'robot_base_footprint',
-    VICON_BASE_MARKER_FRAME,
+    VICON_BASE_REFERENCE_FRAME,
 )
 CONFIG_PATH = Path.home() / '.config' / 'am_operator_gui' / 'operator_gui_config.json'
 LAUNCH_ALL_NAME = 'launch_all'
@@ -278,10 +286,10 @@ class PidGainsDialog(QDialog):
 
 class BaseSmoothingDialog(QDialog):
 
-    def __init__(self, parent: 'OperatorWindow', settings: dict[str, float | bool]) -> None:
+    def __init__(self, parent: 'OperatorWindow', settings: dict[str, float | bool | int | str]) -> None:
         super().__init__(parent)
         self.setWindowTitle('Base Velocity Smoothing')
-        self.resize(420, 220)
+        self.resize(420, 320)
         self._parent = parent
 
         layout = QVBoxLayout(self)
@@ -291,6 +299,13 @@ class BaseSmoothingDialog(QDialog):
         self.enabled_checkbox = QCheckBox('Smooth velocity commands')
         self.enabled_checkbox.setChecked(bool(settings.get('enabled', DEFAULT_BASE_SMOOTHING['enabled'])))
         grid.addWidget(self.enabled_checkbox, 0, 0, 1, 2)
+
+        self.method_combo = QComboBox()
+        for method, label in BASE_SMOOTHING_METHODS:
+            self.method_combo.addItem(label, method)
+        method = str(settings.get('method', DEFAULT_BASE_SMOOTHING['method']))
+        method_index = self.method_combo.findData(method)
+        self.method_combo.setCurrentIndex(max(0, method_index))
 
         self.max_accel_x_spin = self._make_accel_spin(
             float(settings.get('max_accel_x', DEFAULT_BASE_SMOOTHING['max_accel_x'])),
@@ -304,13 +319,35 @@ class BaseSmoothingDialog(QDialog):
             float(settings.get('max_accel_wz', DEFAULT_BASE_SMOOTHING['max_accel_wz'])),
             ' rad/s^2',
         )
+        self.moving_average_window_spin = QSpinBox()
+        self.moving_average_window_spin.setRange(1, 100)
+        self.moving_average_window_spin.setValue(
+            int(settings.get(
+                'moving_average_window_size',
+                DEFAULT_BASE_SMOOTHING['moving_average_window_size'],
+            ))
+        )
+        self.external_path_index_stride_spin = QSpinBox()
+        self.external_path_index_stride_spin.setRange(1, 1000)
+        self.external_path_index_stride_spin.setValue(
+            int(settings.get(
+                'external_path_index_stride',
+                DEFAULT_BASE_SMOOTHING['external_path_index_stride'],
+            ))
+        )
 
-        grid.addWidget(QLabel('Max accel X'), 1, 0)
-        grid.addWidget(self.max_accel_x_spin, 1, 1)
-        grid.addWidget(QLabel('Max accel Y'), 2, 0)
-        grid.addWidget(self.max_accel_y_spin, 2, 1)
-        grid.addWidget(QLabel('Max accel yaw'), 3, 0)
-        grid.addWidget(self.max_accel_wz_spin, 3, 1)
+        grid.addWidget(QLabel('Method'), 1, 0)
+        grid.addWidget(self.method_combo, 1, 1)
+        grid.addWidget(QLabel('Moving average samples'), 2, 0)
+        grid.addWidget(self.moving_average_window_spin, 2, 1)
+        grid.addWidget(QLabel('Base path index stride'), 3, 0)
+        grid.addWidget(self.external_path_index_stride_spin, 3, 1)
+        grid.addWidget(QLabel('Max accel X'), 4, 0)
+        grid.addWidget(self.max_accel_x_spin, 4, 1)
+        grid.addWidget(QLabel('Max accel Y'), 5, 0)
+        grid.addWidget(self.max_accel_y_spin, 5, 1)
+        grid.addWidget(QLabel('Max accel yaw'), 6, 0)
+        grid.addWidget(self.max_accel_wz_spin, 6, 1)
         layout.addWidget(group)
 
         button_box = QDialogButtonBox(
@@ -333,19 +370,30 @@ class BaseSmoothingDialog(QDialog):
         spin.setValue(value)
         return spin
 
-    def configured_settings(self) -> dict[str, float | bool]:
+    def configured_settings(self) -> dict[str, float | bool | int | str]:
         return {
             'enabled': self.enabled_checkbox.isChecked(),
+            'method': str(self.method_combo.currentData()),
             'max_accel_x': float(self.max_accel_x_spin.value()),
             'max_accel_y': float(self.max_accel_y_spin.value()),
             'max_accel_wz': float(self.max_accel_wz_spin.value()),
+            'moving_average_window_size': int(self.moving_average_window_spin.value()),
+            'external_path_index_stride': int(self.external_path_index_stride_spin.value()),
         }
 
     def _reset_defaults(self) -> None:
         self.enabled_checkbox.setChecked(bool(DEFAULT_BASE_SMOOTHING['enabled']))
+        method_index = self.method_combo.findData(DEFAULT_BASE_SMOOTHING['method'])
+        self.method_combo.setCurrentIndex(max(0, method_index))
         self.max_accel_x_spin.setValue(float(DEFAULT_BASE_SMOOTHING['max_accel_x']))
         self.max_accel_y_spin.setValue(float(DEFAULT_BASE_SMOOTHING['max_accel_y']))
         self.max_accel_wz_spin.setValue(float(DEFAULT_BASE_SMOOTHING['max_accel_wz']))
+        self.moving_average_window_spin.setValue(
+            int(DEFAULT_BASE_SMOOTHING['moving_average_window_size'])
+        )
+        self.external_path_index_stride_spin.setValue(
+            int(DEFAULT_BASE_SMOOTHING['external_path_index_stride'])
+        )
 
     def _save(self) -> None:
         self._parent._set_base_smoothing(self.configured_settings())
@@ -493,18 +541,37 @@ class OperatorWindow(QMainWindow):
                 gains[key] = default
         return gains
 
-    def _configured_base_smoothing(self) -> dict[str, float | bool]:
+    def _configured_base_smoothing(self) -> dict[str, float | bool | int | str]:
         configured = self._config.get('base_smoothing', {})
         settings = dict(DEFAULT_BASE_SMOOTHING)
         if not isinstance(configured, dict):
             return settings
         settings['enabled'] = bool(configured.get('enabled', DEFAULT_BASE_SMOOTHING['enabled']))
+        method = str(configured.get('method', DEFAULT_BASE_SMOOTHING['method'])).strip().lower()
+        valid_methods = {method_key for method_key, _label in BASE_SMOOTHING_METHODS}
+        settings['method'] = method if method in valid_methods else DEFAULT_BASE_SMOOTHING['method']
         for key in ('max_accel_x', 'max_accel_y', 'max_accel_wz'):
             try:
                 value = float(configured.get(key, DEFAULT_BASE_SMOOTHING[key]))
             except (TypeError, ValueError):
                 value = float(DEFAULT_BASE_SMOOTHING[key])
             settings[key] = max(0.0, min(10.0, value))
+        try:
+            window_size = int(configured.get(
+                'moving_average_window_size',
+                DEFAULT_BASE_SMOOTHING['moving_average_window_size'],
+            ))
+        except (TypeError, ValueError):
+            window_size = int(DEFAULT_BASE_SMOOTHING['moving_average_window_size'])
+        settings['moving_average_window_size'] = max(1, min(100, window_size))
+        try:
+            stride = int(configured.get(
+                'external_path_index_stride',
+                DEFAULT_BASE_SMOOTHING['external_path_index_stride'],
+            ))
+        except (TypeError, ValueError):
+            stride = int(DEFAULT_BASE_SMOOTHING['external_path_index_stride'])
+        settings['external_path_index_stride'] = max(1, min(1000, stride))
         return settings
 
     def _build_ui(self) -> None:
@@ -558,6 +625,7 @@ class OperatorWindow(QMainWindow):
         self.path_transform_yaw_spin.setSingleStep(1.0)
         self.path_transform_yaw_spin.setSuffix(' deg')
         self.path_transform_yaw_spin.setValue(path_transform['yaw_deg'])
+        self.calculate_path_transform_button = QPushButton('Calculate Path Transform')
 
         self.launch_button = QPushButton('Launch All')
         self.launch_sim_button = QPushButton('Launch Sim')
@@ -588,6 +656,7 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.path_transform_z_spin, 3, 5)
         launch_layout.addWidget(QLabel('Path rotation'), 4, 0)
         launch_layout.addWidget(self.path_transform_yaw_spin, 4, 1)
+        launch_layout.addWidget(self.calculate_path_transform_button, 4, 2, 1, 2)
         self.base_pose_topic = QLineEdit(self._configured_base_pose_topic())
         self.arm_pose_topic = QLineEdit(self._configured_arm_pose_topic())
         self.control_frame = QLineEdit(self._configured_control_frame())
@@ -730,6 +799,7 @@ class OperatorWindow(QMainWindow):
         self.launch_sim_button.clicked.connect(self._toggle_sim)
         self.pid_gains_button.clicked.connect(self._open_pid_gains_window)
         self.base_smoothing_button.clicked.connect(self._open_base_smoothing_window)
+        self.calculate_path_transform_button.clicked.connect(self._calculate_path_transform)
         self.publish_path_button.clicked.connect(self._publish_path)
         self.base_follower_button.clicked.connect(self._toggle_base_follower)
         self.arm_follower_button.clicked.connect(self._toggle_arm_follower)
@@ -811,6 +881,127 @@ class OperatorWindow(QMainWindow):
         }
         self._save_config()
 
+    def _set_path_transform_values(self, x: float, y: float, z: float, yaw_deg: float) -> None:
+        for spin, value in (
+            (self.path_transform_x_spin, x),
+            (self.path_transform_y_spin, y),
+            (self.path_transform_z_spin, z),
+            (self.path_transform_yaw_spin, yaw_deg),
+        ):
+            spin.blockSignals(True)
+            spin.setValue(float(value))
+            spin.blockSignals(False)
+        self._set_path_transform()
+
+    def _calculate_path_transform(self) -> None:
+        index = self.index_spin.value()
+        path_pose = self.ros_bridge.latest_base_path_pose(index)
+        robot_pose = self.ros_bridge.latest_robot_pose()
+        if path_pose is None:
+            self._append_process_output(
+                'gui',
+                f'cannot calculate path transform: no /base_path pose at index {index}',
+            )
+            return
+        if robot_pose is None:
+            self._append_process_output(
+                'gui',
+                'cannot calculate path transform: no fresh /robot_pose available',
+            )
+            return
+
+        x, y, z, yaw_deg = self._composed_path_transform(
+            {
+                'x': self.path_transform_x_spin.value(),
+                'y': self.path_transform_y_spin.value(),
+                'z': self.path_transform_z_spin.value(),
+                'yaw_deg': self.path_transform_yaw_spin.value(),
+            },
+            path_pose,
+            robot_pose,
+        )
+        self._set_path_transform_values(x, y, z, yaw_deg)
+        self._append_process_output(
+            'gui',
+            (
+                f'calculated path transform from /base_path[{index}] to current base pose: '
+                f'x={x:.4f} m y={y:.4f} m z={z:.4f} m yaw={yaw_deg:.3f} deg'
+            ),
+        )
+
+        process = self.processes.get(PUBLISH_PATH_NAME)
+        if process is not None and process.is_running():
+            self.processes.stop(PUBLISH_PATH_NAME)
+            self._start_publish_path()
+            self._refresh_process_states()
+
+    @classmethod
+    def _composed_path_transform(
+        cls,
+        current_transform: dict[str, float],
+        path_pose,
+        robot_pose,
+    ) -> tuple[float, float, float, float]:
+        path_position = path_pose.pose.position
+        robot_position = robot_pose.pose.position
+        path_yaw = cls._yaw_from_orientation(path_pose.pose.orientation)
+        robot_yaw = cls._yaw_from_orientation(robot_pose.pose.orientation)
+        delta_yaw = robot_yaw - path_yaw
+        delta_x, delta_y, delta_z = cls._inverse_transformed_pose_delta(
+            path_position,
+            robot_position,
+            delta_yaw,
+        )
+
+        current_yaw = math.radians(float(current_transform.get('yaw_deg', 0.0)))
+        current_x = float(current_transform.get('x', 0.0))
+        current_y = float(current_transform.get('y', 0.0))
+        current_z = float(current_transform.get('z', 0.0))
+        rotated_x, rotated_y = cls._rotate_xy(current_x, current_y, delta_yaw)
+        yaw_deg = math.degrees(cls._normalize_angle(current_yaw + delta_yaw))
+        return (
+            rotated_x + delta_x,
+            rotated_y + delta_y,
+            current_z + delta_z,
+            yaw_deg,
+        )
+
+    @staticmethod
+    def _inverse_transformed_pose_delta(path_position, robot_position, delta_yaw: float) -> tuple[float, float, float]:
+        rotated_path_x, rotated_path_y = OperatorWindow._rotate_xy(
+            float(path_position.x),
+            float(path_position.y),
+            delta_yaw,
+        )
+        return (
+            float(robot_position.x) - rotated_path_x,
+            float(robot_position.y) - rotated_path_y,
+            float(robot_position.z) - float(path_position.z),
+        )
+
+    @staticmethod
+    def _rotate_xy(x: float, y: float, yaw: float) -> tuple[float, float]:
+        cos_yaw = math.cos(yaw)
+        sin_yaw = math.sin(yaw)
+        return (
+            cos_yaw * float(x) - sin_yaw * float(y),
+            sin_yaw * float(x) + cos_yaw * float(y),
+        )
+
+    @staticmethod
+    def _yaw_from_orientation(orientation) -> float:
+        x = float(orientation.x)
+        y = float(orientation.y)
+        z = float(orientation.z)
+        w = float(orientation.w)
+        siny_cosp = 2.0 * (w * z + x * y)
+        cosy_cosp = 1.0 - 2.0 * (y * y + z * z)
+        return math.atan2(siny_cosp, cosy_cosp)
+
+    @staticmethod
+    def _normalize_angle(angle: float) -> float:
+        return math.atan2(math.sin(angle), math.cos(angle))
+
     def _choose_path_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(
             self,
@@ -874,15 +1065,28 @@ class OperatorWindow(QMainWindow):
         self._base_smoothing_dialog = BaseSmoothingDialog(self, self._configured_base_smoothing())
         self._base_smoothing_dialog.show()
 
-    def _set_base_smoothing(self, settings: dict[str, float | bool]) -> None:
+    def _set_base_smoothing(self, settings: dict[str, float | bool | int | str]) -> None:
         current = self._configured_base_smoothing()
         current['enabled'] = bool(settings.get('enabled', current['enabled']))
+        method = str(settings.get('method', current['method'])).strip().lower()
+        valid_methods = {method_key for method_key, _label in BASE_SMOOTHING_METHODS}
+        current['method'] = method if method in valid_methods else current['method']
         for key in ('max_accel_x', 'max_accel_y', 'max_accel_wz'):
             try:
                 value = float(settings.get(key, current[key]))
             except (TypeError, ValueError):
                 value = float(current[key])
             current[key] = max(0.0, min(10.0, value))
+        try:
+            window_size = int(settings.get('moving_average_window_size', current['moving_average_window_size']))
+        except (TypeError, ValueError):
+            window_size = int(current['moving_average_window_size'])
+        current['moving_average_window_size'] = max(1, min(100, window_size))
+        try:
+            stride = int(settings.get('external_path_index_stride', current['external_path_index_stride']))
+        except (TypeError, ValueError):
+            stride = int(current['external_path_index_stride'])
+        current['external_path_index_stride'] = max(1, min(1000, stride))
         self._config['base_smoothing'] = current
         self._save_config()
         self._append_process_output(
@@ -890,7 +1094,7 @@ class OperatorWindow(QMainWindow):
             'saved base smoothing settings; restart base follower to apply',
         )
 
-    def _base_smoothing(self, key: str) -> float | bool:
+    def _base_smoothing(self, key: str) -> float | bool | int | str:
         return self._configured_base_smoothing()[key]
 
     def _pid_launch_arguments(self, key_prefix: str, names: tuple[str, ...]) -> list[str]:
@@ -1102,6 +1306,7 @@ class OperatorWindow(QMainWindow):
             '-p', f'diff_drive_mode:={str(diff_drive).lower()}',
             '-p', 'use_external_path_index:=true',
             '-p', 'path_index_topic:=/path_index',
+            '-p', f"external_path_index_stride:={int(self._base_smoothing('external_path_index_stride'))}",
             '-p', 'wait_for_start_condition:=true',
             '-p', 'start_condition_topic:=/start_condition',
             '-p', 'velocity_override_topic:=/velocity_override',
@@ -1113,9 +1318,11 @@ class OperatorWindow(QMainWindow):
             '-p', f"max_vy:={self._ros_float_literal(float(profile['max_vy']))}",
             '-p', f"max_wz:={self._ros_float_literal(float(profile['max_wz']))}",
             '-p', f"smooth_velocity_commands:={str(bool(self._base_smoothing('enabled'))).lower()}",
+            '-p', f"velocity_smoothing_method:={self._base_smoothing('method')}",
             '-p', f"max_accel_x:={self._ros_float_literal(float(self._base_smoothing('max_accel_x')))}",
             '-p', f"max_accel_y:={self._ros_float_literal(float(self._base_smoothing('max_accel_y')))}",
             '-p', f"max_accel_wz:={self._ros_float_literal(float(self._base_smoothing('max_accel_wz')))}",
+            '-p', f"moving_average_window_size:={int(self._base_smoothing('moving_average_window_size'))}",
             '-p', f'default_linear_velocity:={self._ros_float_literal(self._default_velocity_param())}',
         ]
         self._append_process_output(BASE_FOLLOWER_NAME, ' '.join(command))
@@ -1214,6 +1421,7 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_path_index(self) -> None:
+        profile = self._current_platform_profile()
         command = [
             'ros2',
             'run',
@@ -1225,7 +1433,7 @@ class OperatorWindow(QMainWindow):
             '-p', 'next_goal_topic:=/next_goal',
             '-p', 'normal_topic:=/normal_vector',
             '-p', f'initial_path_index:={self.index_spin.value()}',
-            '-p', 'path_topic:=/ur_path_transformed',
+            '-p', f"path_topic:={profile['path_topic']}",
             '-p', f'publish_rate:={self._ros_float_literal(self.path_index_rate_spin.value())}',
             '-p', 'velocity_override_topic:=/velocity_override',
             '-p', 'start_condition_topic:=/start_condition',
@@ -1313,7 +1521,7 @@ class OperatorWindow(QMainWindow):
             '-r', f'__node:={BASE_POSE_ADAPTER_NAME}',
             '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', f'input_topic:={self.base_pose_topic.text().strip()}',
-            '-p', f'input_pose_frame:={VICON_BASE_MARKER_FRAME}',
+            '-p', f'input_pose_frame:={VICON_BASE_REFERENCE_FRAME}',
             '-p', 'output_topic:=/robot_pose',
             '-p', f'map_frame:={self.external_map_frame.text().strip()}',
             '-p', f'robot_base_frame:={self.robot_base_frame.text().strip()}',
@@ -1481,7 +1689,6 @@ class OperatorWindow(QMainWindow):
     def _start_following(self) -> None:
         if not self._motion_ready():
             self._append_process_output('safety', self._motion_not_ready_reason())
-            return
         missing_processes = self._missing_control_process_names()
         if missing_processes:
             self._append_process_output(
@@ -1893,11 +2100,11 @@ class OperatorWindow(QMainWindow):
         if getattr(self, '_start_condition_publish_count', 0) > 0:
             return
         motion_ready = self._motion_ready()
-        self.start_following_button.setEnabled(motion_ready)
+        self.start_following_button.setEnabled(True)
         if motion_ready:
             color = 'green' if self._control_processes_running() else 'orange'
         else:
-            color = 'grey'
+            color = 'orange'
         self._style_button(self.start_following_button, color)
         self._style_button(self.stop_following_button, 'grey')
 

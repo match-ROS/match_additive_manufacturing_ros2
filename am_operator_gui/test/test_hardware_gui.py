@@ -1,4 +1,5 @@
 from pathlib import Path
+import math
 from types import SimpleNamespace
 
 from am_operator_gui.gui import (
@@ -10,7 +11,7 @@ from am_operator_gui.gui import (
     PATH_INDEX_NAME,
     SYNC_REMOTE_TARGET,
     SYNC_WORKSPACE_NAME,
-    VICON_BASE_MARKER_FRAME,
+    VICON_BASE_REFERENCE_FRAME,
     VICON_BASE_STATIC_TF,
     VICON_BASE_STATIC_TF_NAME,
     VICON_EE_STATIC_TF_NAME,
@@ -57,6 +58,12 @@ class FakeSpinBox:
     def value(self) -> int:
         return self._value
 
+    def setValue(self, value) -> None:
+        self._value = value
+
+    def blockSignals(self, _blocked: bool) -> None:
+        pass
+
 
 class FakeProcess:
 
@@ -68,6 +75,7 @@ class FakeProcesses:
 
     def __init__(self, running=None) -> None:
         self.started = []
+        self.stopped = []
         self.running = set(running or (PATH_INDEX_NAME, BASE_FOLLOWER_NAME, ARM_FOLLOWER_NAME))
 
     def start(self, name, command):
@@ -75,6 +83,10 @@ class FakeProcesses:
 
     def get(self, name):
         return FakeProcess() if name in self.running else None
+
+    def stop(self, name):
+        self.stopped.append(name)
+        self.running.discard(name)
 
 
 def test_hardware_launch_all_never_starts_move_to_start() -> None:
@@ -186,9 +198,12 @@ def test_base_follower_uses_configured_pid_gains() -> None:
         }.get(key, DEFAULT_PID_GAINS[key]),
         _base_smoothing=lambda key: {
             'enabled': False,
+            'method': 'moving_average',
             'max_accel_x': 0.11,
             'max_accel_y': 0.12,
             'max_accel_wz': 0.13,
+            'moving_average_window_size': 7,
+            'external_path_index_stride': 10,
         }[key],
         _ros_float_literal=OperatorWindow._ros_float_literal,
         _append_process_output=lambda *_args: None,
@@ -205,9 +220,12 @@ def test_base_follower_uses_configured_pid_gains() -> None:
     assert 'kp_y:=1.200000' in command
     assert 'kp_yaw:=1.300000' in command
     assert 'smooth_velocity_commands:=false' in command
+    assert 'velocity_smoothing_method:=moving_average' in command
     assert 'max_accel_x:=0.110000' in command
     assert 'max_accel_y:=0.120000' in command
     assert 'max_accel_wz:=0.130000' in command
+    assert 'moving_average_window_size:=7' in command
+    assert 'external_path_index_stride:=10' in command
 
 
 def test_hardware_pose_adapters_start_external_base_reference() -> None:
@@ -238,13 +256,14 @@ def test_hardware_pose_adapters_start_external_base_reference() -> None:
         'static_transform_publisher',
         *VICON_BASE_STATIC_TF,
     ]
+    assert static_command[-2:] == ['robot_base_footprint', VICON_BASE_REFERENCE_FRAME]
     assert processes.started[1][0] == VICON_EE_STATIC_TF_NAME
     assert 'vicon_ee_static_tf' in vicon_command
     assert 'input_topic:=/vicon/Tool_Flange/Tool_Flange' in vicon_command
     assert 'output_topic:=/vicon/tool_transformed' in vicon_command
     assert 'external_base_reference' in base_command
     assert 'input_topic:=/vicon/Base_RB/Base_RB' in base_command
-    assert f'input_pose_frame:={VICON_BASE_MARKER_FRAME}' in base_command
+    assert f'input_pose_frame:={VICON_BASE_REFERENCE_FRAME}' in base_command
     assert 'output_topic:=/robot_pose' in base_command
     assert 'map_frame:=map' in base_command
     assert 'robot_base_frame:=base_link' in base_command
@@ -356,6 +375,27 @@ def test_start_following_warns_but_publishes_when_follower_missing() -> None:
     )
 
 
+def test_path_index_advancer_uses_base_path_topic() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        platform_combo=FakeComboBox(data='robotnik'),
+        index_spin=FakeSpinBox(12),
+        path_index_rate_spin=FakeSpinBox(5.0),
+        _use_sim_time=lambda: 'false',
+        _ros_float_literal=OperatorWindow._ros_float_literal,
+        _append_process_output=lambda *_args: None,
+    )
+    fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
+    fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
+
+    OperatorWindow._start_path_index(fake)
+
+    command = processes.started[0][1]
+    assert 'path_topic:=/base_path' in command
+    assert 'path_topic:=/ur_path_transformed' not in command
+
+
 def test_control_processes_running_reports_missing_followers() -> None:
     fake = SimpleNamespace(processes=FakeProcesses())
     fake._missing_control_process_names = lambda: OperatorWindow._missing_control_process_names(fake)
@@ -419,3 +459,68 @@ def test_sync_workspace_uses_rsync_to_remote_src() -> None:
             SYNC_REMOTE_TARGET,
         ],
     )]
+
+
+def _pose(x: float, y: float, z: float, yaw_rad: float):
+    return SimpleNamespace(
+        pose=SimpleNamespace(
+            position=SimpleNamespace(x=x, y=y, z=z),
+            orientation=SimpleNamespace(
+                x=0.0,
+                y=0.0,
+                z=math.sin(yaw_rad / 2.0),
+                w=math.cos(yaw_rad / 2.0),
+            ),
+        )
+    )
+
+
+def test_composed_path_transform_aligns_path_index_to_robot_pose() -> None:
+    path_pose = _pose(1.0, 0.0, 0.2, 0.0)
+    robot_pose = _pose(2.0, 3.0, 0.5, math.pi / 2.0)
+
+    x, y, z, yaw_deg = OperatorWindow._composed_path_transform(
+        {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw_deg': 0.0},
+        path_pose,
+        robot_pose,
+    )
+
+    assert round(x, 6) == 2.0
+    assert round(y, 6) == 2.0
+    assert round(z, 6) == 0.3
+    assert round(yaw_deg, 6) == 90.0
+
+
+def test_calculate_path_transform_updates_fields_and_restarts_publisher() -> None:
+    outputs = []
+    processes = FakeProcesses(running=('publish_path',))
+    fake = SimpleNamespace(
+        index_spin=FakeSpinBox(4),
+        path_transform_x_spin=FakeSpinBox(0.0),
+        path_transform_y_spin=FakeSpinBox(0.0),
+        path_transform_z_spin=FakeSpinBox(0.0),
+        path_transform_yaw_spin=FakeSpinBox(0.0),
+        ros_bridge=SimpleNamespace(
+            latest_base_path_pose=lambda index: _pose(1.0, 0.0, 0.0, 0.0) if index == 4 else None,
+            latest_robot_pose=lambda: _pose(3.0, 0.0, 0.0, 0.0),
+        ),
+        processes=processes,
+        _append_process_output=lambda *args: outputs.append(args),
+        _set_path_transform=lambda: outputs.append(('config', 'saved')),
+        _start_publish_path=lambda: processes.start('publish_path', ['republished']),
+        _refresh_process_states=lambda: None,
+    )
+    fake._composed_path_transform = OperatorWindow._composed_path_transform
+    fake._set_path_transform_values = (
+        lambda x, y, z, yaw: OperatorWindow._set_path_transform_values(fake, x, y, z, yaw)
+    )
+
+    OperatorWindow._calculate_path_transform(fake)
+
+    assert fake.path_transform_x_spin.value() == 2.0
+    assert fake.path_transform_y_spin.value() == 0.0
+    assert fake.path_transform_z_spin.value() == 0.0
+    assert fake.path_transform_yaw_spin.value() == 0.0
+    assert processes.stopped == ['publish_path']
+    assert processes.started[-1] == ('publish_path', ['republished'])
+    assert any(call[0] == 'gui' and 'calculated path transform' in call[1] for call in outputs)
