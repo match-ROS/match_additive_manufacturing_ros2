@@ -49,6 +49,10 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('max_vx', 0.4)
         self.declare_parameter('max_vy', 0.4)
         self.declare_parameter('max_wz', 0.8)
+        self.declare_parameter('smooth_velocity_commands', True)
+        self.declare_parameter('max_accel_x', 0.25)
+        self.declare_parameter('max_accel_y', 0.25)
+        self.declare_parameter('max_accel_wz', 0.5)
         self.declare_parameter('default_linear_velocity', -1.0)
         self.declare_parameter('xy_goal_tolerance', 0.05)
         self.declare_parameter('yaw_goal_tolerance', 0.08)
@@ -68,6 +72,8 @@ class SimpleBaseFollower(Node):
         self.goal_reached = False
         self.last_stop_reason = ''
         self.velocity_override = 1.0
+        self.last_twist = Twist()
+        self.last_command_time = None
 
         self.path_topic = str(self.get_parameter('path_topic').value)
         self.robot_pose_topic = str(self.get_parameter('robot_pose_topic').value)
@@ -235,7 +241,7 @@ class SimpleBaseFollower(Node):
         twist.linear.x = command.vx if self._as_bool(self.get_parameter('allow_reverse').value) else max(0.0, command.vx)
         twist.linear.y = 0.0 if self.diff_drive_mode else command.vy
         twist.angular.z = command.wz
-        self._publish_twist(twist)
+        self._publish_twist(self._smooth_twist(twist))
         self.last_stop_reason = ''
 
     def _pose_is_stale(self) -> bool:
@@ -244,10 +250,64 @@ class SimpleBaseFollower(Node):
         return age > timeout
 
     def _publish_stop(self, reason: str) -> None:
+        self._reset_smoother()
         self._publish_twist(Twist())
         if reason != self.last_stop_reason:
             self.get_logger().warn(f"Publishing zero velocity: {reason}.")
             self.last_stop_reason = reason
+
+    def _smooth_twist(self, target: Twist) -> Twist:
+        if not self._as_bool(self.get_parameter('smooth_velocity_commands').value):
+            self.last_twist = target
+            self.last_command_time = self.get_clock().now()
+            return target
+
+        now = self.get_clock().now()
+        if self.last_command_time is None:
+            publish_rate = max(1.0, float(self.get_parameter('publish_rate').value))
+            dt = 1.0 / publish_rate
+        else:
+            dt = (now - self.last_command_time).nanoseconds / 1e9
+            if dt <= 0.0:
+                publish_rate = max(1.0, float(self.get_parameter('publish_rate').value))
+                dt = 1.0 / publish_rate
+
+        out = Twist()
+        out.linear.x = self._slew(
+            self.last_twist.linear.x,
+            target.linear.x,
+            float(self.get_parameter('max_accel_x').value),
+            dt,
+        )
+        out.linear.y = self._slew(
+            self.last_twist.linear.y,
+            target.linear.y,
+            float(self.get_parameter('max_accel_y').value),
+            dt,
+        )
+        out.angular.z = self._slew(
+            self.last_twist.angular.z,
+            target.angular.z,
+            float(self.get_parameter('max_accel_wz').value),
+            dt,
+        )
+        self.last_twist = out
+        self.last_command_time = now
+        return out
+
+    def _reset_smoother(self) -> None:
+        self.last_twist = Twist()
+        self.last_command_time = None
+
+    @staticmethod
+    def _slew(previous: float, target: float, max_rate: float, dt: float) -> float:
+        max_delta = abs(float(max_rate)) * max(0.0, float(dt))
+        if max_delta <= 0.0:
+            return float(target)
+        delta = float(target) - float(previous)
+        if abs(delta) <= max_delta:
+            return float(target)
+        return float(previous) + math.copysign(max_delta, delta)
 
     def _publish_twist(self, twist: Twist) -> None:
         if self.output_stamped:

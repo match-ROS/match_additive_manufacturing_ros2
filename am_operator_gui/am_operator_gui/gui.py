@@ -46,6 +46,12 @@ DEFAULT_PATH_TRANSFORM = {
     'z': 0.0,
     'yaw_deg': 0.0,
 }
+DEFAULT_BASE_SMOOTHING = {
+    'enabled': True,
+    'max_accel_x': 0.25,
+    'max_accel_y': 0.25,
+    'max_accel_wz': 0.5,
+}
 CONFIG_PATH = Path.home() / '.config' / 'am_operator_gui' / 'operator_gui_config.json'
 LAUNCH_ALL_NAME = 'launch_all'
 SIM_NAME = 'launch_sim'
@@ -257,6 +263,82 @@ class PidGainsDialog(QDialog):
         self.accept()
 
 
+class BaseSmoothingDialog(QDialog):
+
+    def __init__(self, parent: 'OperatorWindow', settings: dict[str, float | bool]) -> None:
+        super().__init__(parent)
+        self.setWindowTitle('Base Velocity Smoothing')
+        self.resize(420, 220)
+        self._parent = parent
+
+        layout = QVBoxLayout(self)
+        group = QGroupBox('Base Follower Command Limits')
+        grid = QGridLayout(group)
+
+        self.enabled_checkbox = QCheckBox('Smooth velocity commands')
+        self.enabled_checkbox.setChecked(bool(settings.get('enabled', DEFAULT_BASE_SMOOTHING['enabled'])))
+        grid.addWidget(self.enabled_checkbox, 0, 0, 1, 2)
+
+        self.max_accel_x_spin = self._make_accel_spin(
+            float(settings.get('max_accel_x', DEFAULT_BASE_SMOOTHING['max_accel_x'])),
+            ' m/s^2',
+        )
+        self.max_accel_y_spin = self._make_accel_spin(
+            float(settings.get('max_accel_y', DEFAULT_BASE_SMOOTHING['max_accel_y'])),
+            ' m/s^2',
+        )
+        self.max_accel_wz_spin = self._make_accel_spin(
+            float(settings.get('max_accel_wz', DEFAULT_BASE_SMOOTHING['max_accel_wz'])),
+            ' rad/s^2',
+        )
+
+        grid.addWidget(QLabel('Max accel X'), 1, 0)
+        grid.addWidget(self.max_accel_x_spin, 1, 1)
+        grid.addWidget(QLabel('Max accel Y'), 2, 0)
+        grid.addWidget(self.max_accel_y_spin, 2, 1)
+        grid.addWidget(QLabel('Max accel yaw'), 3, 0)
+        grid.addWidget(self.max_accel_wz_spin, 3, 1)
+        layout.addWidget(group)
+
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.Save | QDialogButtonBox.Cancel | QDialogButtonBox.Reset
+        )
+        button_box.accepted.connect(self._save)
+        button_box.rejected.connect(self.reject)
+        reset_button = button_box.button(QDialogButtonBox.Reset)
+        if reset_button is not None:
+            reset_button.clicked.connect(self._reset_defaults)
+        layout.addWidget(button_box)
+
+    @staticmethod
+    def _make_accel_spin(value: float, suffix: str) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(0.0, 10.0)
+        spin.setDecimals(3)
+        spin.setSingleStep(0.05)
+        spin.setSuffix(suffix)
+        spin.setValue(value)
+        return spin
+
+    def configured_settings(self) -> dict[str, float | bool]:
+        return {
+            'enabled': self.enabled_checkbox.isChecked(),
+            'max_accel_x': float(self.max_accel_x_spin.value()),
+            'max_accel_y': float(self.max_accel_y_spin.value()),
+            'max_accel_wz': float(self.max_accel_wz_spin.value()),
+        }
+
+    def _reset_defaults(self) -> None:
+        self.enabled_checkbox.setChecked(bool(DEFAULT_BASE_SMOOTHING['enabled']))
+        self.max_accel_x_spin.setValue(float(DEFAULT_BASE_SMOOTHING['max_accel_x']))
+        self.max_accel_y_spin.setValue(float(DEFAULT_BASE_SMOOTHING['max_accel_y']))
+        self.max_accel_wz_spin.setValue(float(DEFAULT_BASE_SMOOTHING['max_accel_wz']))
+
+    def _save(self) -> None:
+        self._parent._set_base_smoothing(self.configured_settings())
+        self.accept()
+
+
 class OperatorWindow(QMainWindow):
     ros_status_changed = pyqtSignal(bool, bool, bool, bool, bool)
     path_index_changed = pyqtSignal(int)
@@ -275,6 +357,7 @@ class OperatorWindow(QMainWindow):
         self._launch_all_timers: list[QTimer] = []
         self._config = self._load_config()
         self._pid_gains_dialog: Optional[PidGainsDialog] = None
+        self._base_smoothing_dialog: Optional[BaseSmoothingDialog] = None
 
         self.processes = ProcessRegistry(output_callback=self._on_process_output)
         self.ros_bridge = RosBridge(
@@ -393,6 +476,20 @@ class OperatorWindow(QMainWindow):
                 gains[key] = default
         return gains
 
+    def _configured_base_smoothing(self) -> dict[str, float | bool]:
+        configured = self._config.get('base_smoothing', {})
+        settings = dict(DEFAULT_BASE_SMOOTHING)
+        if not isinstance(configured, dict):
+            return settings
+        settings['enabled'] = bool(configured.get('enabled', DEFAULT_BASE_SMOOTHING['enabled']))
+        for key in ('max_accel_x', 'max_accel_y', 'max_accel_wz'):
+            try:
+                value = float(configured.get(key, DEFAULT_BASE_SMOOTHING[key]))
+            except (TypeError, ValueError):
+                value = float(DEFAULT_BASE_SMOOTHING[key])
+            settings[key] = max(0.0, min(10.0, value))
+        return settings
+
     def _build_ui(self) -> None:
         root = QWidget()
         layout = QVBoxLayout(root)
@@ -450,6 +547,7 @@ class OperatorWindow(QMainWindow):
         self.publish_path_button = QPushButton('Publish Path')
         self.rviz_button = QPushButton('Open RViz')
         self.pid_gains_button = QPushButton('PID Gains...')
+        self.base_smoothing_button = QPushButton('Base Smoothing...')
         self.sync_workspace_button = QPushButton('Sync Workspace')
 
         launch_layout.addWidget(self.simulation_checkbox, 0, 0)
@@ -495,7 +593,8 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.launch_sim_button, 8, 1)
         launch_layout.addWidget(self.rviz_button, 8, 2)
         launch_layout.addWidget(self.pid_gains_button, 8, 3)
-        launch_layout.addWidget(self.sync_workspace_button, 8, 4)
+        launch_layout.addWidget(self.base_smoothing_button, 8, 4)
+        launch_layout.addWidget(self.sync_workspace_button, 8, 5)
 
         component_group = QGroupBox('Components')
         component_layout = QGridLayout(component_group)
@@ -613,6 +712,7 @@ class OperatorWindow(QMainWindow):
         self.launch_button.clicked.connect(self._toggle_launch_all)
         self.launch_sim_button.clicked.connect(self._toggle_sim)
         self.pid_gains_button.clicked.connect(self._open_pid_gains_window)
+        self.base_smoothing_button.clicked.connect(self._open_base_smoothing_window)
         self.publish_path_button.clicked.connect(self._publish_path)
         self.base_follower_button.clicked.connect(self._toggle_base_follower)
         self.arm_follower_button.clicked.connect(self._toggle_arm_follower)
@@ -746,6 +846,34 @@ class OperatorWindow(QMainWindow):
 
     def _pid_gain(self, key: str) -> float:
         return self._configured_pid_gains()[key]
+
+    def _open_base_smoothing_window(self) -> None:
+        if self._base_smoothing_dialog is not None and self._base_smoothing_dialog.isVisible():
+            self._base_smoothing_dialog.raise_()
+            self._base_smoothing_dialog.activateWindow()
+            return
+
+        self._base_smoothing_dialog = BaseSmoothingDialog(self, self._configured_base_smoothing())
+        self._base_smoothing_dialog.show()
+
+    def _set_base_smoothing(self, settings: dict[str, float | bool]) -> None:
+        current = self._configured_base_smoothing()
+        current['enabled'] = bool(settings.get('enabled', current['enabled']))
+        for key in ('max_accel_x', 'max_accel_y', 'max_accel_wz'):
+            try:
+                value = float(settings.get(key, current[key]))
+            except (TypeError, ValueError):
+                value = float(current[key])
+            current[key] = max(0.0, min(10.0, value))
+        self._config['base_smoothing'] = current
+        self._save_config()
+        self._append_process_output(
+            'gui',
+            'saved base smoothing settings; restart base follower to apply',
+        )
+
+    def _base_smoothing(self, key: str) -> float | bool:
+        return self._configured_base_smoothing()[key]
 
     def _pid_launch_arguments(self, key_prefix: str, names: tuple[str, ...]) -> list[str]:
         return [
@@ -965,6 +1093,10 @@ class OperatorWindow(QMainWindow):
             '-p', f"max_vx:={self._ros_float_literal(float(profile['max_vx']))}",
             '-p', f"max_vy:={self._ros_float_literal(float(profile['max_vy']))}",
             '-p', f"max_wz:={self._ros_float_literal(float(profile['max_wz']))}",
+            '-p', f"smooth_velocity_commands:={str(bool(self._base_smoothing('enabled'))).lower()}",
+            '-p', f"max_accel_x:={self._ros_float_literal(float(self._base_smoothing('max_accel_x')))}",
+            '-p', f"max_accel_y:={self._ros_float_literal(float(self._base_smoothing('max_accel_y')))}",
+            '-p', f"max_accel_wz:={self._ros_float_literal(float(self._base_smoothing('max_accel_wz')))}",
             '-p', f'default_linear_velocity:={self._ros_float_literal(self._default_velocity_param())}',
         ]
         self._append_process_output(BASE_FOLLOWER_NAME, ' '.join(command))

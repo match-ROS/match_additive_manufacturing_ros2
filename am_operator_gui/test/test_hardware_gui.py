@@ -180,6 +180,12 @@ def test_base_follower_uses_configured_pid_gains() -> None:
             'base_follower.kp_y': 1.2,
             'base_follower.kp_yaw': 1.3,
         }.get(key, DEFAULT_PID_GAINS[key]),
+        _base_smoothing=lambda key: {
+            'enabled': False,
+            'max_accel_x': 0.11,
+            'max_accel_y': 0.12,
+            'max_accel_wz': 0.13,
+        }[key],
         _ros_float_literal=OperatorWindow._ros_float_literal,
         _append_process_output=lambda *_args: None,
     )
@@ -194,6 +200,10 @@ def test_base_follower_uses_configured_pid_gains() -> None:
     assert 'kp_x:=1.100000' in command
     assert 'kp_y:=1.200000' in command
     assert 'kp_yaw:=1.300000' in command
+    assert 'smooth_velocity_commands:=false' in command
+    assert 'max_accel_x:=0.110000' in command
+    assert 'max_accel_y:=0.120000' in command
+    assert 'max_accel_wz:=0.130000' in command
 
 
 def test_hardware_pose_adapters_start_external_base_reference() -> None:
