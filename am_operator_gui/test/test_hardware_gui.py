@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from am_operator_gui.gui import (
     ARM_FOLLOWER_NAME,
     BASE_FOLLOWER_NAME,
+    DEFAULT_TRAJECTORY_DIR,
     DEFAULT_PID_GAINS,
     OperatorWindow,
     PATH_INDEX_NAME,
@@ -371,6 +372,31 @@ def test_control_frame_defaults_from_path_json(tmp_path: Path) -> None:
         encoding='utf-8',
     )
     assert OperatorWindow._path_frame_from_folder(tmp_path) == 'vicon_world'
+
+
+def test_trajectory_directory_defaults_and_saves_with_hardware_topics(tmp_path: Path) -> None:
+    default_directory = OperatorWindow._configured_trajectory_directory(
+        SimpleNamespace(_config={})
+    )
+    assert default_directory == DEFAULT_TRAJECTORY_DIR
+
+    fake = SimpleNamespace(
+        _config={'trajectory_directory': str(tmp_path / 'previous')},
+        path_folder=FakeLineEdit(str(tmp_path / 'selected')),
+        base_pose_topic=FakeLineEdit('/base_pose'),
+        arm_pose_topic=FakeLineEdit('/arm_pose'),
+        control_frame=FakeLineEdit('map'),
+        external_map_frame=FakeLineEdit('world'),
+        robot_base_frame=FakeLineEdit('base_footprint'),
+        robot_tree_root_frame=FakeLineEdit('odom'),
+        _save_config=lambda: None,
+    )
+
+    assert OperatorWindow._configured_trajectory_directory(fake) == tmp_path / 'previous'
+
+    OperatorWindow._save_hardware_topics(fake)
+
+    assert fake._config['trajectory_directory'] == str(tmp_path / 'selected')
 
 
 def test_sync_workspace_uses_rsync_to_remote_src() -> None:

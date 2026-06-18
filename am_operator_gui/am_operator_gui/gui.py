@@ -475,7 +475,11 @@ class OperatorWindow(QMainWindow):
 
     def _configured_control_frame(self) -> str:
         configured = str(self._config.get('control_frame', '')).strip()
-        return configured or self._path_frame_from_folder(Path(DEFAULT_TRAJECTORY_DIR))
+        return configured or self._path_frame_from_folder(self._configured_trajectory_directory())
+
+    def _configured_trajectory_directory(self) -> Path:
+        configured = str(self._config.get('trajectory_directory', '')).strip()
+        return Path(configured).expanduser() if configured else DEFAULT_TRAJECTORY_DIR
 
     def _configured_pid_gains(self) -> dict[str, float]:
         configured = self._config.get('pid_gains', {})
@@ -531,7 +535,7 @@ class OperatorWindow(QMainWindow):
         self.index_spin.setRange(0, 100000)
         self.index_spin.setValue(0)
 
-        self.path_folder = QLineEdit(str(DEFAULT_TRAJECTORY_DIR))
+        self.path_folder = QLineEdit(str(self._configured_trajectory_directory()))
         self.path_folder.setReadOnly(True)
         self.browse_button = QPushButton('Browse')
         path_transform = self._configured_path_transform()
@@ -590,7 +594,7 @@ class OperatorWindow(QMainWindow):
         self.external_map_frame = QLineEdit(self._configured_external_map_frame())
         self.robot_base_frame = QLineEdit(self._configured_robot_base_frame())
         self.robot_tree_root_frame = QLineEdit(self._configured_robot_tree_root_frame())
-        launch_layout.addWidget(QLabel('Base pose topic'), 5, 0)
+        launch_layout.addWidget(QLabel('Vicon base marker topic'), 5, 0)
         launch_layout.addWidget(self.base_pose_topic, 5, 1, 1, 2)
         launch_layout.addWidget(QLabel('EE pose topic'), 5, 3)
         launch_layout.addWidget(self.arm_pose_topic, 5, 4, 1, 2)
@@ -811,7 +815,7 @@ class OperatorWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(
             self,
             'Select trajectory folder',
-            str(DEFAULT_COMPONENTS_DIR),
+            self.path_folder.text().strip() or str(DEFAULT_COMPONENTS_DIR),
         )
         if folder:
             self.path_folder.setText(folder)
@@ -833,6 +837,7 @@ class OperatorWindow(QMainWindow):
         return 'robotnik_simple'
 
     def _save_hardware_topics(self) -> None:
+        self._config['trajectory_directory'] = self.path_folder.text().strip()
         self._config['base_pose_topic'] = self.base_pose_topic.text().strip()
         self._config['arm_pose_topic'] = self.arm_pose_topic.text().strip()
         self._config['control_frame'] = self.control_frame.text().strip()
