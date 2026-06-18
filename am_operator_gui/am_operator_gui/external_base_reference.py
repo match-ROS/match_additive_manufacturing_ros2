@@ -29,6 +29,7 @@ class ExternalBaseReference(Node):
     def __init__(self, **kwargs) -> None:
         super().__init__('external_base_reference', **kwargs)
         self.declare_parameter('input_topic', '/vicon/Base_RB/Base_RB')
+        self.declare_parameter('input_pose_frame', '')
         self.declare_parameter('output_topic', '/robot_pose')
         self.declare_parameter('map_frame', 'map')
         self.declare_parameter('robot_base_frame', 'base_link')
@@ -38,6 +39,7 @@ class ExternalBaseReference(Node):
         self.declare_parameter('publish_direct_base_tf_when_root_missing', False)
 
         self.map_frame = _clean_frame(str(self.get_parameter('map_frame').value))
+        self.input_pose_frame = _clean_frame(str(self.get_parameter('input_pose_frame').value))
         self.robot_base_frame = _clean_frame(str(self.get_parameter('robot_base_frame').value))
         self.robot_tree_root_frame = _clean_frame(
             str(self.get_parameter('robot_tree_root_frame').value)
@@ -88,6 +90,8 @@ class ExternalBaseReference(Node):
 
         try:
             map_base = self._pose_in_map(msg, source_frame)
+            if self.input_pose_frame:
+                map_base = self._reference_pose_to_base_pose(map_base)
             self._publish_map_to_robot_tree(map_base)
             self.pose_pub.publish(map_base)
         except TransformException as exc:
@@ -115,6 +119,28 @@ class ExternalBaseReference(Node):
             map_base.pose = do_transform_pose(msg.pose, transform)
         map_base.header.frame_id = self.map_frame
         map_base.header.stamp = self.get_clock().now().to_msg()
+        return map_base
+
+    def _reference_pose_to_base_pose(self, map_reference: PoseStamped) -> PoseStamped:
+        base_to_reference = self.buffer.lookup_transform(
+            self.robot_base_frame,
+            self.input_pose_frame,
+            rclpy.time.Time(),
+        )
+        map_base_matrix = concatenate_matrices(
+            self._pose_to_matrix(map_reference),
+            inverse_matrix(self._transform_to_matrix(base_to_reference)),
+        )
+        map_base = PoseStamped()
+        map_base.header = map_reference.header
+        map_base.pose.position.x = float(map_base_matrix[0, 3])
+        map_base.pose.position.y = float(map_base_matrix[1, 3])
+        map_base.pose.position.z = float(map_base_matrix[2, 3])
+        qx, qy, qz, qw = quaternion_from_matrix(map_base_matrix)
+        map_base.pose.orientation.x = float(qx)
+        map_base.pose.orientation.y = float(qy)
+        map_base.pose.orientation.z = float(qz)
+        map_base.pose.orientation.w = float(qw)
         return map_base
 
     def _publish_map_to_robot_tree(self, map_base: PoseStamped) -> None:

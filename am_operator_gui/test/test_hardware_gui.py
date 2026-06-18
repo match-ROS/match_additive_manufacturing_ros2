@@ -9,6 +9,9 @@ from am_operator_gui.gui import (
     PATH_INDEX_NAME,
     SYNC_REMOTE_TARGET,
     SYNC_WORKSPACE_NAME,
+    VICON_BASE_MARKER_FRAME,
+    VICON_BASE_STATIC_TF,
+    VICON_BASE_STATIC_TF_NAME,
     VICON_EE_STATIC_TF_NAME,
     WORKSPACE_SRC_ROOT,
 )
@@ -222,15 +225,25 @@ def test_hardware_pose_adapters_start_external_base_reference() -> None:
 
     OperatorWindow._start_pose_adapters(fake)
 
-    vicon_command = processes.started[0][1]
-    base_command = processes.started[1][1]
-    arm_command = processes.started[2][1]
-    assert processes.started[0][0] == VICON_EE_STATIC_TF_NAME
+    static_command = processes.started[0][1]
+    vicon_command = processes.started[1][1]
+    base_command = processes.started[2][1]
+    arm_command = processes.started[3][1]
+    assert processes.started[0][0] == VICON_BASE_STATIC_TF_NAME
+    assert static_command == [
+        'ros2',
+        'run',
+        'tf2_ros',
+        'static_transform_publisher',
+        *VICON_BASE_STATIC_TF,
+    ]
+    assert processes.started[1][0] == VICON_EE_STATIC_TF_NAME
     assert 'vicon_ee_static_tf' in vicon_command
     assert 'input_topic:=/vicon/Tool_Flange/Tool_Flange' in vicon_command
     assert 'output_topic:=/vicon/tool_transformed' in vicon_command
     assert 'external_base_reference' in base_command
     assert 'input_topic:=/vicon/Base_RB/Base_RB' in base_command
+    assert f'input_pose_frame:={VICON_BASE_MARKER_FRAME}' in base_command
     assert 'output_topic:=/robot_pose' in base_command
     assert 'map_frame:=map' in base_command
     assert 'robot_base_frame:=base_link' in base_command

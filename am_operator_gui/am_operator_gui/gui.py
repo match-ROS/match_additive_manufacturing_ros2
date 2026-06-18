@@ -52,6 +52,18 @@ DEFAULT_BASE_SMOOTHING = {
     'max_accel_y': 0.25,
     'max_accel_wz': 0.5,
 }
+VICON_BASE_MARKER_FRAME = 'Base_RB_Base_RB'
+VICON_BASE_STATIC_TF = (
+    '-0.022345829',
+    '0.008706478',
+    '0.007544809',
+    '-0.004459784',
+    '0.006515752',
+    '-0.009033290',
+    '0.999928025',
+    'robot_base_footprint',
+    VICON_BASE_MARKER_FRAME,
+)
 CONFIG_PATH = Path.home() / '.config' / 'am_operator_gui' / 'operator_gui_config.json'
 LAUNCH_ALL_NAME = 'launch_all'
 SIM_NAME = 'launch_sim'
@@ -63,6 +75,7 @@ CURRENT_TCP_POSE_NAME = 'current_tcp_pose'
 BASE_POSE_ADAPTER_NAME = 'base_pose_adapter'
 ARM_POSE_ADAPTER_NAME = 'arm_pose_adapter'
 VICON_EE_STATIC_TF_NAME = 'vicon_ee_static_tf'
+VICON_BASE_STATIC_TF_NAME = 'vicon_base_static_tf'
 ARM_CONTROLLERS_NAME = 'arm_controllers'
 MOVE_BASE_NAME = 'move_base_to_start'
 MOVE_ARM_NAME = 'move_arm_to_start'
@@ -980,6 +993,7 @@ class OperatorWindow(QMainWindow):
             MOVE_ARM_NAME,
             PATH_INDEX_NAME,
             CURRENT_TCP_POSE_NAME,
+            VICON_BASE_STATIC_TF_NAME,
             BASE_POSE_ADAPTER_NAME,
             ARM_POSE_ADAPTER_NAME,
             VICON_EE_STATIC_TF_NAME,
@@ -1219,9 +1233,15 @@ class OperatorWindow(QMainWindow):
         if not self.simulation_checkbox.isChecked():
             running = any(
                 (process := self.processes.get(name)) is not None and process.is_running()
-                for name in (VICON_EE_STATIC_TF_NAME, BASE_POSE_ADAPTER_NAME, ARM_POSE_ADAPTER_NAME)
+                for name in (
+                    VICON_BASE_STATIC_TF_NAME,
+                    VICON_EE_STATIC_TF_NAME,
+                    BASE_POSE_ADAPTER_NAME,
+                    ARM_POSE_ADAPTER_NAME,
+                )
             )
             if running:
+                self.processes.stop(VICON_BASE_STATIC_TF_NAME)
                 self.processes.stop(VICON_EE_STATIC_TF_NAME)
                 self.processes.stop(BASE_POSE_ADAPTER_NAME)
                 self.processes.stop(ARM_POSE_ADAPTER_NAME)
@@ -1256,6 +1276,16 @@ class OperatorWindow(QMainWindow):
         self.processes.start(CURRENT_TCP_POSE_NAME, command)
 
     def _start_pose_adapters(self) -> None:
+        base_static_command = [
+            'ros2',
+            'run',
+            'tf2_ros',
+            'static_transform_publisher',
+            *VICON_BASE_STATIC_TF,
+        ]
+        self._append_process_output(VICON_BASE_STATIC_TF_NAME, ' '.join(base_static_command))
+        self.processes.start(VICON_BASE_STATIC_TF_NAME, base_static_command)
+
         vicon_transform_command = [
             'ros2',
             'run',
@@ -1278,6 +1308,7 @@ class OperatorWindow(QMainWindow):
             '-r', f'__node:={BASE_POSE_ADAPTER_NAME}',
             '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', f'input_topic:={self.base_pose_topic.text().strip()}',
+            '-p', f'input_pose_frame:={VICON_BASE_MARKER_FRAME}',
             '-p', 'output_topic:=/robot_pose',
             '-p', f'map_frame:={self.external_map_frame.text().strip()}',
             '-p', f'robot_base_frame:={self.robot_base_frame.text().strip()}',
@@ -1761,7 +1792,12 @@ class OperatorWindow(QMainWindow):
         if not self.simulation_checkbox.isChecked():
             running = any(
                 (process := self.processes.get(name)) is not None and process.is_running()
-                for name in (VICON_EE_STATIC_TF_NAME, BASE_POSE_ADAPTER_NAME, ARM_POSE_ADAPTER_NAME)
+                for name in (
+                    VICON_BASE_STATIC_TF_NAME,
+                    VICON_EE_STATIC_TF_NAME,
+                    BASE_POSE_ADAPTER_NAME,
+                    ARM_POSE_ADAPTER_NAME,
+                )
             )
             self.current_tcp_pose_button.setText(
                 'Stop Transformations' if running else 'Launch Transformations'
