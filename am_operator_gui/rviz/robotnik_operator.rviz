@@ -60,20 +60,219 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot/robot_description
-      Enabled: false
+      Enabled: true
       Links:
         All Links Enabled: true
         Expand Joint Details: false
         Expand Link Details: false
         Expand Tree: false
         Link Tree Style: Links in Alphabetic Order
+        robot_arm_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_arm_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_arm_base_link_inertia:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_arm_flange:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_arm_forearm_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_arm_ft_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_arm_shoulder_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_arm_tool0:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_arm_upper_arm_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_arm_wrist_1_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_arm_wrist_2_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_arm_wrist_3_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_back_left_base_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_back_left_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_back_right_base_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_back_right_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_base_docking_contact:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_base_footprint:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_base_logos_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_battery_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_chassis_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_contactors_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_3d_laser_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_front_3d_laser_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_left_base_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_front_left_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_front_rgbd_camera_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_rgbd_camera_color_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_rgbd_camera_color_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_rgbd_camera_depth_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_rgbd_camera_depth_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_rgbd_camera_infra1_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_rgbd_camera_infra1_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_rgbd_camera_infra2_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_rgbd_camera_infra2_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_front_rgbd_camera_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_front_right_base_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_front_right_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_imu_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_imu_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        robot_leds_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_lift_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        robot_lift_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
       Mass Properties:
         Inertia: false
         Mass: false
       Name: Robot Model
       TF Prefix: ""
       Update Interval: 0
-      Value: false
+      Value: true
       Visual Enabled: true
     - Alpha: 1
       Buffer Length: 1
@@ -288,25 +487,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 42.243839263916016
+      Distance: 7.886196613311768
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0.7797067761421204
-        Y: 0.1831834316253662
-        Z: 0.3722688555717468
+        X: -0.028393268585205078
+        Y: 1.2106205224990845
+        Z: 0.7072820663452148
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.1650002002716064
+      Pitch: 0.8000002503395081
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 4.8267974853515625
+      Yaw: 4.976798057556152
     Saved: ~
 Window Geometry:
   Displays:

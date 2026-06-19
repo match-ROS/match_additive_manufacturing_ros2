@@ -5,10 +5,14 @@ from types import SimpleNamespace
 from am_operator_gui.gui import (
     ARM_FOLLOWER_NAME,
     BASE_FOLLOWER_NAME,
+    CURRENT_TCP_POSE_NAME,
     DEFAULT_TRAJECTORY_DIR,
     DEFAULT_PID_GAINS,
+    MOVE_BASE_NAME,
+    ODOMETRY_POSE_ADAPTER_NAME,
     OperatorWindow,
     PATH_INDEX_NAME,
+    SIM_NAME,
     SYNC_REMOTE_TARGET,
     SYNC_WORKSPACE_NAME,
     VICON_BASE_REFERENCE_FRAME,
@@ -182,6 +186,44 @@ def test_simulation_arm_stack_keeps_sim_controller_names() -> None:
     )
 
 
+def test_sim_launch_disables_builtin_robot_pose_when_odometry_pose_is_used() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        simulation_checkbox=FakeCheckBox(True),
+        odometry_pose_checkbox=FakeCheckBox(True),
+        platform_combo=FakeComboBox(data='robotnik'),
+        _append_process_output=lambda *_args: None,
+    )
+    fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
+    fake._sim_publish_robot_pose = lambda: OperatorWindow._sim_publish_robot_pose(fake)
+
+    OperatorWindow._start_sim(fake)
+
+    name, command = processes.started[0]
+    assert name == SIM_NAME
+    assert 'rbvogui_ur_standard_control.launch.py' in command
+    assert 'publish_robot_pose:=false' in command
+
+
+def test_sim_transformations_start_odometry_pose_when_checked() -> None:
+    calls = []
+    fake = SimpleNamespace(
+        processes=FakeProcesses(running=()),
+        simulation_checkbox=FakeCheckBox(True),
+        odometry_pose_checkbox=FakeCheckBox(True),
+        _start_current_tcp_pose=lambda: calls.append(CURRENT_TCP_POSE_NAME),
+        _start_odometry_pose_adapter=lambda: calls.append(ODOMETRY_POSE_ADAPTER_NAME),
+        _refresh_process_states=lambda: calls.append('refresh'),
+        _append_process_output=lambda *_args: None,
+    )
+
+    OperatorWindow._toggle_current_tcp_pose(fake)
+
+    assert CURRENT_TCP_POSE_NAME in calls
+    assert ODOMETRY_POSE_ADAPTER_NAME in calls
+
+
 def test_base_follower_uses_configured_pid_gains() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
@@ -228,12 +270,48 @@ def test_base_follower_uses_configured_pid_gains() -> None:
     assert 'external_path_index_stride:=10' in command
 
 
+def test_move_base_to_start_uses_configured_velocity_limits() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        platform_combo=FakeComboBox(data='robotnik'),
+        diff_drive_checkbox=FakeCheckBox(False),
+        index_spin=FakeSpinBox(4),
+        base_move_linear_velocity_spin=FakeSpinBox(0.12),
+        base_move_lateral_velocity_spin=FakeSpinBox(0.07),
+        base_move_angular_velocity_spin=FakeSpinBox(0.34),
+        _use_sim_time=lambda: 'false',
+        _pid_gain=lambda key: {
+            'base_move.kp_linear': 0.6,
+            'base_move.kp_lateral': 0.6,
+            'base_move.kp_angular_to_point': 1.5,
+            'base_move.kp_angular_reorient': 1.2,
+        }[key],
+        _ros_float_literal=OperatorWindow._ros_float_literal,
+        _append_process_output=lambda *_args: None,
+    )
+    fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
+    fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
+    fake._diff_drive_mode = lambda: OperatorWindow._diff_drive_mode(fake)
+    fake._base_move_velocity = lambda key: OperatorWindow._base_move_velocity(fake, key)
+
+    OperatorWindow._start_move_base_to_start(fake)
+
+    name, command = processes.started[0]
+    assert name == MOVE_BASE_NAME
+    assert 'path_index:=4' in command
+    assert 'max_linear_velocity:=0.120000' in command
+    assert 'max_lateral_velocity:=0.070000' in command
+    assert 'max_angular_velocity:=0.340000' in command
+
+
 def test_hardware_pose_adapters_start_external_base_reference() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
         processes=processes,
         base_pose_topic=FakeLineEdit('/vicon/Base_RB/Base_RB'),
         arm_pose_topic=FakeLineEdit('/vicon/tool_transformed'),
+        odometry_pose_checkbox=FakeCheckBox(False),
         control_frame=FakeLineEdit('map'),
         external_map_frame=FakeLineEdit('map'),
         robot_base_frame=FakeLineEdit('base_link'),
@@ -271,6 +349,45 @@ def test_hardware_pose_adapters_start_external_base_reference() -> None:
     assert 'pose_stamped_adapter' in arm_command
     assert 'input_topic:=/vicon/tool_transformed' in arm_command
     assert 'target_frame:=map' in arm_command
+
+
+def test_hardware_pose_adapters_can_use_odometry_for_robot_pose() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        base_pose_topic=FakeLineEdit('/vicon/Base_RB/Base_RB'),
+        arm_pose_topic=FakeLineEdit('/vicon/tool_transformed'),
+        odometry_pose_checkbox=FakeCheckBox(True),
+        control_frame=FakeLineEdit('map'),
+        external_map_frame=FakeLineEdit('map'),
+        robot_base_frame=FakeLineEdit('base_link'),
+        robot_tree_root_frame=FakeLineEdit('odom'),
+        platform_combo=FakeComboBox(data='robotnik'),
+        index_spin=FakeSpinBox(7),
+        _use_sim_time=lambda: 'false',
+        _append_process_output=lambda *_args: None,
+    )
+    fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
+    fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
+    fake._start_odometry_pose_adapter = lambda: OperatorWindow._start_odometry_pose_adapter(fake)
+
+    OperatorWindow._start_pose_adapters(fake)
+
+    started_names = [name for name, _command in processes.started]
+    assert VICON_BASE_STATIC_TF_NAME not in started_names
+    assert ODOMETRY_POSE_ADAPTER_NAME in started_names
+    odom_command = next(
+        command for name, command in processes.started
+        if name == ODOMETRY_POSE_ADAPTER_NAME
+    )
+    assert 'odometry_robot_pose' in odom_command
+    assert 'odom_topic:=/robot/robotnik_base_control/odom' in odom_command
+    assert 'path_topic:=/base_path' in odom_command
+    assert 'output_topic:=/robot_pose' in odom_command
+    assert 'initial_path_index:=7' in odom_command
+    assert 'map_frame:=map' in odom_command
+    assert 'odom_frame:=odom' in odom_command
+    assert 'robot_base_frame:=base_link' in odom_command
 
 
 def test_arm_follower_uses_configured_pid_gains() -> None:

@@ -2,8 +2,10 @@ import os
 import time
 
 from am_operator_gui.external_base_reference import ExternalBaseReference
+from am_operator_gui.odometry_robot_pose import OdometryRobotPose
 from am_operator_gui.pose_stamped_adapter import PoseStampedAdapter
 from geometry_msgs.msg import PoseStamped, TransformStamped
+from nav_msgs.msg import Odometry, Path
 import pytest
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
@@ -139,6 +141,90 @@ def test_external_base_reference_converts_marker_pose_to_base_pose() -> None:
         assert outputs
         assert outputs[-1].header.frame_id == 'map'
         assert outputs[-1].pose.position.x == pytest.approx(9.0)
+    finally:
+        executor.remove_node(adapter)
+        executor.remove_node(node)
+        adapter.destroy_node()
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+@pytest.mark.timeout(20)
+def test_odometry_robot_pose_anchors_odom_to_base_path_index() -> None:
+    os.environ['ROS_DOMAIN_ID'] = '175'
+    os.environ['ROS_LOG_DIR'] = '/tmp/am_operator_gui_pose_test_logs'
+    rclpy.init()
+    node = Node('odometry_robot_pose_runtime_test')
+    adapter = OdometryRobotPose(parameter_overrides=[
+        Parameter('odom_topic', value='/test_odom'),
+        Parameter('path_topic', value='/test_base_path'),
+        Parameter('output_topic', value='/test_robot_pose_from_odom'),
+        Parameter('initial_path_index', value=1),
+        Parameter('ready_topic', value='/test_odom_pose_ready'),
+        Parameter('stale_timeout', value=0.5),
+        Parameter('publish_tf', value=False),
+    ])
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+    executor.add_node(adapter)
+
+    path_pub = node.create_publisher(Path, '/test_base_path', 10)
+    odom_pub = node.create_publisher(Odometry, '/test_odom', 10)
+    outputs = []
+    node.create_subscription(
+        PoseStamped,
+        '/test_robot_pose_from_odom',
+        lambda msg: outputs.append(msg),
+        10,
+    )
+
+    path = Path()
+    path.header.frame_id = 'map'
+    first = PoseStamped()
+    first.header.frame_id = 'map'
+    first.pose.orientation.w = 1.0
+    second = PoseStamped()
+    second.header.frame_id = 'map'
+    second.pose.position.x = 10.0
+    second.pose.position.y = 20.0
+    second.pose.orientation.w = 1.0
+    path.poses = [first, second]
+
+    try:
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and not outputs:
+            path.header.stamp = node.get_clock().now().to_msg()
+            path_pub.publish(path)
+
+            odom = Odometry()
+            odom.header.stamp = node.get_clock().now().to_msg()
+            odom.header.frame_id = 'odom'
+            odom.child_frame_id = 'base_link'
+            odom.pose.pose.orientation.w = 1.0
+            odom_pub.publish(odom)
+            executor.spin_once(timeout_sec=0.05)
+
+        assert outputs
+
+        outputs.clear()
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            odom = Odometry()
+            odom.header.stamp = node.get_clock().now().to_msg()
+            odom.header.frame_id = 'odom'
+            odom.child_frame_id = 'base_link'
+            odom.pose.pose.position.x = 1.5
+            odom.pose.pose.position.y = -2.0
+            odom.pose.pose.orientation.w = 1.0
+            odom_pub.publish(odom)
+            executor.spin_once(timeout_sec=0.05)
+            if outputs and outputs[-1].pose.position.x > 11.0:
+                break
+
+        assert outputs
+        assert outputs[-1].header.frame_id == 'map'
+        assert outputs[-1].pose.position.x == pytest.approx(11.5)
+        assert outputs[-1].pose.position.y == pytest.approx(18.0)
     finally:
         executor.remove_node(adapter)
         executor.remove_node(node)

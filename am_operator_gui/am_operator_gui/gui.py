@@ -24,6 +24,7 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QPlainTextEdit,
     QSlider,
+    QSplitter,
     QSpinBox,
     QDoubleSpinBox,
     QVBoxLayout,
@@ -35,6 +36,7 @@ from am_operator_gui.ros_bridge import RosBridge
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_SRC_ROOT = REPO_ROOT.parent
 DEFAULT_COMPONENTS_DIR = REPO_ROOT / 'components'
 DEFAULT_TRAJECTORY_DIR = DEFAULT_COMPONENTS_DIR / 'robotnik_paired_demo'
@@ -72,7 +74,8 @@ VICON_BASE_STATIC_TF = (
     'robot_base_footprint',
     VICON_BASE_REFERENCE_FRAME,
 )
-CONFIG_PATH = Path.home() / '.config' / 'am_operator_gui' / 'operator_gui_config.json'
+CONFIG_PATH = PACKAGE_ROOT / 'config' / 'operator_gui_config.json'
+LEGACY_CONFIG_PATH = Path.home() / '.config' / 'am_operator_gui' / 'operator_gui_config.json'
 LAUNCH_ALL_NAME = 'launch_all'
 SIM_NAME = 'launch_sim'
 PUBLISH_PATH_NAME = 'publish_path'
@@ -81,6 +84,7 @@ ARM_FOLLOWER_NAME = 'arm_follower'
 PATH_INDEX_NAME = 'path_index'
 CURRENT_TCP_POSE_NAME = 'current_tcp_pose'
 BASE_POSE_ADAPTER_NAME = 'base_pose_adapter'
+ODOMETRY_POSE_ADAPTER_NAME = 'odometry_pose_adapter'
 ARM_POSE_ADAPTER_NAME = 'arm_pose_adapter'
 VICON_EE_STATIC_TF_NAME = 'vicon_ee_static_tf'
 VICON_BASE_STATIC_TF_NAME = 'vicon_base_static_tf'
@@ -201,6 +205,7 @@ PLATFORM_PROFILES = {
         'label': 'Robotnik',
         'path_topic': '/base_path',
         'robot_pose_topic': '/robot_pose',
+        'odom_topic': '/robot/robotnik_base_control/odom',
         'cmd_vel_topic': '/robot/robotnik_base_control/cmd_vel_unstamped',
         'output_stamped': False,
         'command_frame_id': 'base_link',
@@ -219,6 +224,7 @@ PLATFORM_PROFILES = {
         'label': 'Bunker',
         'path_topic': '/base_path',
         'robot_pose_topic': '/robot_pose',
+        'odom_topic': '/odom',
         'cmd_vel_topic': '/diff_drive_controller/cmd_vel',
         'output_stamped': True,
         'command_frame_id': 'base_footprint',
@@ -408,7 +414,7 @@ class OperatorWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle('AM Operator GUI')
-        self.resize(980, 720)
+        self.resize(1280, 720)
         self._has_path = False
         self._has_robot_pose = False
         self._has_arm_pose = False
@@ -442,12 +448,16 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _load_config(self) -> dict:
-        try:
-            with CONFIG_PATH.open('r', encoding='utf-8') as config_file:
-                data = json.load(config_file)
-        except (OSError, json.JSONDecodeError):
-            return {}
-        return data if isinstance(data, dict) else {}
+        for config_path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
+            try:
+                with config_path.open('r', encoding='utf-8') as config_file:
+                    data = json.load(config_file)
+            except FileNotFoundError:
+                continue
+            except (OSError, json.JSONDecodeError):
+                return {}
+            return data if isinstance(data, dict) else {}
+        return {}
 
     def _save_config(self) -> None:
         try:
@@ -475,6 +485,25 @@ class OperatorWindow(QMainWindow):
     def _configured_default_velocity_enabled(self) -> bool:
         return bool(self._config.get('default_velocity_enabled', False))
 
+    def _configured_base_move_velocity(self, key: str) -> float:
+        profile = self._current_platform_profile()
+        defaults = {
+            'max_linear': float(profile['move_max_linear']),
+            'max_lateral': float(profile['move_max_lateral']),
+            'max_angular': float(profile['move_max_angular']),
+        }
+        configured_by_platform = self._config.get('base_move_velocity', {})
+        configured = {}
+        if isinstance(configured_by_platform, dict):
+            platform_config = configured_by_platform.get(self._current_platform_key(), {})
+            if isinstance(platform_config, dict):
+                configured = platform_config
+        try:
+            value = float(configured.get(key, defaults[key]))
+        except (KeyError, TypeError, ValueError):
+            value = defaults[key]
+        return max(0.0, min(10.0, value))
+
     def _configured_path_transform(self) -> dict[str, float]:
         configured = self._config.get('path_transform', {})
         transform = dict(DEFAULT_PATH_TRANSFORM)
@@ -499,6 +528,9 @@ class OperatorWindow(QMainWindow):
         if self._configured_platform() == 'bunker':
             return True
         return bool(self._config.get('diff_drive_mode', False))
+
+    def _configured_use_odometry_robot_pose(self) -> bool:
+        return bool(self._config.get('use_odometry_robot_pose', False))
 
     def _configured_base_pose_topic(self) -> str:
         return str(self._config.get('base_pose_topic', '/vicon/Base_RB/Base_RB'))
@@ -576,8 +608,14 @@ class OperatorWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         root = QWidget()
-        layout = QVBoxLayout(root)
+        layout = QHBoxLayout(root)
         layout.setSpacing(10)
+
+        splitter = QSplitter(Qt.Horizontal)
+        controls_panel = QWidget()
+        controls_layout = QVBoxLayout(controls_panel)
+        controls_layout.setSpacing(10)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
 
         launch_group = QGroupBox('System')
         launch_layout = QGridLayout(launch_group)
@@ -595,6 +633,8 @@ class OperatorWindow(QMainWindow):
         self.diff_drive_checkbox = QCheckBox('Diff drive mode')
         self.diff_drive_checkbox.setChecked(self._configured_diff_drive_mode())
         self._sync_diff_drive_checkbox()
+        self.odometry_pose_checkbox = QCheckBox('Use odometry for /robot_pose')
+        self.odometry_pose_checkbox.setChecked(self._configured_use_odometry_robot_pose())
         self.direction_mode = QComboBox()
         self.direction_mode.addItems(['goal_direction', 'speed_orthogonal'])
         self.direction_mode.setCurrentText('goal_direction')
@@ -645,6 +685,7 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.direction_mode, 1, 1)
         launch_layout.addWidget(QLabel('Current index'), 1, 2)
         launch_layout.addWidget(self.index_spin, 1, 3)
+        launch_layout.addWidget(self.odometry_pose_checkbox, 1, 4, 1, 2)
         launch_layout.addWidget(QLabel('Path folder'), 2, 0)
         launch_layout.addWidget(self.path_folder, 2, 1, 1, 4)
         launch_layout.addWidget(self.browse_button, 2, 5)
@@ -725,11 +766,32 @@ class OperatorWindow(QMainWindow):
         self.move_arm_button = QPushButton('Move Arm To Start')
         self.start_following_button = QPushButton('Start Following')
         self.stop_following_button = QPushButton('Stop Following')
+        self.base_move_linear_velocity_spin = QDoubleSpinBox()
+        self.base_move_lateral_velocity_spin = QDoubleSpinBox()
+        self.base_move_angular_velocity_spin = QDoubleSpinBox()
+        for spin in (
+            self.base_move_linear_velocity_spin,
+            self.base_move_lateral_velocity_spin,
+            self.base_move_angular_velocity_spin,
+        ):
+            spin.setRange(0.0, 10.0)
+            spin.setDecimals(3)
+            spin.setSingleStep(0.01)
+        self.base_move_linear_velocity_spin.setSuffix(' m/s')
+        self.base_move_lateral_velocity_spin.setSuffix(' m/s')
+        self.base_move_angular_velocity_spin.setSuffix(' rad/s')
+        self._load_base_move_velocity_controls()
 
         motion_layout.addWidget(self.move_base_button, 0, 0)
         motion_layout.addWidget(self.move_arm_button, 0, 1)
         motion_layout.addWidget(self.start_following_button, 1, 0)
         motion_layout.addWidget(self.stop_following_button, 1, 1)
+        motion_layout.addWidget(QLabel('Base start linear'), 2, 0)
+        motion_layout.addWidget(self.base_move_linear_velocity_spin, 2, 1)
+        motion_layout.addWidget(QLabel('Base start lateral'), 3, 0)
+        motion_layout.addWidget(self.base_move_lateral_velocity_spin, 3, 1)
+        motion_layout.addWidget(QLabel('Base start angular'), 4, 0)
+        motion_layout.addWidget(self.base_move_angular_velocity_spin, 4, 1)
 
         override_group = QGroupBox('Overrides')
         override_layout = QGridLayout(override_group)
@@ -774,13 +836,26 @@ class OperatorWindow(QMainWindow):
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setMaximumBlockCount(1000)
+        self.log.setMinimumWidth(420)
 
-        layout.addWidget(launch_group)
-        layout.addWidget(component_group)
-        layout.addWidget(motion_group)
-        layout.addWidget(override_group)
-        layout.addWidget(status_group)
-        layout.addWidget(self.log, 1)
+        log_group = QGroupBox('Console')
+        log_layout = QVBoxLayout(log_group)
+        log_layout.addWidget(self.log)
+
+        controls_layout.addWidget(launch_group)
+        controls_layout.addWidget(component_group)
+        controls_layout.addWidget(motion_group)
+        controls_layout.addWidget(override_group)
+        controls_layout.addWidget(status_group)
+        controls_layout.addStretch(1)
+
+        splitter.addWidget(controls_panel)
+        splitter.addWidget(log_group)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([760, 520])
+
+        layout.addWidget(splitter)
         self.setCentralWidget(root)
 
     def _connect_signals(self) -> None:
@@ -795,6 +870,7 @@ class OperatorWindow(QMainWindow):
         self.platform_combo.currentIndexChanged.connect(self._set_platform)
         self.follower_type_combo.currentIndexChanged.connect(self._set_follower_type)
         self.diff_drive_checkbox.toggled.connect(self._set_diff_drive_mode)
+        self.odometry_pose_checkbox.toggled.connect(self._set_use_odometry_robot_pose)
         self.launch_button.clicked.connect(self._toggle_launch_all)
         self.launch_sim_button.clicked.connect(self._toggle_sim)
         self.pid_gains_button.clicked.connect(self._open_pid_gains_window)
@@ -819,6 +895,9 @@ class OperatorWindow(QMainWindow):
         self.path_index_rate_spin.valueChanged.connect(self._set_path_index_rate)
         self.default_velocity_checkbox.toggled.connect(self._set_default_velocity_enabled)
         self.default_velocity_spin.valueChanged.connect(self._set_default_velocity)
+        self.base_move_linear_velocity_spin.valueChanged.connect(self._set_base_move_velocity)
+        self.base_move_lateral_velocity_spin.valueChanged.connect(self._set_base_move_velocity)
+        self.base_move_angular_velocity_spin.valueChanged.connect(self._set_base_move_velocity)
         self.path_transform_x_spin.valueChanged.connect(self._set_path_transform)
         self.path_transform_y_spin.valueChanged.connect(self._set_path_transform)
         self.path_transform_z_spin.valueChanged.connect(self._set_path_transform)
@@ -861,6 +940,7 @@ class OperatorWindow(QMainWindow):
         self._sync_diff_drive_checkbox()
         self._config['diff_drive_mode'] = self._diff_drive_mode()
         self._save_config()
+        self._load_base_move_velocity_controls()
         profile = self._current_platform_profile()
         self.path_status.setText(f"{profile['path_topic']}: ready" if self._has_path else f"{profile['path_topic']}: waiting")
 
@@ -870,6 +950,10 @@ class OperatorWindow(QMainWindow):
 
     def _set_diff_drive_mode(self, enabled: bool) -> None:
         self._config['diff_drive_mode'] = bool(enabled)
+        self._save_config()
+
+    def _set_use_odometry_robot_pose(self, enabled: bool) -> None:
+        self._config['use_odometry_robot_pose'] = bool(enabled)
         self._save_config()
 
     def _set_path_transform(self, *_args) -> None:
@@ -1151,6 +1235,8 @@ class OperatorWindow(QMainWindow):
         else:
             self._start_pose_adapters()
         self._start_publish_path()
+        if self.simulation_checkbox.isChecked() and self.odometry_pose_checkbox.isChecked():
+            self._start_odometry_pose_adapter()
         self._start_arm_controllers()
         self._start_path_index()
         self._start_base_follower()
@@ -1204,6 +1290,7 @@ class OperatorWindow(QMainWindow):
             CURRENT_TCP_POSE_NAME,
             VICON_BASE_STATIC_TF_NAME,
             BASE_POSE_ADAPTER_NAME,
+            ODOMETRY_POSE_ADAPTER_NAME,
             ARM_POSE_ADAPTER_NAME,
             VICON_EE_STATIC_TF_NAME,
             ARM_CONTROLLERS_NAME,
@@ -1234,6 +1321,7 @@ class OperatorWindow(QMainWindow):
                 'spawn_with_controllers.launch.py',
                 f'headless:={headless_value}',
                 'launch_rviz:=false',
+                f'publish_robot_pose:={self._sim_publish_robot_pose()}',
             ]
         else:
             gui_value = 'true' if self.simulation_checkbox.isChecked() else 'false'
@@ -1244,9 +1332,13 @@ class OperatorWindow(QMainWindow):
                 'rbvogui_ur_standard_control.launch.py',
                 f'gui:={gui_value}',
                 'robot_id:=robot',
+                f'publish_robot_pose:={self._sim_publish_robot_pose()}',
             ]
         self._append_process_output(SIM_NAME, ' '.join(command))
         self.processes.start(SIM_NAME, command)
+
+    def _sim_publish_robot_pose(self) -> str:
+        return 'false' if self.odometry_pose_checkbox.isChecked() else 'true'
 
     def _publish_path(self) -> None:
         process = self.processes.get(PUBLISH_PATH_NAME)
@@ -1450,6 +1542,7 @@ class OperatorWindow(QMainWindow):
                     VICON_BASE_STATIC_TF_NAME,
                     VICON_EE_STATIC_TF_NAME,
                     BASE_POSE_ADAPTER_NAME,
+                    ODOMETRY_POSE_ADAPTER_NAME,
                     ARM_POSE_ADAPTER_NAME,
                 )
             )
@@ -1457,19 +1550,25 @@ class OperatorWindow(QMainWindow):
                 self.processes.stop(VICON_BASE_STATIC_TF_NAME)
                 self.processes.stop(VICON_EE_STATIC_TF_NAME)
                 self.processes.stop(BASE_POSE_ADAPTER_NAME)
+                self.processes.stop(ODOMETRY_POSE_ADAPTER_NAME)
                 self.processes.stop(ARM_POSE_ADAPTER_NAME)
             else:
                 self._start_pose_adapters()
             self._refresh_process_states()
             return
         process = self.processes.get(CURRENT_TCP_POSE_NAME)
-        if process is not None and process.is_running():
+        odom_process = self.processes.get(ODOMETRY_POSE_ADAPTER_NAME)
+        odom_running = odom_process is not None and odom_process.is_running()
+        if (process is not None and process.is_running()) or odom_running:
             self.processes.stop(CURRENT_TCP_POSE_NAME)
+            self.processes.stop(ODOMETRY_POSE_ADAPTER_NAME)
             self._append_process_output(CURRENT_TCP_POSE_NAME, 'stopped by operator')
             self._refresh_process_states()
             return
 
         self._start_current_tcp_pose()
+        if self.odometry_pose_checkbox.isChecked():
+            self._start_odometry_pose_adapter()
         self._refresh_process_states()
 
     def _start_current_tcp_pose(self) -> None:
@@ -1489,15 +1588,17 @@ class OperatorWindow(QMainWindow):
         self.processes.start(CURRENT_TCP_POSE_NAME, command)
 
     def _start_pose_adapters(self) -> None:
-        base_static_command = [
-            'ros2',
-            'run',
-            'tf2_ros',
-            'static_transform_publisher',
-            *VICON_BASE_STATIC_TF,
-        ]
-        self._append_process_output(VICON_BASE_STATIC_TF_NAME, ' '.join(base_static_command))
-        self.processes.start(VICON_BASE_STATIC_TF_NAME, base_static_command)
+        use_odometry_pose = self.odometry_pose_checkbox.isChecked()
+        if not use_odometry_pose:
+            base_static_command = [
+                'ros2',
+                'run',
+                'tf2_ros',
+                'static_transform_publisher',
+                *VICON_BASE_STATIC_TF,
+            ]
+            self._append_process_output(VICON_BASE_STATIC_TF_NAME, ' '.join(base_static_command))
+            self.processes.start(VICON_BASE_STATIC_TF_NAME, base_static_command)
 
         vicon_transform_command = [
             'ros2',
@@ -1512,25 +1613,28 @@ class OperatorWindow(QMainWindow):
         self._append_process_output(VICON_EE_STATIC_TF_NAME, ' '.join(vicon_transform_command))
         self.processes.start(VICON_EE_STATIC_TF_NAME, vicon_transform_command)
 
-        base_command = [
-            'ros2',
-            'run',
-            'am_operator_gui',
-            'external_base_reference',
-            '--ros-args',
-            '-r', f'__node:={BASE_POSE_ADAPTER_NAME}',
-            '-p', f'use_sim_time:={self._use_sim_time()}',
-            '-p', f'input_topic:={self.base_pose_topic.text().strip()}',
-            '-p', f'input_pose_frame:={VICON_BASE_REFERENCE_FRAME}',
-            '-p', 'output_topic:=/robot_pose',
-            '-p', f'map_frame:={self.external_map_frame.text().strip()}',
-            '-p', f'robot_base_frame:={self.robot_base_frame.text().strip()}',
-            '-p', f'robot_tree_root_frame:={self.robot_tree_root_frame.text().strip()}',
-            '-p', 'ready_topic:=/am/base_pose_ready',
-            '-p', 'stale_timeout:=0.5',
-        ]
-        self._append_process_output(BASE_POSE_ADAPTER_NAME, ' '.join(base_command))
-        self.processes.start(BASE_POSE_ADAPTER_NAME, base_command)
+        if use_odometry_pose:
+            self._start_odometry_pose_adapter()
+        else:
+            base_command = [
+                'ros2',
+                'run',
+                'am_operator_gui',
+                'external_base_reference',
+                '--ros-args',
+                '-r', f'__node:={BASE_POSE_ADAPTER_NAME}',
+                '-p', f'use_sim_time:={self._use_sim_time()}',
+                '-p', f'input_topic:={self.base_pose_topic.text().strip()}',
+                '-p', f'input_pose_frame:={VICON_BASE_REFERENCE_FRAME}',
+                '-p', 'output_topic:=/robot_pose',
+                '-p', f'map_frame:={self.external_map_frame.text().strip()}',
+                '-p', f'robot_base_frame:={self.robot_base_frame.text().strip()}',
+                '-p', f'robot_tree_root_frame:={self.robot_tree_root_frame.text().strip()}',
+                '-p', 'ready_topic:=/am/base_pose_ready',
+                '-p', 'stale_timeout:=0.5',
+            ]
+            self._append_process_output(BASE_POSE_ADAPTER_NAME, ' '.join(base_command))
+            self.processes.start(BASE_POSE_ADAPTER_NAME, base_command)
 
         arm_command = [
             'ros2',
@@ -1548,6 +1652,30 @@ class OperatorWindow(QMainWindow):
         ]
         self._append_process_output(ARM_POSE_ADAPTER_NAME, ' '.join(arm_command))
         self.processes.start(ARM_POSE_ADAPTER_NAME, arm_command)
+
+    def _start_odometry_pose_adapter(self) -> None:
+        profile = self._current_platform_profile()
+        base_command = [
+            'ros2',
+            'run',
+            'am_operator_gui',
+            'odometry_robot_pose',
+            '--ros-args',
+            '-r', f'__node:={ODOMETRY_POSE_ADAPTER_NAME}',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
+            '-p', f"odom_topic:={profile['odom_topic']}",
+            '-p', f"path_topic:={profile['path_topic']}",
+            '-p', 'output_topic:=/robot_pose',
+            '-p', f'initial_path_index:={self.index_spin.value()}',
+            '-p', f'map_frame:={self.external_map_frame.text().strip()}',
+            '-p', f'odom_frame:={self.robot_tree_root_frame.text().strip()}',
+            '-p', f'robot_base_frame:={self.robot_base_frame.text().strip()}',
+            '-p', 'ready_topic:=/am/base_pose_ready',
+            '-p', 'stale_timeout:=0.5',
+            '-p', 'publish_tf:=true',
+        ]
+        self._append_process_output(ODOMETRY_POSE_ADAPTER_NAME, ' '.join(base_command))
+        self.processes.start(ODOMETRY_POSE_ADAPTER_NAME, base_command)
 
     def _toggle_arm_controllers(self) -> None:
         process = self.processes.get(ARM_CONTROLLERS_NAME)
@@ -1627,9 +1755,9 @@ class OperatorWindow(QMainWindow):
             '-p', f"kp_lateral:={self._ros_float_literal(self._pid_gain('base_move.kp_lateral'))}",
             '-p', f"kp_angular_to_point:={self._ros_float_literal(self._pid_gain('base_move.kp_angular_to_point'))}",
             '-p', f"kp_angular_reorient:={self._ros_float_literal(self._pid_gain('base_move.kp_angular_reorient'))}",
-            '-p', f"max_linear_velocity:={self._ros_float_literal(float(profile['move_max_linear']))}",
-            '-p', f"max_lateral_velocity:={self._ros_float_literal(float(profile['move_max_lateral']))}",
-            '-p', f"max_angular_velocity:={self._ros_float_literal(float(profile['move_max_angular']))}",
+            '-p', f"max_linear_velocity:={self._ros_float_literal(self._base_move_velocity('max_linear'))}",
+            '-p', f"max_lateral_velocity:={self._ros_float_literal(self._base_move_velocity('max_lateral'))}",
+            '-p', f"max_angular_velocity:={self._ros_float_literal(self._base_move_velocity('max_angular'))}",
         ]
         self._append_process_output(MOVE_BASE_NAME, ' '.join(command))
         self.processes.start(MOVE_BASE_NAME, command)
@@ -1895,6 +2023,36 @@ class OperatorWindow(QMainWindow):
             return -1.0
         return self.default_velocity_spin.value()
 
+    def _load_base_move_velocity_controls(self) -> None:
+        controls = (
+            (self.base_move_linear_velocity_spin, 'max_linear'),
+            (self.base_move_lateral_velocity_spin, 'max_lateral'),
+            (self.base_move_angular_velocity_spin, 'max_angular'),
+        )
+        for spin, key in controls:
+            spin.blockSignals(True)
+            spin.setValue(self._configured_base_move_velocity(key))
+            spin.blockSignals(False)
+
+    def _set_base_move_velocity(self, *_args) -> None:
+        configured_by_platform = self._config.get('base_move_velocity', {})
+        if not isinstance(configured_by_platform, dict):
+            configured_by_platform = {}
+        configured_by_platform[self._current_platform_key()] = {
+            'max_linear': float(self.base_move_linear_velocity_spin.value()),
+            'max_lateral': float(self.base_move_lateral_velocity_spin.value()),
+            'max_angular': float(self.base_move_angular_velocity_spin.value()),
+        }
+        self._config['base_move_velocity'] = configured_by_platform
+        self._save_config()
+
+    def _base_move_velocity(self, key: str) -> float:
+        return {
+            'max_linear': self.base_move_linear_velocity_spin.value(),
+            'max_lateral': self.base_move_lateral_velocity_spin.value(),
+            'max_angular': self.base_move_angular_velocity_spin.value(),
+        }[key]
+
     def _publish_overrides(self) -> None:
         velocity_percent = self.velocity_slider.value()
         velocity_scale = velocity_percent / 100.0
@@ -2008,8 +2166,19 @@ class OperatorWindow(QMainWindow):
                     VICON_BASE_STATIC_TF_NAME,
                     VICON_EE_STATIC_TF_NAME,
                     BASE_POSE_ADAPTER_NAME,
+                    ODOMETRY_POSE_ADAPTER_NAME,
                     ARM_POSE_ADAPTER_NAME,
                 )
+            )
+            self.current_tcp_pose_button.setText(
+                'Stop Transformations' if running else 'Launch Transformations'
+            )
+            self._style_button(self.current_tcp_pose_button, 'green' if running else 'grey')
+            return
+        if self.odometry_pose_checkbox.isChecked():
+            running = any(
+                (process := self.processes.get(name)) is not None and process.is_running()
+                for name in (CURRENT_TCP_POSE_NAME, ODOMETRY_POSE_ADAPTER_NAME)
             )
             self.current_tcp_pose_button.setText(
                 'Stop Transformations' if running else 'Launch Transformations'
