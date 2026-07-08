@@ -815,6 +815,7 @@ class OperatorWindow(QMainWindow):
                 'rbvogui_ur_standard_control.launch.py',
                 f'gui:={gui_value}',
                 'robot_id:=robot',
+                'arm_type:=ur20',
             ]
         self._append_process_output(SIM_NAME, ' '.join(command))
         self.processes.start(SIM_NAME, command)

@@ -165,6 +165,31 @@ def test_simulation_arm_stack_keeps_sim_controller_names() -> None:
     )
 
 
+def test_robotnik_sim_launch_uses_real_robot_arm_type() -> None:
+    processes = FakeProcesses(running=())
+    fake = SimpleNamespace(
+        simulation_checkbox=FakeCheckBox(True),
+        processes=processes,
+        _current_platform_key=lambda: 'robotnik',
+        _append_process_output=lambda *_args: None,
+    )
+
+    OperatorWindow._start_sim(fake)
+
+    assert processes.started == [(
+        'launch_sim',
+        [
+            'ros2',
+            'launch',
+            'rbvogui_ur_sim_setup',
+            'rbvogui_ur_standard_control.launch.py',
+            'gui:=true',
+            'robot_id:=robot',
+            'arm_type:=ur20',
+        ],
+    )]
+
+
 def test_base_follower_uses_configured_pid_gains() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
