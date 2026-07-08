@@ -41,20 +41,25 @@ import tf2_ros
 VICON_BASE_TOPIC = "/vicon/Base_RB/Base_RB"
 VICON_TOOL_TOPIC = "/vicon/Tool_Flange/Tool_Flange"
 
+# Vicon TF frames used when VICON_MSG_TYPE is set to "tf".
+VICON_WORLD_FRAME = "vicon"
+VICON_BASE_FRAME = "Base_RB_Base_RB"
+VICON_TOOL_FRAME = "Tool_Flange_Tool_Flange"
+
 # Vicon message type:
 # Usually Vicon publishes geometry_msgs/TransformStamped.
 # Set to "pose" if your Vicon topic publishes geometry_msgs/PoseStamped.
-VICON_MSG_TYPE = "transform"   # "transform" or "pose"
+VICON_MSG_TYPE = "tf"   # "transform", "pose", or "tf"
 
 # Robot TF frames
-ROBOT_BASE_FRAME = "/robot/base_footprint"
+ROBOT_BASE_FRAME = "robot_base_footprint"
 
 # Set this to your robot TCP frame in /tf.
 # Examples:
 #   "/robot/tool0"
 #   "/robot/tcp"
 #   "/robot/flange"
-ROBOT_TCP_FRAME = "/robot/arm/tcp"
+ROBOT_TCP_FRAME = "robot_arm_tool0_controller"
 
 # Optional known offset from robot TCP frame to Vicon tool marker frame.
 # Keep identity if Tool_Flange from Vicon corresponds directly to ROBOT_TCP_FRAME.
@@ -79,11 +84,14 @@ PRINT_EACH_SAMPLE = False
 #
 # If True:
 #   output: ROBOT_BASE_FRAME -> VICON_BASE_FRAME
-OUTPUT_INVERT = False
+#
+# The GUI-launched vicon_ee_static_tf node publishes the inverted direction:
+# /robot/base_footprint -> Vicon base marker cluster.
+OUTPUT_INVERT = True
 
 # Parent / child names used in final static publisher command
-OUTPUT_PARENT_FRAME = "/vicon/Base_RB/Base_RB"
-OUTPUT_CHILD_FRAME = "/robot/base_footprint"
+OUTPUT_PARENT_FRAME = VICON_BASE_FRAME
+OUTPUT_CHILD_FRAME = ROBOT_BASE_FRAME
 
 # TF lookup timeout [s]
 TF_TIMEOUT = 0.2
@@ -259,8 +267,10 @@ class StaticTransformEstimator(Node):
             self.tool_sub = self.create_subscription(
                 msg_type, VICON_TOOL_TOPIC, self.tool_pose_callback, 10
             )
+        elif VICON_MSG_TYPE == "tf":
+            pass
         else:
-            raise ValueError("VICON_MSG_TYPE must be 'transform' or 'pose'.")
+            raise ValueError("VICON_MSG_TYPE must be 'transform', 'pose', or 'tf'.")
 
         self.timer = self.create_timer(0.01, self.timer_callback)
 
@@ -270,8 +280,16 @@ class StaticTransformEstimator(Node):
         )
 
         self.get_logger().info("Static transform estimator started.")
-        self.get_logger().info(f"Vicon base topic: {VICON_BASE_TOPIC}")
-        self.get_logger().info(f"Vicon tool topic: {VICON_TOOL_TOPIC}")
+        if VICON_MSG_TYPE == "tf":
+            self.get_logger().info(
+                f"Vicon TF: {VICON_WORLD_FRAME} -> {VICON_BASE_FRAME}"
+            )
+            self.get_logger().info(
+                f"Vicon TF: {VICON_WORLD_FRAME} -> {VICON_TOOL_FRAME}"
+            )
+        else:
+            self.get_logger().info(f"Vicon base topic: {VICON_BASE_TOPIC}")
+            self.get_logger().info(f"Vicon tool topic: {VICON_TOOL_TOPIC}")
         self.get_logger().info(f"Robot TF: {ROBOT_BASE_FRAME} -> {ROBOT_TCP_FRAME}")
         self.get_logger().info(f"Collecting {NUM_SAMPLES} samples...")
 
@@ -288,15 +306,31 @@ class StaticTransformEstimator(Node):
         self.latest_tool = pose_msg_to_matrix(msg)
 
     def timer_callback(self):
-        if self.latest_base is None or self.latest_tool is None:
-            return
-
         now = self.get_clock().now()
         dt = (now - self.last_sample_time).nanoseconds * 1e-9
         if dt < SAMPLE_PERIOD:
             return
 
         try:
+            if VICON_MSG_TYPE == "tf":
+                base_msg = self.tf_buffer.lookup_transform(
+                    normalize_frame_name(VICON_WORLD_FRAME),
+                    normalize_frame_name(VICON_BASE_FRAME),
+                    rclpy.time.Time(),
+                    timeout=rclpy.duration.Duration(seconds=TF_TIMEOUT)
+                )
+                tool_msg = self.tf_buffer.lookup_transform(
+                    normalize_frame_name(VICON_WORLD_FRAME),
+                    normalize_frame_name(VICON_TOOL_FRAME),
+                    rclpy.time.Time(),
+                    timeout=rclpy.duration.Duration(seconds=TF_TIMEOUT)
+                )
+                self.latest_base = transform_msg_to_matrix(base_msg)
+                self.latest_tool = transform_msg_to_matrix(tool_msg)
+
+            if self.latest_base is None or self.latest_tool is None:
+                return
+
             tf_msg = self.tf_buffer.lookup_transform(
                 normalize_frame_name(ROBOT_BASE_FRAME),
                 normalize_frame_name(ROBOT_TCP_FRAME),

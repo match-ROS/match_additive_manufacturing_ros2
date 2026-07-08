@@ -15,6 +15,7 @@ from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool
 from tf_transformations import euler_from_quaternion, quaternion_from_euler
 
+from parse_paths.path_transform import transform_path, transform_vector
 from parse_paths.path_utils import as_bool, as_float_list, build_orientation, make_pose
 from parse_paths.test_path_shapes import generate_waypoints
 
@@ -210,6 +211,8 @@ class RobotnikBaseArmPathPublisher(Node):
         self.declare_parameter('base_trajectory_filename', 'base_path.json')
         self.declare_parameter('arm_trajectory_filename', 'arm_path.json')
         self.declare_parameter('normal_filename', 'normal_vector.json')
+        self.declare_parameter('path_transform_xyz', [0.0, 0.0, 0.0])
+        self.declare_parameter('path_transform_yaw_deg', 0.0)
 
         self.frame_id = str(self.get_parameter('frame_id').value)
         self.base_path_topic = str(self.get_parameter('base_path_topic').value)
@@ -235,6 +238,11 @@ class RobotnikBaseArmPathPublisher(Node):
         self.base_trajectory_filename = str(self.get_parameter('base_trajectory_filename').value)
         self.arm_trajectory_filename = str(self.get_parameter('arm_trajectory_filename').value)
         self.normal_filename = str(self.get_parameter('normal_filename').value)
+        self.path_transform_xyz = as_float_list(
+            self.get_parameter('path_transform_xyz').value,
+            [0.0, 0.0, 0.0],
+        )
+        self.path_transform_yaw_deg = float(self.get_parameter('path_transform_yaw_deg').value)
 
         latch_qos = QoSProfile(
             depth=1,
@@ -249,8 +257,11 @@ class RobotnikBaseArmPathPublisher(Node):
 
         self.robot_pose: Optional[Pose] = None
         self.current_arm_pose: Optional[PoseStamped] = None
+        self.base_original_path_msg: Optional[Path] = None
+        self.arm_original_path_msg: Optional[Path] = None
         self.base_path_msg: Optional[Path] = None
         self.arm_path_msg: Optional[Path] = None
+        self.original_normal_msg = Vector3()
         self.normal_msg = Vector3()
         self.has_published_once = False
 
@@ -288,6 +299,8 @@ class RobotnikBaseArmPathPublisher(Node):
         if self.trigger_received:
             return
         self.trigger_received = True
+        self.base_original_path_msg = None
+        self.arm_original_path_msg = None
         self.base_path_msg = None
         self.arm_path_msg = None
         self.has_published_once = False
@@ -347,11 +360,12 @@ class RobotnikBaseArmPathPublisher(Node):
             as_bool(self.get_parameter('ramp_arm_xy_offset').value),
         )
         self._warn_if_unreachable(base_points, arm_points)
-        self.base_path_msg, self.arm_path_msg, self.normal_msg = self._build_paths(
+        self.base_original_path_msg, self.arm_original_path_msg, self.original_normal_msg = self._build_paths(
             base_points,
             arm_points,
             base_yaw,
         )
+        self._apply_path_transform()
         if self.export_trajectories:
             self._export_paths()
         self.get_logger().info(
@@ -363,19 +377,19 @@ class RobotnikBaseArmPathPublisher(Node):
         return self.trajectory_directory / filename
 
     def _export_paths(self) -> None:
-        if self.base_path_msg is None or self.arm_path_msg is None:
+        if self.base_original_path_msg is None or self.arm_original_path_msg is None:
             return
         self.trajectory_directory.mkdir(parents=True, exist_ok=True)
         self._path_file(self.base_trajectory_filename).write_text(
-            json.dumps(path_to_dict(self.base_path_msg), indent=2),
+            json.dumps(path_to_dict(self.base_original_path_msg), indent=2),
             encoding='utf-8',
         )
         self._path_file(self.arm_trajectory_filename).write_text(
-            json.dumps(path_to_dict(self.arm_path_msg), indent=2),
+            json.dumps(path_to_dict(self.arm_original_path_msg), indent=2),
             encoding='utf-8',
         )
         self._path_file(self.normal_filename).write_text(
-            json.dumps(vector3_to_dict(self.normal_msg), indent=2),
+            json.dumps(vector3_to_dict(self.original_normal_msg), indent=2),
             encoding='utf-8',
         )
         self.get_logger().info(
@@ -391,28 +405,46 @@ class RobotnikBaseArmPathPublisher(Node):
                 f"Exported trajectory files not found: {base_file} and/or {arm_file}"
             )
 
-        self.base_path_msg = path_from_dict(
+        self.base_original_path_msg = path_from_dict(
             json.loads(base_file.read_text(encoding='utf-8')),
             self.frame_id,
         )
-        self.arm_path_msg = path_from_dict(
+        self.arm_original_path_msg = path_from_dict(
             json.loads(arm_file.read_text(encoding='utf-8')),
             self.frame_id,
         )
         if normal_file.exists():
-            self.normal_msg = vector3_from_dict(json.loads(normal_file.read_text(encoding='utf-8')))
+            self.original_normal_msg = vector3_from_dict(
+                json.loads(normal_file.read_text(encoding='utf-8'))
+            )
         else:
             _, normal = build_orientation(
                 np.array(as_float_list(self.get_parameter('nozzle_axis').value, [0.0, 1.0, 0.0]), dtype=float),
                 np.array(as_float_list(self.get_parameter('x_axis_hint').value, [1.0, 0.0, 0.0]), dtype=float),
             )
-            self.normal_msg = normal
+            self.original_normal_msg = normal
 
-        if len(self.base_path_msg.poses) != len(self.arm_path_msg.poses):
+        if len(self.base_original_path_msg.poses) != len(self.arm_original_path_msg.poses):
             raise ValueError(
                 "Exported base and arm paths must have the same number of poses: "
-                f"{len(self.base_path_msg.poses)} != {len(self.arm_path_msg.poses)}"
+                f"{len(self.base_original_path_msg.poses)} != {len(self.arm_original_path_msg.poses)}"
             )
+        self._apply_path_transform()
+
+    def _apply_path_transform(self) -> None:
+        if self.base_original_path_msg is None or self.arm_original_path_msg is None:
+            return
+        self.base_path_msg = transform_path(
+            self.base_original_path_msg,
+            self.path_transform_xyz,
+            self.path_transform_yaw_deg,
+        )
+        self.arm_path_msg = transform_path(
+            self.arm_original_path_msg,
+            self.path_transform_xyz,
+            self.path_transform_yaw_deg,
+        )
+        self.normal_msg = transform_vector(self.original_normal_msg, self.path_transform_yaw_deg)
 
     def _warn_if_unreachable(
         self,
@@ -466,10 +498,14 @@ class RobotnikBaseArmPathPublisher(Node):
         stamp = self.get_clock().now().to_msg()
         self.base_path_msg.header.stamp = stamp
         self.arm_path_msg.header.stamp = stamp
+        if self.base_original_path_msg is not None:
+            self.base_original_path_msg.header.stamp = stamp
+        if self.arm_original_path_msg is not None:
+            self.arm_original_path_msg.header.stamp = stamp
         self.base_path_pub.publish(self.base_path_msg)
-        self.base_original_pub.publish(deepcopy(self.base_path_msg))
+        self.base_original_pub.publish(deepcopy(self.base_original_path_msg or self.base_path_msg))
         self.arm_path_pub.publish(self.arm_path_msg)
-        self.arm_original_pub.publish(deepcopy(self.arm_path_msg))
+        self.arm_original_pub.publish(deepcopy(self.arm_original_path_msg or self.arm_path_msg))
         self.normal_pub.publish(self.normal_msg)
         self.has_published_once = True
 

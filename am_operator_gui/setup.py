@@ -27,7 +27,10 @@ setup(
             'am_operator_gui = am_operator_gui.main:main',
             'controller_switch_guard = am_operator_gui.controller_switch_guard:main',
             'external_base_reference = am_operator_gui.external_base_reference:main',
+            'odometry_robot_pose = am_operator_gui.odometry_robot_pose:main',
             'pose_stamped_adapter = am_operator_gui.pose_stamped_adapter:main',
+            'vicon_tcp_robot_pose_backup = am_operator_gui.vicon_tcp_robot_pose_backup:main',
+            'vicon_ee_static_tf = am_operator_gui.vicon_ee_static_tf:main',
         ],
     },
 )

@@ -12,7 +12,7 @@ from typing import Any
 
 TARGET_SPEED_MPS = 0.10
 START_TIME_SECONDS = 0.0
-FRAME_ID = 'robotnik_simple'
+FRAME_ID = 'map'
 NORMAL_AXIS_FIELD = 'z_axis'
 
 

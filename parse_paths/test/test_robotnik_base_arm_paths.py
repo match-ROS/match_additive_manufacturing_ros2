@@ -4,6 +4,7 @@ import numpy as np
 
 from geometry_msgs.msg import PoseStamped, Vector3
 from nav_msgs.msg import Path
+from parse_paths.path_transform import transform_path, transform_vector
 from parse_paths.publish_robotnik_base_arm_paths import (
     base_to_arm_planar_distances,
     generate_arm_points,
@@ -14,6 +15,7 @@ from parse_paths.publish_robotnik_base_arm_paths import (
     rotate_xy,
     vector3_from_dict,
     vector3_to_dict,
+    yaw_from_quaternion,
 )
 
 
@@ -150,3 +152,34 @@ def test_normal_vector_json_round_trip():
     assert restored.x == 0.0
     assert restored.y == 1.0
     assert restored.z == 0.0
+
+
+def test_path_transform_rotates_then_translates_positions_and_orientation():
+    path = Path()
+    path.header.frame_id = 'robotnik_simple'
+    pose = PoseStamped()
+    pose.header.frame_id = 'robotnik_simple'
+    pose.pose.position.x = 1.0
+    pose.pose.position.y = 0.0
+    pose.pose.position.z = 0.25
+    pose.pose.orientation = quaternion_from_yaw(0.0)
+    path.poses.append(pose)
+
+    transformed = transform_path(path, [1.0, 2.0, 0.5], 90.0)
+
+    assert transformed is not path
+    assert np.allclose([
+        transformed.poses[0].pose.position.x,
+        transformed.poses[0].pose.position.y,
+        transformed.poses[0].pose.position.z,
+    ], [1.0, 3.0, 0.75])
+    assert math.isclose(
+        yaw_from_quaternion(transformed.poses[0].pose.orientation),
+        math.pi / 2.0,
+    )
+
+
+def test_vector_transform_rotates_normal_without_translation():
+    transformed = transform_vector(Vector3(x=0.0, y=1.0, z=0.0), -90.0)
+
+    assert np.allclose([transformed.x, transformed.y, transformed.z], [1.0, 0.0, 0.0])
