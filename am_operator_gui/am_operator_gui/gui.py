@@ -1526,6 +1526,7 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_path_index(self) -> None:
+        self._calculate_path_index_rate(restart_if_running=False)
         profile = self._current_platform_profile()
         command = [
             'ros2',
@@ -1894,7 +1895,7 @@ class OperatorWindow(QMainWindow):
         self.ros_bridge.publish_path_index(value)
         self._append_process_output('ros', f'published /path_index {value}')
 
-    def _calculate_path_index_rate(self) -> None:
+    def _calculate_path_index_rate(self, restart_if_running: bool = True) -> None:
         if self.default_velocity_checkbox.isChecked():
             velocity = self.default_velocity_spin.value()
             median_segment_length = self.ros_bridge.latest_ur_path_median_segment_length
@@ -1915,6 +1916,7 @@ class OperatorWindow(QMainWindow):
                 'gui',
                 f'calculated path index rate {rate:.3f} Hz from {velocity:.3f} m/s and {source}',
             )
+            self._restart_path_index_if_running(restart_if_running)
             return
 
         rate = self.ros_bridge.latest_ur_path_rate
@@ -1931,6 +1933,20 @@ class OperatorWindow(QMainWindow):
 
         self.path_index_rate_spin.setValue(rate)
         self._append_process_output('gui', f'calculated path index rate {rate:.3f} Hz from {source}')
+        self._restart_path_index_if_running(restart_if_running)
+
+    def _restart_path_index_if_running(self, enabled: bool) -> None:
+        if not enabled:
+            return
+        process = self.processes.get(PATH_INDEX_NAME)
+        if process is None or not process.is_running():
+            return
+        self.processes.stop(PATH_INDEX_NAME)
+        self._append_process_output(
+            PATH_INDEX_NAME,
+            'restarting path index advancer to apply updated publish_rate',
+        )
+        self._start_path_index()
 
     def _arm_path_median_segment_length_from_file(self) -> Optional[float]:
         path_file = Path(self.path_folder.text()) / 'arm_path.json'
@@ -2381,7 +2397,13 @@ class OperatorWindow(QMainWindow):
             f'QPushButton {{ background-color: {background}; color: #101010; padding: 6px; }}'
         )
 
+    def _detach_process_output_callbacks(self) -> None:
+        self.processes._output_callback = None
+        for process in self.processes._processes.values():
+            process.output_callback = None
+
     def closeEvent(self, event) -> None:
+        self._detach_process_output_callbacks()
         self.processes.stop_all()
         self.ros_bridge.stop()
         event.accept()

@@ -131,6 +131,60 @@ def test_hardware_launch_all_never_starts_move_to_start() -> None:
     assert ('stop', 'robotnik_simple') in calls
 
 
+def test_simulation_launch_all_schedules_base_move_after_startup() -> None:
+    calls = []
+    scheduled = {}
+
+    def _schedule(delay_ms, callback, require_launch_all_active=True):
+        scheduled['delay_ms'] = delay_ms
+        scheduled['callback'] = callback
+        scheduled['require_launch_all_active'] = require_launch_all_active
+        calls.append(('scheduled_move', delay_ms))
+
+    fake = SimpleNamespace(
+        _launch_all_active=False,
+        simulation_checkbox=FakeCheckBox(True),
+        odometry_pose_checkbox=FakeCheckBox(False),
+        control_frame=FakeLineEdit('map'),
+        ros_bridge=SimpleNamespace(
+            publish_start_condition=lambda value: calls.append(('start_condition', value)),
+            publish_stop_commands=lambda frame: calls.append(('stop', frame)),
+        ),
+        _append_process_output=lambda *_args: None,
+        _start_sim=lambda: calls.append('sim'),
+        _start_current_tcp_pose=lambda: calls.append('tcp_from_tf'),
+        _start_pose_adapters=lambda: calls.append('pose_adapters'),
+        _start_publish_path=lambda: calls.append('publish_path'),
+        _start_odometry_pose_adapter=lambda: calls.append('odom_pose_adapter'),
+        _start_arm_controllers=lambda: calls.append('arm_controllers'),
+        _start_path_index=lambda: calls.append('path_index'),
+        _start_base_follower=lambda: calls.append('base_follower'),
+        _start_arm_follower=lambda **kwargs: calls.append(('arm_follower', kwargs)),
+        _start_move_arm_to_start=lambda **kwargs: calls.append(('move_arm', kwargs)),
+        _start_move_base_to_start=lambda **kwargs: calls.append(('move_base', kwargs)),
+        _schedule_launch_all_action=_schedule,
+    )
+
+    OperatorWindow._start_launch_all_components(fake)
+
+    assert 'sim' in calls
+    assert 'tcp_from_tf' in calls
+    assert 'publish_path' in calls
+    assert 'arm_controllers' in calls
+    assert 'path_index' in calls
+    assert 'base_follower' in calls
+    assert ('arm_follower', {'move_to_start_pose': False}) in calls
+    assert ('move_arm', {'wait_for_start_condition': True}) in calls
+    assert scheduled['delay_ms'] == 13000
+    assert scheduled['require_launch_all_active'] is True
+
+    scheduled['callback']()
+
+    assert ('move_base', {'publish_start_condition': True}) in calls
+    assert ('start_condition', False) in calls
+    assert ('stop', 'map') in calls
+
+
 def test_hardware_arm_stack_uses_jparse_and_forward_velocity_controller() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
@@ -529,6 +583,7 @@ def test_path_index_advancer_uses_base_path_topic() -> None:
         _use_sim_time=lambda: 'false',
         _ros_float_literal=OperatorWindow._ros_float_literal,
         _append_process_output=lambda *_args: None,
+        _calculate_path_index_rate=lambda restart_if_running=True: None,
     )
     fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
     fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
@@ -540,6 +595,27 @@ def test_path_index_advancer_uses_base_path_topic() -> None:
     assert 'path_topic:=/ur_path_transformed' not in command
 
 
+def test_path_index_advancer_recalculates_rate_before_launch() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        platform_combo=FakeComboBox(data='robotnik'),
+        index_spin=FakeSpinBox(12),
+        path_index_rate_spin=FakeSpinBox(1.0),
+        _use_sim_time=lambda: 'false',
+        _ros_float_literal=OperatorWindow._ros_float_literal,
+        _append_process_output=lambda *_args: None,
+    )
+    fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
+    fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
+    fake._calculate_path_index_rate = lambda restart_if_running=True: fake.path_index_rate_spin.setValue(4.25)
+
+    OperatorWindow._start_path_index(fake)
+
+    command = processes.started[0][1]
+    assert 'publish_rate:=4.250000' in command
+
+
 def test_control_processes_running_reports_missing_followers() -> None:
     fake = SimpleNamespace(processes=FakeProcesses())
     fake._missing_control_process_names = lambda: OperatorWindow._missing_control_process_names(fake)
@@ -548,6 +624,30 @@ def test_control_processes_running_reports_missing_followers() -> None:
         assert not OperatorWindow._control_processes_running(fake)
         assert process_name in OperatorWindow._missing_control_process_names(fake)
         fake.processes.running.add(process_name)
+
+
+def test_close_event_detaches_process_output_callbacks_before_shutdown() -> None:
+    event_calls = []
+
+    class FakeEvent:
+        def accept(self):
+            event_calls.append('accepted')
+
+    managed_process = SimpleNamespace(output_callback='cb')
+    processes = SimpleNamespace(
+        _output_callback='registry_cb',
+        _processes={'base_follower': managed_process},
+        stop_all=lambda: event_calls.append('stop_all'),
+    )
+    ros_bridge = SimpleNamespace(stop=lambda: event_calls.append('ros_stop'))
+    fake = SimpleNamespace(processes=processes, ros_bridge=ros_bridge)
+    fake._detach_process_output_callbacks = lambda: OperatorWindow._detach_process_output_callbacks(fake)
+
+    OperatorWindow.closeEvent(fake, FakeEvent())
+
+    assert processes._output_callback is None
+    assert managed_process.output_callback is None
+    assert event_calls == ['stop_all', 'ros_stop', 'accepted']
 
 
 def test_control_frame_defaults_from_path_json(tmp_path: Path) -> None:

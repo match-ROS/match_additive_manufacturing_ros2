@@ -12,9 +12,9 @@
   },
   "control_frame": "map",
   "default_velocity": 0.048,
-  "default_velocity_enabled": true,
+  "default_velocity_enabled": false,
   "external_map_frame": "map",
-  "path_index_rate": 2.458,
+  "path_index_rate": 2.938,
   "path_transform": {
     "x": -1.8786,
     "y": 2.4423,
