@@ -3,14 +3,14 @@
   "base_pose_topic": "/vicon/Base_RB/Base_RB",
   "base_smoothing": {
     "enabled": true,
-    "external_path_index_stride": 10,
+    "external_path_index_stride": 1,
     "max_accel_wz": 0.5,
     "max_accel_x": 0.25,
     "max_accel_y": 0.25,
     "method": "moving_average",
     "moving_average_window_size": 5
   },
-  "control_frame": "map",
+  "control_frame": "robotnik_simple",
   "default_velocity": 0.048,
   "default_velocity_enabled": true,
   "external_map_frame": "map",
@@ -23,5 +23,5 @@
   },
   "robot_base_frame": "robot_base_footprint",
   "robot_tree_root_frame": "robot_odom",
-  "trajectory_directory": "/home/ite-dcs/workspaces/print_wattle_daub/src/match_additive_manufacturing_ros2/components/david_path"
+  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path"
 }

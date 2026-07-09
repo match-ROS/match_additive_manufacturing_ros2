@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import signal
 import statistics
 import sys
@@ -1324,7 +1325,7 @@ class OperatorWindow(QMainWindow):
                 f'publish_robot_pose:={self._sim_publish_robot_pose()}',
             ]
         else:
-            gui_value = 'true' if self.simulation_checkbox.isChecked() else 'false'
+            gui_value = 'true' if OperatorWindow._simulation_gui_enabled(self) else 'false'
             command = [
                 'ros2',
                 'launch',
@@ -1337,6 +1338,17 @@ class OperatorWindow(QMainWindow):
             ]
         self._append_process_output(SIM_NAME, ' '.join(command))
         self.processes.start(SIM_NAME, command)
+
+    def _simulation_gui_enabled(self) -> bool:
+        if not self.simulation_checkbox.isChecked():
+            return False
+        configured = getattr(self, '_config', {}).get('simulation_gui', None)
+        if configured is not None:
+            return str(configured).strip().lower() in {'true', '1', 'yes', 'on'}
+        env_value = os.environ.get('AM_OPERATOR_GUI_SIM_GUI')
+        if env_value is not None:
+            return env_value.strip().lower() in {'true', '1', 'yes', 'on'}
+        return os.environ.get('QT_QPA_PLATFORM', '').strip().lower() != 'offscreen'
 
     def _sim_publish_robot_pose(self) -> str:
         return 'false' if self.odometry_pose_checkbox.isChecked() else 'true'
