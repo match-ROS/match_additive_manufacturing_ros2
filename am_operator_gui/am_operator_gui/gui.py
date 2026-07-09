@@ -1348,7 +1348,7 @@ class OperatorWindow(QMainWindow):
         env_value = os.environ.get('AM_OPERATOR_GUI_SIM_GUI')
         if env_value is not None:
             return env_value.strip().lower() in {'true', '1', 'yes', 'on'}
-        return os.environ.get('QT_QPA_PLATFORM', '').strip().lower() != 'offscreen'
+        return False
 
     def _sim_publish_robot_pose(self) -> str:
         return 'false' if self.odometry_pose_checkbox.isChecked() else 'true'

@@ -21,6 +21,7 @@
     "yaw_deg": -93.109,
     "z": -0.7022
   },
+  "simulation_gui": false,
   "robot_base_frame": "robot_base_footprint",
   "robot_tree_root_frame": "robot_odom",
   "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path"
