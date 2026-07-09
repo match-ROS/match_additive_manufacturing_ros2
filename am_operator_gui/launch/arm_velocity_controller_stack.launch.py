@@ -13,7 +13,7 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('arm', default_value='arm'),
         DeclareLaunchArgument('base_link', default_value='robot_arm_base_link'),
         DeclareLaunchArgument('tip_link', default_value='robot_arm_tool0'),
-        DeclareLaunchArgument('path_frame', default_value='robotnik_simple'),
+        DeclareLaunchArgument('path_frame', default_value='map'),
         DeclareLaunchArgument('robot_description_topic', default_value='/robot/robot_description'),
         DeclareLaunchArgument('joint_states_topic', default_value='/robot/joint_states'),
         DeclareLaunchArgument('source_twist_topic', default_value='/jparse_velocity_controller_ur/twist_cmd_world'),

@@ -18,7 +18,7 @@ Prerequisites:
 Default AM topic assumptions:
 
 - Base pose: `/robot_pose`
-- Path frame: `robotnik_simple`
+- Path frame: `map`
 - Base path: `/base_path`
 - Base command: `/robot/robotnik_base_control/cmd_vel_unstamped`
 

@@ -100,7 +100,7 @@ class MoveUrToPathIdx(Node):
         self.declare_parameter('wait_for_start_condition', True)
         self.declare_parameter('start_condition_topic', '/start_pose_reached')
         self.declare_parameter('cmd_vel_topic', '/jparse_velocity_controller_ur/twist_cmd_world')
-        self.declare_parameter('path_frame', 'robotnik_simple')
+        self.declare_parameter('path_frame', 'map')
 
         self.path: Optional[Path] = None
         self.robot_pose: Optional[Pose] = None

@@ -10,7 +10,7 @@
     "method": "moving_average",
     "moving_average_window_size": 5
   },
-  "control_frame": "robotnik_simple",
+  "control_frame": "map",
   "default_velocity": 0.048,
   "default_velocity_enabled": true,
   "external_map_frame": "map",

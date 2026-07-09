@@ -174,7 +174,7 @@ def vector3_from_dict(data: dict) -> Vector3:
 class RobotnikBaseArmPathPublisher(Node):
     def __init__(self) -> None:
         super().__init__('robotnik_base_arm_path_publisher')
-        self.declare_parameter('frame_id', 'robotnik_simple')
+        self.declare_parameter('frame_id', 'map')
         self.declare_parameter('base_path_topic', '/base_path')
         self.declare_parameter('base_original_path_topic', '/base_path_original')
         self.declare_parameter('arm_path_topic', '/ur_path_transformed')

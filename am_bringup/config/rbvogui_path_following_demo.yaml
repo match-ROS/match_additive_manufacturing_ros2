@@ -1,7 +1,7 @@
 test_path_generator:
   ros__parameters:
     path_type: line
-    frame_id: robotnik_simple
+    frame_id: map
     path_topic: /base_path
     original_path_topic: /base_path_original
     num_points: 80

@@ -14,7 +14,7 @@ DEFAULT_TRAJECTORY_DIRECTORY = str(
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='true'),
-        DeclareLaunchArgument('frame_id', default_value='robotnik_simple'),
+        DeclareLaunchArgument('frame_id', default_value='map'),
         DeclareLaunchArgument('base_path_topic', default_value='/base_path'),
         DeclareLaunchArgument('base_original_path_topic', default_value='/base_path_original'),
         DeclareLaunchArgument('arm_path_topic', default_value='/ur_path_transformed'),

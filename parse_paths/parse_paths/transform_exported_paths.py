@@ -44,7 +44,7 @@ def main() -> None:
     parser.add_argument('--normal-file', default='normal_vector.json')
     args = parser.parse_args()
 
-    base_path = path_from_dict(_read_json(args.input_dir / args.base_file), 'robotnik_simple')
+    base_path = path_from_dict(_read_json(args.input_dir / args.base_file), 'map')
     arm_path = path_from_dict(_read_json(args.input_dir / args.arm_file), base_path.header.frame_id)
     _write_json(
         args.output_dir / args.base_file,

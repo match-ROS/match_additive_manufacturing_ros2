@@ -300,7 +300,7 @@ def generate_launch_description():
         DeclareLaunchArgument('launch_sim', default_value='false'),
         DeclareLaunchArgument('gui', default_value='false'),
         DeclareLaunchArgument('robot_id', default_value='robot'),
-        DeclareLaunchArgument('path_frame', default_value='robotnik_simple'),
+        DeclareLaunchArgument('path_frame', default_value='map'),
         DeclareLaunchArgument('base_path_topic', default_value='/base_path'),
         DeclareLaunchArgument('base_original_path_topic', default_value='/base_path_original'),
         DeclareLaunchArgument('arm_path_topic', default_value='/ur_path_transformed'),

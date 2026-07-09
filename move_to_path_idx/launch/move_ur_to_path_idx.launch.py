@@ -21,7 +21,7 @@ def generate_launch_description():
         DeclareLaunchArgument('wait_for_start_condition', default_value='true'),
         DeclareLaunchArgument('start_condition_topic', default_value='/start_pose_reached'),
         DeclareLaunchArgument('cmd_vel_topic', default_value='/jparse_velocity_controller_ur/twist_cmd_world'),
-        DeclareLaunchArgument('path_frame', default_value='robotnik_simple'),
+        DeclareLaunchArgument('path_frame', default_value='map'),
         Node(
             package='move_to_path_idx',
             executable='move_ur_to_path_idx',

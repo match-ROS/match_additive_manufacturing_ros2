@@ -210,7 +210,7 @@ PLATFORM_PROFILES = {
         'cmd_vel_topic': '/robot/robotnik_base_control/cmd_vel_unstamped',
         'output_stamped': False,
         'command_frame_id': 'base_link',
-        'path_frame': 'robotnik_simple',
+        'path_frame': 'map',
         'external_map_frame': 'map',
         'robot_base_frame': 'base_link',
         'robot_tree_root_frame': 'odom',
@@ -1110,7 +1110,7 @@ class OperatorWindow(QMainWindow):
             frame = str(data.get('frame_id', '')).strip() if isinstance(data, dict) else ''
             if frame:
                 return frame
-        return 'robotnik_simple'
+        return 'map'
 
     def _save_hardware_topics(self) -> None:
         self._config['trajectory_directory'] = self.path_folder.text().strip()
