@@ -26,6 +26,7 @@ setup(
     entry_points={
         'console_scripts': [
             'nozzle_pose_monitor = print_path_monitoring.nozzle_pose_monitor:main',
+            'trajectory_accuracy_monitor = print_path_monitoring.trajectory_accuracy_monitor:main',
         ],
     },
 )

@@ -29,6 +29,28 @@ Default topics:
 To monitor against a direct reference pose, set `reference_pose_topic` in the YAML or
 pass it with `ros2 run` parameters.
 
+## Base and TCP accuracy recordings
+
+`trajectory_accuracy_monitor` records a reference path comparison without sending
+any command. It accepts the same pose/path contract in simulation and on hardware:
+
+- Base: `/robot_pose` against `/base_path`
+- TCP: `/current_tcp_pose` against `/ur_path_transformed`
+
+The monitor writes one CSV with per-sample error vector (`dx`, `dy`, `dz`), absolute
+and yaw errors, plus a JSON summary with RMSE, P95, maximum, bias and sample quality.
+TCP recordings also contain planar tangential and cross-track errors. For example:
+
+```bash
+ros2 run print_path_monitoring trajectory_accuracy_monitor --ros-args \
+  -p mode:=base -p actual_pose_topic:=/robot_pose \
+  -p reference_path_topic:=/base_path -p run_name:=base_baseline
+```
+
+In `am_operator_gui`, use **Record Base Accuracy** for the base-only run and
+**Record TCP Accuracy** for the coupled run. Recordings are saved to
+`/tmp/am_trajectory_runs`; stopping a recording writes its JSON summary.
+
 For static smoke tests without a live path-index publisher, set
 `fixed_path_index` to a non-negative index. A live `path_index_topic` message
 still takes precedence when it is available.

@@ -111,7 +111,6 @@ def test_hardware_launch_all_never_starts_move_to_start() -> None:
         _start_base_follower=lambda: calls.append('base_follower'),
         _start_arm_follower=lambda **kwargs: calls.append(('arm_follower', kwargs)),
         _start_sim=lambda: calls.append('sim'),
-        _start_current_tcp_pose=lambda: calls.append('tcp_from_tf'),
         _start_move_arm_to_start=lambda **kwargs: calls.append(('move_arm', kwargs)),
         _start_move_base_to_start=lambda **kwargs: calls.append(('move_base', kwargs)),
         _schedule_launch_all_action=lambda *_args: calls.append('scheduled_move'),
@@ -168,7 +167,7 @@ def test_simulation_launch_all_schedules_base_move_after_startup() -> None:
     OperatorWindow._start_launch_all_components(fake)
 
     assert 'sim' in calls
-    assert 'tcp_from_tf' in calls
+    assert 'tcp_from_tf' not in calls
     assert 'publish_path' in calls
     assert 'arm_controllers' in calls
     assert 'path_index' in calls
@@ -259,7 +258,7 @@ def test_robotnik_sim_launch_uses_real_robot_arm_type() -> None:
             'launch',
             'rbvogui_ur_sim_setup',
             'rbvogui_ur_standard_control.launch.py',
-            'gui:=true',
+            'gui:=false',
             'robot_id:=robot',
             'arm_type:=ur20',
             'publish_robot_pose:=true',

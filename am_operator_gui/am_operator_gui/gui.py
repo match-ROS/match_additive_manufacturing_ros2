@@ -4,6 +4,7 @@ import os
 import signal
 import statistics
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -90,6 +91,8 @@ ARM_POSE_ADAPTER_NAME = 'arm_pose_adapter'
 VICON_EE_STATIC_TF_NAME = 'vicon_ee_static_tf'
 VICON_BASE_STATIC_TF_NAME = 'vicon_base_static_tf'
 ARM_CONTROLLERS_NAME = 'arm_controllers'
+BASE_ACCURACY_MONITOR_NAME = 'base_accuracy_monitor'
+TCP_ACCURACY_MONITOR_NAME = 'tcp_accuracy_monitor'
 MOVE_BASE_NAME = 'move_base_to_start'
 MOVE_ARM_NAME = 'move_arm_to_start'
 SWITCH_ARM_VELOCITY_NAME = 'switch_arm_velocity_controller'
@@ -752,6 +755,8 @@ class OperatorWindow(QMainWindow):
         self.current_tcp_pose_button = QPushButton('Launch Transformations')
         self.arm_controllers_button = QPushButton('Start Controllers')
         self.switch_arm_velocity_button = QPushButton('Switch Arm Velocity')
+        self.base_accuracy_monitor_button = QPushButton('Record Base Accuracy')
+        self.tcp_accuracy_monitor_button = QPushButton('Record TCP Accuracy')
         self.path_index_rate_spin = QDoubleSpinBox()
         self.path_index_rate_spin.setRange(0.01, 1000.0)
         self.path_index_rate_spin.setDecimals(3)
@@ -775,6 +780,8 @@ class OperatorWindow(QMainWindow):
         component_layout.addWidget(self.current_tcp_pose_button, 2, 0)
         component_layout.addWidget(self.arm_controllers_button, 2, 1)
         component_layout.addWidget(self.switch_arm_velocity_button, 2, 2)
+        component_layout.addWidget(self.base_accuracy_monitor_button, 5, 0)
+        component_layout.addWidget(self.tcp_accuracy_monitor_button, 5, 1)
         component_layout.addWidget(QLabel('Index rate'), 3, 0)
         component_layout.addWidget(self.path_index_rate_spin, 3, 1)
         component_layout.addWidget(self.calculate_path_index_rate_button, 3, 2)
@@ -884,6 +891,8 @@ class OperatorWindow(QMainWindow):
         self.arm_controllers_button.clicked.connect(self._toggle_arm_controllers)
         self.calculate_path_index_rate_button.clicked.connect(self._calculate_path_index_rate)
         self.switch_arm_velocity_button.clicked.connect(self._switch_arm_velocity_controller)
+        self.base_accuracy_monitor_button.clicked.connect(self._toggle_base_accuracy_monitor)
+        self.tcp_accuracy_monitor_button.clicked.connect(self._toggle_tcp_accuracy_monitor)
         self.move_base_button.clicked.connect(self._move_base_to_start)
         self.move_arm_button.clicked.connect(self._move_arm_to_start)
         self.start_following_button.clicked.connect(self._start_following)
@@ -1231,7 +1240,6 @@ class OperatorWindow(QMainWindow):
         self.ros_bridge.publish_stop_commands(self.control_frame.text().strip())
         if self.simulation_checkbox.isChecked():
             self._start_sim()
-            self._start_current_tcp_pose()
         else:
             self._start_pose_adapters()
         self._start_publish_path()
@@ -1298,6 +1306,8 @@ class OperatorWindow(QMainWindow):
             ARM_FOLLOWER_NAME,
             MOVE_BASE_NAME,
             SWITCH_ARM_VELOCITY_NAME,
+            BASE_ACCURACY_MONITOR_NAME,
+            TCP_ACCURACY_MONITOR_NAME,
         ]
 
     def _toggle_sim(self) -> None:
@@ -1547,6 +1557,14 @@ class OperatorWindow(QMainWindow):
         self.processes.start(PATH_INDEX_NAME, command)
 
     def _toggle_current_tcp_pose(self) -> None:
+        sim_process = self.processes.get(SIM_NAME)
+        if self.simulation_checkbox.isChecked() and sim_process is not None and sim_process.is_running():
+            self._append_process_output(
+                CURRENT_TCP_POSE_NAME,
+                'simulation launch already publishes /current_tcp_pose; no second publisher started',
+            )
+            self._refresh_process_states()
+            return
         if not self.simulation_checkbox.isChecked():
             running = any(
                 (process := self.processes.get(name)) is not None and process.is_running()
@@ -1598,6 +1616,42 @@ class OperatorWindow(QMainWindow):
         ]
         self._append_process_output(CURRENT_TCP_POSE_NAME, ' '.join(command))
         self.processes.start(CURRENT_TCP_POSE_NAME, command)
+
+    def _toggle_base_accuracy_monitor(self) -> None:
+        self._toggle_accuracy_monitor('base')
+
+    def _toggle_tcp_accuracy_monitor(self) -> None:
+        self._toggle_accuracy_monitor('tcp')
+
+    def _toggle_accuracy_monitor(self, mode: str) -> None:
+        name = BASE_ACCURACY_MONITOR_NAME if mode == 'base' else TCP_ACCURACY_MONITOR_NAME
+        process = self.processes.get(name)
+        if process is not None and process.is_running():
+            self.processes.stop(name)
+            self._append_process_output(name, 'stopped; CSV and JSON summary were written')
+            self._refresh_process_states()
+            return
+        if not self._has_path or not self._has_robot_pose or (mode == 'tcp' and not self._has_arm_pose):
+            self._append_process_output(name, 'not started: wait for fresh path and pose topics')
+            return
+        if mode == 'base':
+            actual_topic, path_topic = '/robot_pose', self._current_platform_profile()['path_topic']
+        else:
+            actual_topic, path_topic = '/current_tcp_pose', '/ur_path_transformed'
+        run_name = f'{mode}_{datetime.now().strftime("%Y%m%dT%H%M%S")}'
+        command = [
+            'ros2', 'run', 'print_path_monitoring', 'trajectory_accuracy_monitor', '--ros-args',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
+            '-p', f'mode:={mode}',
+            '-p', f'actual_pose_topic:={actual_topic}',
+            '-p', f'reference_path_topic:={path_topic}',
+            '-p', 'path_index_topic:=/path_index',
+            '-p', 'output_directory:=/tmp/am_trajectory_runs',
+            '-p', f'run_name:={run_name}',
+        ]
+        self._append_process_output(name, ' '.join(command))
+        self.processes.start(name, command)
+        self._refresh_process_states()
 
     def _start_pose_adapters(self) -> None:
         use_odometry_pose = self.odometry_pose_checkbox.isChecked()
@@ -2125,6 +2179,7 @@ class OperatorWindow(QMainWindow):
         self._set_publish_path_state()
         self._set_path_index_button_state()
         self._set_current_tcp_pose_button_state()
+        self._set_accuracy_monitor_button_states()
         self._set_arm_controllers_button_state()
         self._set_base_follower_button_state()
         self._set_arm_follower_button_state()
@@ -2172,6 +2227,11 @@ class OperatorWindow(QMainWindow):
             )
             self._style_button(self.current_tcp_pose_button, 'green' if running else 'grey')
             return
+        sim_process = self.processes.get(SIM_NAME)
+        if sim_process is not None and sim_process.is_running():
+            self.current_tcp_pose_button.setText('TCP Pose from Sim')
+            self._style_button(self.current_tcp_pose_button, 'green')
+            return
         if self.odometry_pose_checkbox.isChecked():
             running = any(
                 (process := self.processes.get(name)) is not None and process.is_running()
@@ -2187,6 +2247,20 @@ class OperatorWindow(QMainWindow):
             CURRENT_TCP_POSE_NAME,
             'Stop Transformations',
             'Launch Transformations',
+        )
+
+    def _set_accuracy_monitor_button_states(self) -> None:
+        self._set_process_toggle_button(
+            self.base_accuracy_monitor_button,
+            BASE_ACCURACY_MONITOR_NAME,
+            'Stop Base Recording',
+            'Record Base Accuracy',
+        )
+        self._set_process_toggle_button(
+            self.tcp_accuracy_monitor_button,
+            TCP_ACCURACY_MONITOR_NAME,
+            'Stop TCP Recording',
+            'Record TCP Accuracy',
         )
 
     def _set_arm_controllers_button_state(self) -> None:
