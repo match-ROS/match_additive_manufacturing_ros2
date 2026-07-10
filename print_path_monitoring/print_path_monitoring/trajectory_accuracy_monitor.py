@@ -33,12 +33,16 @@ class TrajectoryAccuracyMonitor(Node):
         self.declare_parameter('fixed_path_index', -1)
         self.declare_parameter('output_directory', '/tmp/am_trajectory_runs')
         self.declare_parameter('run_name', '')
+        self.declare_parameter('phase', 'baseline')
         self.declare_parameter('max_pose_age', 0.75)
         self.declare_parameter('error_topic_prefix', '/trajectory_accuracy')
 
         self.mode = str(self.get_parameter('mode').value).strip().lower()
         if self.mode not in {'base', 'tcp'}:
             raise ValueError("mode must be 'base' or 'tcp'")
+        self.phase = str(self.get_parameter('phase').value).strip().lower()
+        if self.phase not in {'baseline', 'tuned'}:
+            raise ValueError("phase must be 'baseline' or 'tuned'")
         self.path: Optional[RosPath] = None
         self.path_index: Optional[int] = None
         fixed = int(self.get_parameter('fixed_path_index').value)
@@ -131,6 +135,7 @@ class TrajectoryAccuracyMonitor(Node):
         distances = [float(row['absolute_error']) for row in self.samples]
         summary = {
             'mode': self.mode,
+            'phase': self.phase,
             'samples': len(self.samples),
             'invalid_samples': dict(self.invalid),
             'valid_sample_fraction': (len(self.samples) / (len(self.samples) + sum(self.invalid.values()))

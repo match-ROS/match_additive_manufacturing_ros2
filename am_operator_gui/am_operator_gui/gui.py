@@ -93,6 +93,7 @@ VICON_BASE_STATIC_TF_NAME = 'vicon_base_static_tf'
 ARM_CONTROLLERS_NAME = 'arm_controllers'
 BASE_ACCURACY_MONITOR_NAME = 'base_accuracy_monitor'
 TCP_ACCURACY_MONITOR_NAME = 'tcp_accuracy_monitor'
+ACCURACY_REPORT_NAME = 'accuracy_report'
 MOVE_BASE_NAME = 'move_base_to_start'
 MOVE_ARM_NAME = 'move_arm_to_start'
 SWITCH_ARM_VELOCITY_NAME = 'switch_arm_velocity_controller'
@@ -757,11 +758,16 @@ class OperatorWindow(QMainWindow):
         self.switch_arm_velocity_button = QPushButton('Switch Arm Velocity')
         self.base_accuracy_monitor_button = QPushButton('Record Base Accuracy')
         self.tcp_accuracy_monitor_button = QPushButton('Record TCP Accuracy')
+        self.accuracy_phase_combo = QComboBox()
+        self.accuracy_phase_combo.addItem('Baseline', 'baseline')
+        self.accuracy_phase_combo.addItem('Tuned', 'tuned')
+        self.accuracy_report_button = QPushButton('Summarize Accuracy Runs')
         self.path_index_rate_spin = QDoubleSpinBox()
         self.path_index_rate_spin.setRange(0.01, 1000.0)
         self.path_index_rate_spin.setDecimals(3)
         self.path_index_rate_spin.setSuffix(' Hz')
         self.path_index_rate_spin.setValue(self._configured_path_index_rate())
+        self.path_index_rate_spin.setReadOnly(True)
         self.calculate_path_index_rate_button = QPushButton('Calculate Index Rate')
         self.default_velocity_checkbox = QCheckBox('Default velocity')
         self.default_velocity_checkbox.setChecked(self._configured_default_velocity_enabled())
@@ -782,6 +788,9 @@ class OperatorWindow(QMainWindow):
         component_layout.addWidget(self.switch_arm_velocity_button, 2, 2)
         component_layout.addWidget(self.base_accuracy_monitor_button, 5, 0)
         component_layout.addWidget(self.tcp_accuracy_monitor_button, 5, 1)
+        component_layout.addWidget(QLabel('Accuracy phase'), 6, 0)
+        component_layout.addWidget(self.accuracy_phase_combo, 6, 1)
+        component_layout.addWidget(self.accuracy_report_button, 6, 2)
         component_layout.addWidget(QLabel('Index rate'), 3, 0)
         component_layout.addWidget(self.path_index_rate_spin, 3, 1)
         component_layout.addWidget(self.calculate_path_index_rate_button, 3, 2)
@@ -893,6 +902,7 @@ class OperatorWindow(QMainWindow):
         self.switch_arm_velocity_button.clicked.connect(self._switch_arm_velocity_controller)
         self.base_accuracy_monitor_button.clicked.connect(self._toggle_base_accuracy_monitor)
         self.tcp_accuracy_monitor_button.clicked.connect(self._toggle_tcp_accuracy_monitor)
+        self.accuracy_report_button.clicked.connect(self._summarize_accuracy_runs)
         self.move_base_button.clicked.connect(self._move_base_to_start)
         self.move_arm_button.clicked.connect(self._move_arm_to_start)
         self.start_following_button.clicked.connect(self._start_following)
@@ -1308,6 +1318,7 @@ class OperatorWindow(QMainWindow):
             SWITCH_ARM_VELOCITY_NAME,
             BASE_ACCURACY_MONITOR_NAME,
             TCP_ACCURACY_MONITOR_NAME,
+            ACCURACY_REPORT_NAME,
         ]
 
     def _toggle_sim(self) -> None:
@@ -1638,7 +1649,11 @@ class OperatorWindow(QMainWindow):
             actual_topic, path_topic = '/robot_pose', self._current_platform_profile()['path_topic']
         else:
             actual_topic, path_topic = '/current_tcp_pose', '/ur_path_transformed'
-        run_name = f'{mode}_{datetime.now().strftime("%Y%m%dT%H%M%S")}'
+        phase = str(self.accuracy_phase_combo.currentData())
+        run_name = f'{mode}_{phase}_{datetime.now().strftime("%Y%m%dT%H%M%S")}'
+        snapshot_path = Path('/tmp/am_trajectory_runs') / f'{run_name}_config.json'
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(json.dumps(self._config, indent=2, sort_keys=True) + '\n', encoding='utf-8')
         command = [
             'ros2', 'run', 'print_path_monitoring', 'trajectory_accuracy_monitor', '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}',
@@ -1648,10 +1663,20 @@ class OperatorWindow(QMainWindow):
             '-p', 'path_index_topic:=/path_index',
             '-p', 'output_directory:=/tmp/am_trajectory_runs',
             '-p', f'run_name:={run_name}',
+            '-p', f'phase:={phase}',
         ]
         self._append_process_output(name, ' '.join(command))
         self.processes.start(name, command)
         self._refresh_process_states()
+
+    def _summarize_accuracy_runs(self) -> None:
+        command = [
+            'ros2', 'run', 'print_path_monitoring', 'trajectory_accuracy_report',
+            '--input-directory', '/tmp/am_trajectory_runs',
+            '--trajectory-directory', self.path_folder.text().strip(),
+        ]
+        self._append_process_output(ACCURACY_REPORT_NAME, ' '.join(command))
+        self.processes.start(ACCURACY_REPORT_NAME, command)
 
     def _start_pose_adapters(self) -> None:
         use_odometry_pose = self.odometry_pose_checkbox.isChecked()
@@ -1950,23 +1975,25 @@ class OperatorWindow(QMainWindow):
     def _calculate_path_index_rate(self, restart_if_running: bool = True) -> None:
         if self.default_velocity_checkbox.isChecked():
             velocity = self.default_velocity_spin.value()
-            median_segment_length = self.ros_bridge.latest_ur_path_median_segment_length
-            source = '/ur_path_transformed median segment length'
-            if median_segment_length is None or median_segment_length <= 0.0:
-                median_segment_length = self._arm_path_median_segment_length_from_file()
-                source = f'{Path(self.path_folder.text()) / "arm_path.json"} median segment length'
-            if median_segment_length is None or median_segment_length <= 0.0:
+            total_length = self.ros_bridge.latest_ur_path_total_length
+            step_count = self.ros_bridge.latest_ur_path_step_count
+            source = '/ur_path_transformed total length'
+            if total_length is None or total_length <= 0.0 or step_count is None or step_count < 1:
+                total_length, step_count = self._arm_path_length_and_step_count_from_file()
+                source = f'{Path(self.path_folder.text()) / "arm_path.json"} total length'
+            if total_length is None or total_length <= 0.0 or step_count is None or step_count < 1:
                 self._append_process_output(
                     'gui',
-                    'cannot calculate index rate: no valid arm path segment lengths found',
+                    'cannot calculate index rate: no valid arm path length found',
                 )
                 return
 
-            rate = velocity / median_segment_length
+            rate = velocity * step_count / total_length
             self.path_index_rate_spin.setValue(rate)
             self._append_process_output(
                 'gui',
-                f'calculated path index rate {rate:.3f} Hz from {velocity:.3f} m/s and {source}',
+                f'locked path index rate {rate:.3f} Hz from {velocity:.3f} m/s, '
+                f'{total_length:.3f} m, and {step_count} index steps ({source})',
             )
             self._restart_path_index_if_running(restart_if_running)
             return
@@ -2001,32 +2028,36 @@ class OperatorWindow(QMainWindow):
         self._start_path_index()
 
     def _arm_path_median_segment_length_from_file(self) -> Optional[float]:
+        total_length, step_count = self._arm_path_length_and_step_count_from_file()
+        return total_length / step_count if total_length is not None and step_count else None
+
+    def _arm_path_length_and_step_count_from_file(self) -> tuple[Optional[float], Optional[int]]:
         path_file = Path(self.path_folder.text()) / 'arm_path.json'
         try:
             data = json.loads(path_file.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError, TypeError):
-            return None
+            return None, None
 
         poses = data.get('poses') if isinstance(data, dict) else None
         if not isinstance(poses, list) or len(poses) < 2:
-            return None
+            return None, None
 
         lengths = []
         previous_position = self._pose_position(poses[0])
         if previous_position is None:
-            return None
+            return None, None
         for pose in poses[1:]:
             current_position = self._pose_position(pose)
             if current_position is None:
-                return None
+                return None, None
             length = math.dist(previous_position, current_position)
             if length > 0.0:
                 lengths.append(length)
             previous_position = current_position
 
         if not lengths:
-            return None
-        return float(statistics.median(lengths))
+            return None, None
+        return float(sum(lengths)), len(poses) - 1
 
     def _path_index_rate_from_file(self) -> Optional[float]:
         path_file = Path(self.path_folder.text()) / 'arm_path.json'
@@ -2094,10 +2125,14 @@ class OperatorWindow(QMainWindow):
         self.default_velocity_spin.setEnabled(enabled)
         self._config['default_velocity_enabled'] = bool(enabled)
         self._save_config()
+        if enabled:
+            self._calculate_path_index_rate()
 
     def _set_default_velocity(self, value: float) -> None:
         self._config['default_velocity'] = float(value)
         self._save_config()
+        if self.default_velocity_checkbox.isChecked():
+            self._calculate_path_index_rate()
 
     def _default_velocity_param(self) -> float:
         if not self.default_velocity_checkbox.isChecked():

@@ -27,6 +27,7 @@ setup(
         'console_scripts': [
             'nozzle_pose_monitor = print_path_monitoring.nozzle_pose_monitor:main',
             'trajectory_accuracy_monitor = print_path_monitoring.trajectory_accuracy_monitor:main',
+            'trajectory_accuracy_report = print_path_monitoring.accuracy_report:main',
         ],
     },
 )

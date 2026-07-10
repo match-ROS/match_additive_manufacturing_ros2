@@ -38,6 +38,8 @@ class OperatorGuiNode(Node):
         self._last_controller_ready_time = None
         self._latest_ur_path_rate: Optional[float] = None
         self._latest_ur_path_median_segment_length: Optional[float] = None
+        self._latest_ur_path_total_length: Optional[float] = None
+        self._latest_ur_path_step_count: Optional[int] = None
         self._path_rate_lock = threading.Lock()
         self._latest_base_path: Optional[Path] = None
         self._latest_robot_pose: Optional[PoseStamped] = None
@@ -125,6 +127,16 @@ class OperatorGuiNode(Node):
         with self._path_rate_lock:
             return self._latest_ur_path_median_segment_length
 
+    @property
+    def latest_ur_path_total_length(self) -> Optional[float]:
+        with self._path_rate_lock:
+            return self._latest_ur_path_total_length
+
+    @property
+    def latest_ur_path_step_count(self) -> Optional[int]:
+        with self._path_rate_lock:
+            return self._latest_ur_path_step_count
+
     def latest_base_path_pose(self, index: int) -> Optional[PoseStamped]:
         with self._latest_pose_lock:
             if self._latest_base_path is None:
@@ -161,9 +173,12 @@ class OperatorGuiNode(Node):
         self._has_path = self._has_base_path and self._has_arm_path
         rate = self._mean_path_timestamp_rate(msg)
         median_segment_length = self._median_path_segment_length(msg)
+        total_length = self._path_total_length(msg)
         with self._path_rate_lock:
             self._latest_ur_path_rate = rate
             self._latest_ur_path_median_segment_length = median_segment_length
+            self._latest_ur_path_total_length = total_length
+            self._latest_ur_path_step_count = max(0, len(msg.poses) - 1)
 
     def _path_index_cb(self, msg: Int32) -> None:
         if self._path_index_callback is not None:
@@ -243,6 +258,21 @@ class OperatorGuiNode(Node):
         if not lengths:
             return None
         return float(statistics.median(lengths))
+
+    @staticmethod
+    def _path_total_length(msg: Path) -> Optional[float]:
+        if len(msg.poses) < 2:
+            return None
+        total = 0.0
+        previous = msg.poses[0].pose.position
+        for pose in msg.poses[1:]:
+            current = pose.pose.position
+            total += math.dist(
+                (previous.x, previous.y, previous.z),
+                (current.x, current.y, current.z),
+            )
+            previous = current
+        return total if total > 0.0 else None
 
 
 class RosBridge:
