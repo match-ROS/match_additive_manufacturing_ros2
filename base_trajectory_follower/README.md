@@ -42,9 +42,11 @@ ros2 launch base_trajectory_follower simple_base_follower.launch.py \
 
 ## Important Parameters
 
-- `lookahead_distance`: distance used to pick a forward target on the path.
-- `use_external_path_index`: if true, use `path_index_topic` instead of lookahead
-  target selection.
+- `lookahead_distance`: distance used to pick a forward control target on the path.
+  With `use_external_path_index:=true`, the external index remains the progress
+  anchor and this distance selects a target ahead of that anchor.
+- `use_external_path_index`: if true, use `path_index_topic` as the progress
+  anchor instead of selecting progress from the current pose.
 - `path_index_topic`: shared path-index input, default `/path_index`.
 - `wait_for_start_condition`: if true, stay quiet until `start_condition_topic`
   publishes true.

@@ -2,7 +2,7 @@
   "arm_pose_topic": "/vicon/tool_transformed",
   "base_pose_topic": "/vicon/Base_RB/Base_RB",
   "base_smoothing": {
-    "enabled": true,
+    "enabled": false,
     "external_path_index_stride": 1,
     "max_accel_wz": 0.5,
     "max_accel_x": 0.25,
@@ -14,15 +14,16 @@
   "default_velocity": 0.048,
   "default_velocity_enabled": false,
   "external_map_frame": "map",
-  "path_index_rate": 2.938,
+  "follower_type": "pid",
+  "path_index_rate": 4.741,
   "path_transform": {
     "x": -1.8786,
     "y": 2.4423,
     "yaw_deg": -93.109,
-    "z": -0.7022
+    "z": -0.0
   },
-  "simulation_gui": false,
   "robot_base_frame": "robot_base_footprint",
   "robot_tree_root_frame": "robot_odom",
-  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path"
+  "simulation_gui": false,
+  "trajectory_directory": "/home/rosmatch/workspaces/print_wattle_daub/src/match_additive_manufacturing_ros2/components/david_path"
 }

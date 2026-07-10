@@ -318,6 +318,9 @@ def test_base_follower_uses_configured_pid_gains() -> None:
             'base_follower.kp_x': 1.1,
             'base_follower.kp_y': 1.2,
             'base_follower.kp_yaw': 1.3,
+            'base_follower.max_vx': 0.21,
+            'base_follower.max_vy': 0.22,
+            'base_follower.max_wz': 0.23,
         }.get(key, DEFAULT_PID_GAINS[key]),
         _base_smoothing=lambda key: {
             'enabled': False,
@@ -342,6 +345,9 @@ def test_base_follower_uses_configured_pid_gains() -> None:
     assert 'kp_x:=1.100000' in command
     assert 'kp_y:=1.200000' in command
     assert 'kp_yaw:=1.300000' in command
+    assert 'max_vx:=0.210000' in command
+    assert 'max_vy:=0.220000' in command
+    assert 'max_wz:=0.230000' in command
     assert 'smooth_velocity_commands:=false' in command
     assert 'velocity_smoothing_method:=moving_average' in command
     assert 'max_accel_x:=0.110000' in command
@@ -349,6 +355,7 @@ def test_base_follower_uses_configured_pid_gains() -> None:
     assert 'max_accel_wz:=0.130000' in command
     assert 'moving_average_window_size:=7' in command
     assert 'external_path_index_stride:=10' in command
+    assert 'lookahead_distance:=0.3' in command
 
 
 def test_move_base_to_start_uses_configured_velocity_limits() -> None:
@@ -358,15 +365,15 @@ def test_move_base_to_start_uses_configured_velocity_limits() -> None:
         platform_combo=FakeComboBox(data='robotnik'),
         diff_drive_checkbox=FakeCheckBox(False),
         index_spin=FakeSpinBox(4),
-        base_move_linear_velocity_spin=FakeSpinBox(0.12),
-        base_move_lateral_velocity_spin=FakeSpinBox(0.07),
-        base_move_angular_velocity_spin=FakeSpinBox(0.34),
         _use_sim_time=lambda: 'false',
         _pid_gain=lambda key: {
             'base_move.kp_linear': 0.6,
             'base_move.kp_lateral': 0.6,
             'base_move.kp_angular_to_point': 1.5,
             'base_move.kp_angular_reorient': 1.2,
+            'base_move.max_linear_velocity': 0.12,
+            'base_move.max_lateral_velocity': 0.07,
+            'base_move.max_angular_velocity': 0.34,
         }[key],
         _ros_float_literal=OperatorWindow._ros_float_literal,
         _append_process_output=lambda *_args: None,
@@ -374,8 +381,6 @@ def test_move_base_to_start_uses_configured_velocity_limits() -> None:
     fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
     fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
     fake._diff_drive_mode = lambda: OperatorWindow._diff_drive_mode(fake)
-    fake._base_move_velocity = lambda key: OperatorWindow._base_move_velocity(fake, key)
-
     OperatorWindow._start_move_base_to_start(fake)
 
     name, command = processes.started[0]

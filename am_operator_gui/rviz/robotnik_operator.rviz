@@ -11,7 +11,7 @@ Panels:
         - /Current TCP Pose1
         - /Current TCP Pose2
       Splitter Ratio: 0.5
-    Tree Height: 664
+    Tree Height: 677
 Visualization Manager:
   Class: ""
   Displays:
@@ -146,6 +146,7 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
+          Value: true
         robot_base_footprint:
           Alpha: 1
           Show Axes: false
@@ -158,6 +159,7 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
+          Value: true
         robot_battery_link:
           Alpha: 1
           Show Axes: false
@@ -168,66 +170,12 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        robot_contactors_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_3d_laser_base_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        robot_front_3d_laser_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
         robot_front_left_base_wheel:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
         robot_front_left_wheel:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        robot_front_rgbd_camera_base_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_rgbd_camera_color_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_rgbd_camera_color_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_rgbd_camera_depth_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_rgbd_camera_depth_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_rgbd_camera_infra1_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_rgbd_camera_infra1_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_rgbd_camera_infra2_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_rgbd_camera_infra2_optical_frame:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-        robot_front_rgbd_camera_link:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -242,15 +190,6 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        robot_imu_base_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        robot_imu_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
         robot_leds_link:
           Alpha: 1
           Show Axes: false
@@ -334,7 +273,7 @@ Visualization Manager:
       Buffer Length: 1
       Class: rviz_default_plugins/Path
       Color: 216; 67; 21
-      Enabled: true
+      Enabled: false
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
       Length: 0.15000000596046448
@@ -357,7 +296,7 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /ur_path_transformed
-      Value: true
+      Value: false
     - Alpha: 0.44999998807907104
       Buffer Length: 1
       Class: rviz_default_plugins/Path
@@ -513,7 +452,7 @@ Window Geometry:
   Height: 900
   Hide Left Dock: false
   Hide Right Dock: true
-  QMainWindow State: 000000ff00000000fd00000001000000000000015600000326fc0200000001fb000000100044006900730070006c006100790073010000003f00000326000000cc00ffffff0000041c0000032600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000100000000000001560000032efc0200000001fb000000100044006900730070006c006100790073010000003b0000032e000000c700ffffff0000041c0000032e00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Width: 1400
-  X: 452
-  Y: 110
+  X: 420
+  Y: 78

@@ -8,6 +8,7 @@ from base_trajectory_follower.controller import (
     PurePursuitGains,
     compute_pure_pursuit_command,
     compute_velocity_command,
+    select_anchored_lookahead_index,
     select_lookahead_index,
     wrap_to_pi,
 )
@@ -24,6 +25,20 @@ def test_select_lookahead_stays_forward_from_current_index():
     robot = Pose2D(1.1, 0.0, 0.0)
 
     assert select_lookahead_index(path, robot, 1.0, current_index=1) == 3
+
+
+def test_anchored_lookahead_cannot_skip_to_a_nearby_later_path_section():
+    # The final pose is physically close to the anchor but lies far ahead in
+    # path progress.  An externally supplied index must not shortcut to it.
+    path = [
+        Pose2D(0.0, 0.0, 0.0),
+        Pose2D(1.0, 0.0, 0.0),
+        Pose2D(2.0, 0.0, 0.0),
+        Pose2D(2.0, 1.0, 0.0),
+        Pose2D(0.0, 0.1, 0.0),
+    ]
+
+    assert select_anchored_lookahead_index(path, anchor_index=0, lookahead_distance=1.5) == 2
 
 
 def test_compute_velocity_uses_robot_frame_lateral_error():
@@ -59,21 +74,18 @@ def test_compute_velocity_reports_reached_goal():
     assert command.wz == 0.0
 
 
-def test_compute_velocity_can_use_default_linear_speed():
-    robot = Pose2D(0.0, 0.0, 0.0)
-    target = Pose2D(3.0, 4.0, 0.0)
+def test_compute_velocity_honours_velocity_override():
     command = compute_velocity_command(
-        robot,
-        target,
+        Pose2D(0.0, 0.0, 0.0),
+        Pose2D(1.0, 0.0, 0.0),
         Pose2D(10.0, 0.0, 0.0),
-        FollowerGains(kp_x=10.0, kp_y=10.0, kp_yaw=1.0),
+        FollowerGains(kp_x=1.0, kp_y=1.0, kp_yaw=1.0),
         FollowerLimits(max_vx=2.0, max_vy=2.0, max_wz=2.0),
         FollowerTolerances(xy_goal_tolerance=0.01, yaw_goal_tolerance=0.01),
-        default_linear_velocity=0.5,
+        velocity_override=0.25,
     )
 
-    assert math.isclose(command.vx, 0.3, abs_tol=1e-6)
-    assert math.isclose(command.vy, 0.4, abs_tol=1e-6)
+    assert math.isclose(command.vx, 0.25, abs_tol=1e-6)
 
 
 def test_compute_velocity_diff_drive_suppresses_lateral_motion():

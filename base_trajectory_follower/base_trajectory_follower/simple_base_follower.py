@@ -56,7 +56,6 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('max_accel_y', 0.25)
         self.declare_parameter('max_accel_wz', 0.5)
         self.declare_parameter('moving_average_window_size', 5)
-        self.declare_parameter('default_linear_velocity', -1.0)
         self.declare_parameter('xy_goal_tolerance', 0.05)
         self.declare_parameter('yaw_goal_tolerance', 0.08)
         self.declare_parameter('pure_pursuit_kv', 1.0)
@@ -202,9 +201,9 @@ class SimpleBaseFollower(Node):
                 lookahead,
                 self.current_index,
             )
+        lookahead = float(self.get_parameter('lookahead_distance').value)
         target_index = self.current_index
         if self.follower_type == 'pure_pursuit':
-            lookahead = float(self.get_parameter('lookahead_distance').value)
             target_index = select_lookahead_index(
                 self.path,
                 self.robot_pose,
@@ -225,15 +224,21 @@ class SimpleBaseFollower(Node):
                 self.diff_drive_mode,
             )
         else:
+            # With the shared external index, that index is the progress
+            # contract.  A PID follower must regulate to this tracking point,
+            # not to a lookahead point: otherwise the 0.3 m lookahead creates
+            # a large initial P error and immediately drives at max velocity.
+            # Pure Pursuit still uses lookahead for its steering direction.
+            target_index = self.current_index
             command = compute_velocity_command(
                 self.robot_pose,
-                self.path[self.current_index],
+                self.path[target_index],
                 self.path[-1],
                 self._gains(),
                 self._limits(),
                 self._tolerances(),
-                self._default_linear_velocity(),
                 self.diff_drive_mode,
+                self.velocity_override,
             )
         self.goal_reached = command.reached_goal
         if self.goal_reached:
@@ -386,10 +391,6 @@ class SimpleBaseFollower(Node):
             k_orientation=float(self.get_parameter('pure_pursuit_k_orientation').value),
             k_index=float(self.get_parameter('pure_pursuit_k_index').value),
         )
-
-    def _default_linear_velocity(self) -> Optional[float]:
-        velocity = float(self.get_parameter('default_linear_velocity').value)
-        return velocity if velocity > 0.0 else None
 
     @staticmethod
     def _pose2d_from_pose_stamped(msg: PoseStamped) -> Pose2D:

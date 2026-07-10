@@ -83,6 +83,34 @@ def select_lookahead_index(
     return len(path) - 1
 
 
+def select_anchored_lookahead_index(
+    path: Sequence[Pose2D],
+    anchor_index: int,
+    lookahead_distance: float,
+) -> int:
+    """Return a point a path-distance ahead of a fixed progress anchor.
+
+    Unlike :func:`select_lookahead_index`, this must not search for the
+    geometrically nearest future pose.  An external path index is an explicit
+    progress contract; choosing a nearest pose from the remaining path can
+    skip across adjacent or crossing path sections and command the base toward
+    the final pose prematurely.
+    """
+    if not path:
+        return 0
+
+    index = max(0, min(int(anchor_index), len(path) - 1))
+    remaining_distance = max(0.0, float(lookahead_distance))
+    if remaining_distance <= 0.0:
+        return index
+
+    for next_index in range(index + 1, len(path)):
+        remaining_distance -= distance_xy(path[next_index - 1], path[next_index])
+        if remaining_distance <= 0.0:
+            return next_index
+    return len(path) - 1
+
+
 def compute_velocity_command(
     robot_pose: Pose2D,
     target_pose: Pose2D,
@@ -90,8 +118,8 @@ def compute_velocity_command(
     gains: FollowerGains,
     limits: FollowerLimits,
     tolerances: FollowerTolerances,
-    default_linear_velocity: Optional[float] = None,
     diff_drive_mode: bool = False,
+    velocity_override: float = 1.0,
 ) -> VelocityCommand:
     goal_distance = distance_xy(robot_pose, final_pose)
     goal_yaw_error = wrap_to_pi(final_pose.yaw - robot_pose.yaw)
@@ -110,18 +138,8 @@ def compute_velocity_command(
 
     yaw_target = final_pose.yaw if target_pose is final_pose else target_pose.yaw
     yaw_error = wrap_to_pi(yaw_target - robot_pose.yaw)
-    linear_speed = float(default_linear_velocity or 0.0)
-    if linear_speed > 0.0:
-        distance_to_target = math.hypot(dx_robot, dy_robot)
-        if distance_to_target > 1e-9:
-            vx = dx_robot / distance_to_target * linear_speed
-            vy = dy_robot / distance_to_target * linear_speed
-        else:
-            vx = 0.0
-            vy = 0.0
-    else:
-        vx = gains.kp_x * dx_robot
-        vy = gains.kp_y * dy_robot
+    vx = gains.kp_x * dx_robot
+    vy = gains.kp_y * dy_robot
 
     wz = gains.kp_yaw * yaw_error
     if diff_drive_mode:
@@ -129,10 +147,15 @@ def compute_velocity_command(
         wz += gains.kp_y * heading_error
         vy = 0.0
 
+    # Keep PID subject to the same live speed override as Pure Pursuit.  The
+    # override is intentionally applied before limiting so the configured
+    # limits remain hard safety limits even when an override above 100 % is
+    # received.
+    velocity_scale = max(0.0, float(velocity_override))
     return VelocityCommand(
-        vx=clamp(vx, limits.max_vx),
-        vy=clamp(vy, limits.max_vy),
-        wz=clamp(wz, limits.max_wz),
+        vx=clamp(vx * velocity_scale, limits.max_vx),
+        vy=clamp(vy * velocity_scale, limits.max_vy),
+        wz=clamp(wz * velocity_scale, limits.max_wz),
         reached_goal=False,
     )
 

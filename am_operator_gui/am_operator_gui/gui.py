@@ -101,10 +101,16 @@ DEFAULT_PID_GAINS = {
     'base_follower.kp_x': 0.8,
     'base_follower.kp_y': 0.8,
     'base_follower.kp_yaw': 1.2,
+    'base_follower.max_vx': 0.25,
+    'base_follower.max_vy': 0.25,
+    'base_follower.max_wz': 0.5,
     'base_move.kp_linear': 0.6,
     'base_move.kp_lateral': 0.6,
     'base_move.kp_angular_to_point': 1.5,
     'base_move.kp_angular_reorient': 1.2,
+    'base_move.max_linear_velocity': 0.2,
+    'base_move.max_lateral_velocity': 0.2,
+    'base_move.max_angular_velocity': 0.5,
     'arm_direction.kp_z': 0.7,
     'arm_direction.ki_z': 0.0,
     'arm_direction.kd_z': 0.0,
@@ -132,6 +138,8 @@ DEFAULT_PID_GAINS = {
     'arm_orientation.kd_orientation': 0.0,
     'arm_move.kp_linear': 0.8,
     'arm_move.kp_angular': 1.0,
+    'arm_move.max_linear_velocity': 0.12,
+    'arm_move.max_angular_velocity': 0.5,
 }
 
 PID_GAIN_GROUPS = (
@@ -141,6 +149,9 @@ PID_GAIN_GROUPS = (
             ('base_follower.kp_x', 'Kp X'),
             ('base_follower.kp_y', 'Kp Y'),
             ('base_follower.kp_yaw', 'Kp yaw'),
+            ('base_follower.max_vx', 'Max velocity X'),
+            ('base_follower.max_vy', 'Max velocity Y'),
+            ('base_follower.max_wz', 'Max velocity yaw'),
         ),
     ),
     (
@@ -150,6 +161,9 @@ PID_GAIN_GROUPS = (
             ('base_move.kp_lateral', 'Kp lateral'),
             ('base_move.kp_angular_to_point', 'Kp angular to point'),
             ('base_move.kp_angular_reorient', 'Kp angular reorient'),
+            ('base_move.max_linear_velocity', 'Max linear velocity'),
+            ('base_move.max_lateral_velocity', 'Max lateral velocity'),
+            ('base_move.max_angular_velocity', 'Max angular velocity'),
         ),
     ),
     (
@@ -197,6 +211,8 @@ PID_GAIN_GROUPS = (
         (
             ('arm_move.kp_linear', 'Kp linear'),
             ('arm_move.kp_angular', 'Kp angular'),
+            ('arm_move.max_linear_velocity', 'Max linear velocity'),
+            ('arm_move.max_angular_velocity', 'Max angular velocity'),
         ),
     ),
 )
@@ -245,11 +261,17 @@ PLATFORM_PROFILES = {
 
 class PidGainsDialog(QDialog):
 
-    def __init__(self, parent: 'OperatorWindow', gains: dict[str, float]) -> None:
+    def __init__(
+        self,
+        parent: 'OperatorWindow',
+        gains: dict[str, float],
+        defaults: dict[str, float],
+    ) -> None:
         super().__init__(parent)
         self.setWindowTitle('PID Gains')
         self.resize(640, 720)
         self._parent = parent
+        self._defaults = defaults
         self._spins: dict[str, QDoubleSpinBox] = {}
 
         layout = QVBoxLayout(self)
@@ -258,10 +280,13 @@ class PidGainsDialog(QDialog):
             grid = QGridLayout(group)
             for index, (key, label) in enumerate(fields):
                 spin = QDoubleSpinBox()
-                spin.setRange(-10000.0, 10000.0)
+                if '.max_' in key:
+                    spin.setRange(0.0, 10.0)
+                else:
+                    spin.setRange(-10000.0, 10000.0)
                 spin.setDecimals(4)
                 spin.setSingleStep(0.05)
-                spin.setValue(float(gains.get(key, DEFAULT_PID_GAINS[key])))
+                spin.setValue(float(gains.get(key, self._defaults[key])))
                 self._spins[key] = spin
                 row = index // 3
                 column = (index % 3) * 2
@@ -284,7 +309,7 @@ class PidGainsDialog(QDialog):
 
     def _reset_defaults(self) -> None:
         for key, spin in self._spins.items():
-            spin.setValue(DEFAULT_PID_GAINS[key])
+            spin.setValue(self._defaults[key])
 
     def _save(self) -> None:
         self._parent._set_pid_gains(self.configured_gains())
@@ -486,25 +511,6 @@ class OperatorWindow(QMainWindow):
     def _configured_default_velocity_enabled(self) -> bool:
         return bool(self._config.get('default_velocity_enabled', False))
 
-    def _configured_base_move_velocity(self, key: str) -> float:
-        profile = self._current_platform_profile()
-        defaults = {
-            'max_linear': float(profile['move_max_linear']),
-            'max_lateral': float(profile['move_max_lateral']),
-            'max_angular': float(profile['move_max_angular']),
-        }
-        configured_by_platform = self._config.get('base_move_velocity', {})
-        configured = {}
-        if isinstance(configured_by_platform, dict):
-            platform_config = configured_by_platform.get(self._current_platform_key(), {})
-            if isinstance(platform_config, dict):
-                configured = platform_config
-        try:
-            value = float(configured.get(key, defaults[key]))
-        except (KeyError, TypeError, ValueError):
-            value = defaults[key]
-        return max(0.0, min(10.0, value))
-
     def _configured_path_transform(self) -> dict[str, float]:
         configured = self._config.get('path_transform', {})
         transform = dict(DEFAULT_PATH_TRANSFORM)
@@ -564,7 +570,7 @@ class OperatorWindow(QMainWindow):
 
     def _configured_pid_gains(self) -> dict[str, float]:
         configured = self._config.get('pid_gains', {})
-        gains = dict(DEFAULT_PID_GAINS)
+        gains = self._pid_gain_defaults()
         if not isinstance(configured, dict):
             return gains
         for key, default in DEFAULT_PID_GAINS.items():
@@ -572,6 +578,20 @@ class OperatorWindow(QMainWindow):
                 gains[key] = float(configured.get(key, default))
             except (TypeError, ValueError):
                 gains[key] = default
+        return gains
+
+    def _pid_gain_defaults(self) -> dict[str, float]:
+        """Return gains with velocity limits appropriate for the active platform."""
+        gains = dict(DEFAULT_PID_GAINS)
+        profile = self._current_platform_profile()
+        gains.update({
+            'base_follower.max_vx': float(profile['max_vx']),
+            'base_follower.max_vy': float(profile['max_vy']),
+            'base_follower.max_wz': float(profile['max_wz']),
+            'base_move.max_linear_velocity': float(profile['move_max_linear']),
+            'base_move.max_lateral_velocity': float(profile['move_max_lateral']),
+            'base_move.max_angular_velocity': float(profile['move_max_angular']),
+        })
         return gains
 
     def _configured_base_smoothing(self) -> dict[str, float | bool | int | str]:
@@ -767,32 +787,11 @@ class OperatorWindow(QMainWindow):
         self.move_arm_button = QPushButton('Move Arm To Start')
         self.start_following_button = QPushButton('Start Following')
         self.stop_following_button = QPushButton('Stop Following')
-        self.base_move_linear_velocity_spin = QDoubleSpinBox()
-        self.base_move_lateral_velocity_spin = QDoubleSpinBox()
-        self.base_move_angular_velocity_spin = QDoubleSpinBox()
-        for spin in (
-            self.base_move_linear_velocity_spin,
-            self.base_move_lateral_velocity_spin,
-            self.base_move_angular_velocity_spin,
-        ):
-            spin.setRange(0.0, 10.0)
-            spin.setDecimals(3)
-            spin.setSingleStep(0.01)
-        self.base_move_linear_velocity_spin.setSuffix(' m/s')
-        self.base_move_lateral_velocity_spin.setSuffix(' m/s')
-        self.base_move_angular_velocity_spin.setSuffix(' rad/s')
-        self._load_base_move_velocity_controls()
 
         motion_layout.addWidget(self.move_base_button, 0, 0)
         motion_layout.addWidget(self.move_arm_button, 0, 1)
         motion_layout.addWidget(self.start_following_button, 1, 0)
         motion_layout.addWidget(self.stop_following_button, 1, 1)
-        motion_layout.addWidget(QLabel('Base start linear'), 2, 0)
-        motion_layout.addWidget(self.base_move_linear_velocity_spin, 2, 1)
-        motion_layout.addWidget(QLabel('Base start lateral'), 3, 0)
-        motion_layout.addWidget(self.base_move_lateral_velocity_spin, 3, 1)
-        motion_layout.addWidget(QLabel('Base start angular'), 4, 0)
-        motion_layout.addWidget(self.base_move_angular_velocity_spin, 4, 1)
 
         override_group = QGroupBox('Overrides')
         override_layout = QGridLayout(override_group)
@@ -896,9 +895,6 @@ class OperatorWindow(QMainWindow):
         self.path_index_rate_spin.valueChanged.connect(self._set_path_index_rate)
         self.default_velocity_checkbox.toggled.connect(self._set_default_velocity_enabled)
         self.default_velocity_spin.valueChanged.connect(self._set_default_velocity)
-        self.base_move_linear_velocity_spin.valueChanged.connect(self._set_base_move_velocity)
-        self.base_move_lateral_velocity_spin.valueChanged.connect(self._set_base_move_velocity)
-        self.base_move_angular_velocity_spin.valueChanged.connect(self._set_base_move_velocity)
         self.path_transform_x_spin.valueChanged.connect(self._set_path_transform)
         self.path_transform_y_spin.valueChanged.connect(self._set_path_transform)
         self.path_transform_z_spin.valueChanged.connect(self._set_path_transform)
@@ -941,7 +937,6 @@ class OperatorWindow(QMainWindow):
         self._sync_diff_drive_checkbox()
         self._config['diff_drive_mode'] = self._diff_drive_mode()
         self._save_config()
-        self._load_base_move_velocity_controls()
         profile = self._current_platform_profile()
         self.path_status.setText(f"{profile['path_topic']}: ready" if self._has_path else f"{profile['path_topic']}: waiting")
 
@@ -1127,7 +1122,11 @@ class OperatorWindow(QMainWindow):
             self._pid_gains_dialog.raise_()
             self._pid_gains_dialog.activateWindow()
             return
-        self._pid_gains_dialog = PidGainsDialog(self, self._configured_pid_gains())
+        self._pid_gains_dialog = PidGainsDialog(
+            self,
+            self._configured_pid_gains(),
+            self._pid_gain_defaults(),
+        )
         self._pid_gains_dialog.show()
 
     def _set_pid_gains(self, gains: dict[str, float]) -> None:
@@ -1419,16 +1418,15 @@ class OperatorWindow(QMainWindow):
             '-p', f"kp_x:={self._ros_float_literal(self._pid_gain('base_follower.kp_x'))}",
             '-p', f"kp_y:={self._ros_float_literal(self._pid_gain('base_follower.kp_y'))}",
             '-p', f"kp_yaw:={self._ros_float_literal(self._pid_gain('base_follower.kp_yaw'))}",
-            '-p', f"max_vx:={self._ros_float_literal(float(profile['max_vx']))}",
-            '-p', f"max_vy:={self._ros_float_literal(float(profile['max_vy']))}",
-            '-p', f"max_wz:={self._ros_float_literal(float(profile['max_wz']))}",
+            '-p', f"max_vx:={self._ros_float_literal(self._pid_gain('base_follower.max_vx'))}",
+            '-p', f"max_vy:={self._ros_float_literal(self._pid_gain('base_follower.max_vy'))}",
+            '-p', f"max_wz:={self._ros_float_literal(self._pid_gain('base_follower.max_wz'))}",
             '-p', f"smooth_velocity_commands:={str(bool(self._base_smoothing('enabled'))).lower()}",
             '-p', f"velocity_smoothing_method:={self._base_smoothing('method')}",
             '-p', f"max_accel_x:={self._ros_float_literal(float(self._base_smoothing('max_accel_x')))}",
             '-p', f"max_accel_y:={self._ros_float_literal(float(self._base_smoothing('max_accel_y')))}",
             '-p', f"max_accel_wz:={self._ros_float_literal(float(self._base_smoothing('max_accel_wz')))}",
             '-p', f"moving_average_window_size:={int(self._base_smoothing('moving_average_window_size'))}",
-            '-p', f'default_linear_velocity:={self._ros_float_literal(self._default_velocity_param())}',
         ]
         self._append_process_output(BASE_FOLLOWER_NAME, ' '.join(command))
         self.processes.start(BASE_FOLLOWER_NAME, command)
@@ -1769,9 +1767,9 @@ class OperatorWindow(QMainWindow):
             '-p', f"kp_lateral:={self._ros_float_literal(self._pid_gain('base_move.kp_lateral'))}",
             '-p', f"kp_angular_to_point:={self._ros_float_literal(self._pid_gain('base_move.kp_angular_to_point'))}",
             '-p', f"kp_angular_reorient:={self._ros_float_literal(self._pid_gain('base_move.kp_angular_reorient'))}",
-            '-p', f"max_linear_velocity:={self._ros_float_literal(self._base_move_velocity('max_linear'))}",
-            '-p', f"max_lateral_velocity:={self._ros_float_literal(self._base_move_velocity('max_lateral'))}",
-            '-p', f"max_angular_velocity:={self._ros_float_literal(self._base_move_velocity('max_angular'))}",
+            '-p', f"max_linear_velocity:={self._ros_float_literal(self._pid_gain('base_move.max_linear_velocity'))}",
+            '-p', f"max_lateral_velocity:={self._ros_float_literal(self._pid_gain('base_move.max_lateral_velocity'))}",
+            '-p', f"max_angular_velocity:={self._ros_float_literal(self._pid_gain('base_move.max_angular_velocity'))}",
         ]
         self._append_process_output(MOVE_BASE_NAME, ' '.join(command))
         self.processes.start(MOVE_BASE_NAME, command)
@@ -1804,7 +1802,7 @@ class OperatorWindow(QMainWindow):
         ]
         command.extend(self._pid_launch_arguments(
             'arm_move',
-            ('kp_linear', 'kp_angular'),
+            ('kp_linear', 'kp_angular', 'max_linear_velocity', 'max_angular_velocity'),
         ))
         self._append_process_output(MOVE_ARM_NAME, ' '.join(command))
         self.processes.start(MOVE_ARM_NAME, command)
@@ -2051,36 +2049,6 @@ class OperatorWindow(QMainWindow):
         if not self.default_velocity_checkbox.isChecked():
             return -1.0
         return self.default_velocity_spin.value()
-
-    def _load_base_move_velocity_controls(self) -> None:
-        controls = (
-            (self.base_move_linear_velocity_spin, 'max_linear'),
-            (self.base_move_lateral_velocity_spin, 'max_lateral'),
-            (self.base_move_angular_velocity_spin, 'max_angular'),
-        )
-        for spin, key in controls:
-            spin.blockSignals(True)
-            spin.setValue(self._configured_base_move_velocity(key))
-            spin.blockSignals(False)
-
-    def _set_base_move_velocity(self, *_args) -> None:
-        configured_by_platform = self._config.get('base_move_velocity', {})
-        if not isinstance(configured_by_platform, dict):
-            configured_by_platform = {}
-        configured_by_platform[self._current_platform_key()] = {
-            'max_linear': float(self.base_move_linear_velocity_spin.value()),
-            'max_lateral': float(self.base_move_lateral_velocity_spin.value()),
-            'max_angular': float(self.base_move_angular_velocity_spin.value()),
-        }
-        self._config['base_move_velocity'] = configured_by_platform
-        self._save_config()
-
-    def _base_move_velocity(self, key: str) -> float:
-        return {
-            'max_linear': self.base_move_linear_velocity_spin.value(),
-            'max_lateral': self.base_move_lateral_velocity_spin.value(),
-            'max_angular': self.base_move_angular_velocity_spin.value(),
-        }[key]
 
     def _publish_overrides(self) -> None:
         velocity_percent = self.velocity_slider.value()
