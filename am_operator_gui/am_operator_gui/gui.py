@@ -1349,7 +1349,7 @@ class OperatorWindow(QMainWindow):
             command = [
                 'ros2',
                 'launch',
-                'rbvogui_ur_sim_setup',
+                'robotnik_rbvogui_tum',
                 'rbvogui_ur_standard_control.launch.py',
                 f'gui:={gui_value}',
                 'robot_id:=robot',

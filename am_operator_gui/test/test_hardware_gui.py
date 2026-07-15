@@ -256,7 +256,7 @@ def test_robotnik_sim_launch_uses_real_robot_arm_type() -> None:
         [
             'ros2',
             'launch',
-            'rbvogui_ur_sim_setup',
+            'robotnik_rbvogui_tum',
             'rbvogui_ur_standard_control.launch.py',
             'gui:=false',
             'robot_id:=robot',

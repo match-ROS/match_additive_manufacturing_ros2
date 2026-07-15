@@ -22,7 +22,7 @@ def _optional_sim_launch(context, *args, **kwargs):
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 PathJoinSubstitution([
-                    FindPackageShare('rbvogui_ur_sim_setup'),
+                    FindPackageShare('robotnik_rbvogui_tum'),
                     'launch',
                     'rbvogui_ur_standard_control.launch.py',
                 ])
@@ -159,6 +159,7 @@ def generate_launch_description():
             'publish_stop_count': 3,
             'wait_for_start_condition': True,
             'start_condition_topic': LaunchConfiguration('start_pose_reached_topic'),
+            'completion_topic': LaunchConfiguration('start_condition_topic'),
             'cmd_vel_topic': '/jparse_velocity_controller_ur/twist_cmd_world',
             'path_frame': LaunchConfiguration('path_frame'),
         }],

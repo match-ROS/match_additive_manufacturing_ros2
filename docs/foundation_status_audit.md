@@ -46,7 +46,7 @@ Demo launches:
 
 RB-VOGUI runtime contracts:
 
-- `rbvogui_ur_sim_setup/rbvogui_ur_standard_control.launch.py` starts a local
+- `robotnik_rbvogui_tum/rbvogui_ur_standard_control.launch.py` starts a local
   standard-controller workaround for the RB-VOGUI + UR model.
 - `/robot_pose` publishes `geometry_msgs/msg/PoseStamped` in frame
   `robotnik_simple`.
@@ -111,7 +111,7 @@ files in the read-only workspace root.
 ```bash
 colcon build --symlink-install --packages-select \
   parse_paths base_trajectory_follower print_path_monitoring am_bringup \
-  move_to_path_idx ur_trajectory_follower rbvogui_ur_sim_setup \
+  move_to_path_idx ur_trajectory_follower robotnik_rbvogui_tum \
   bunker_description controllers_ros2
 ```
 

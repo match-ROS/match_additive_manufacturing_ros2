@@ -99,6 +99,7 @@ class MoveUrToPathIdx(Node):
         self.declare_parameter('publish_stop_count', 3)
         self.declare_parameter('wait_for_start_condition', True)
         self.declare_parameter('start_condition_topic', '/start_pose_reached')
+        self.declare_parameter('completion_topic', '')
         self.declare_parameter('cmd_vel_topic', '/jparse_velocity_controller_ur/twist_cmd_world')
         self.declare_parameter('path_frame', 'map')
 
@@ -135,6 +136,11 @@ class MoveUrToPathIdx(Node):
             10,
         )
         self.cmd_vel_pub = self.create_publisher(TwistStamped, cmd_vel_topic, 10)
+        completion_topic = str(self.get_parameter('completion_topic').value).strip()
+        self.completion_pub = (
+            self.create_publisher(Bool, completion_topic, 10) if completion_topic else None
+        )
+        self.completion_published = False
 
         rate = max(1.0, float(self.get_parameter('publish_rate').value))
         self.create_timer(1.0 / rate, self._tick)
@@ -192,6 +198,11 @@ class MoveUrToPathIdx(Node):
         stop.header.frame_id = self.command_frame
         stop.header.stamp = self.get_clock().now().to_msg()
         self.cmd_vel_pub.publish(stop)
+
+    def _publish_completion(self) -> None:
+        if self.completion_pub is not None and not self.completion_published:
+            self.completion_pub.publish(Bool(data=True))
+            self.completion_published = True
 
     def _orientation_tolerance(self) -> float:
         value = self.get_parameter('orientation_tolerance').value
@@ -251,6 +262,7 @@ class MoveUrToPathIdx(Node):
                     f"Reached TCP target index {self.path_index}: dist={dist:.3f}, "
                     f"orientation_error={orientation_error:.3f}. Shutting down."
                 )
+                self._publish_completion()
             else:
                 kp_angular = float(self.get_parameter('kp_angular').value)
                 max_angular = float(self.get_parameter('max_angular_velocity').value)

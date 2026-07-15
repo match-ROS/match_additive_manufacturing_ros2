@@ -15,7 +15,7 @@ def _optional_sim_launch(context, *args, **kwargs):
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 PathJoinSubstitution([
-                    FindPackageShare('rbvogui_ur_sim_setup'),
+                    FindPackageShare('robotnik_rbvogui_tum'),
                     'launch',
                     'rbvogui_ur_standard_control.launch.py',
                 ])
@@ -97,7 +97,7 @@ def generate_launch_description():
             'path_topic': LaunchConfiguration('base_path_topic'),
             'publish_rate': LaunchConfiguration('path_index_rate'),
             'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
-            'start_condition_topic': LaunchConfiguration('start_condition_topic'),
+            'start_condition_topic': LaunchConfiguration('start_pose_reached_topic'),
         }],
     )
 
@@ -116,7 +116,7 @@ def generate_launch_description():
             'use_external_path_index': True,
             'path_index_topic': LaunchConfiguration('path_index_topic'),
             'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
-            'start_condition_topic': LaunchConfiguration('start_condition_topic'),
+            'start_condition_topic': LaunchConfiguration('start_pose_reached_topic'),
             'lookahead_distance': LaunchConfiguration('lookahead_distance'),
             'max_vx': LaunchConfiguration('max_vx'),
             'max_vy': LaunchConfiguration('max_vy'),
