@@ -32,6 +32,7 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('command_frame_id', 'base_link')
         self.declare_parameter('use_external_path_index', False)
         self.declare_parameter('path_index_topic', '/path_index')
+        self.declare_parameter('reference_pose_topic', '')
         self.declare_parameter('external_path_index_stride', 10)
         self.declare_parameter('wait_for_start_condition', False)
         self.declare_parameter('start_condition_topic', '/start_condition')
@@ -39,6 +40,7 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('follower_type', 'pid')
         self.declare_parameter('diff_drive_mode', False)
         self.declare_parameter('velocity_override_topic', '/velocity_override')
+        self.declare_parameter('hold_reference_on_pause', True)
         self.declare_parameter('path_time_step', 0.1)
         self.declare_parameter('lookahead_distance', 0.4)
         self.declare_parameter('stale_pose_timeout', 0.5)
@@ -71,6 +73,7 @@ class SimpleBaseFollower(Node):
         self.last_pose_time = None
         self.current_index = 0
         self.external_path_index: Optional[int] = None
+        self.reference_pose: Optional[Pose2D] = None
         self.goal_reached = False
         self.last_stop_reason = ''
         self.velocity_override = 1.0
@@ -104,6 +107,9 @@ class SimpleBaseFollower(Node):
                 self._path_index_cb,
                 10,
             )
+        reference_pose_topic = str(self.get_parameter('reference_pose_topic').value).strip()
+        if reference_pose_topic:
+            self.create_subscription(PoseStamped, reference_pose_topic, self._reference_pose_cb, latch_qos)
         self.create_subscription(
             Bool,
             str(self.get_parameter('start_condition_topic').value),
@@ -152,6 +158,9 @@ class SimpleBaseFollower(Node):
 
     def _path_index_cb(self, msg: Int32) -> None:
         self.external_path_index = max(0, int(msg.data))
+
+    def _reference_pose_cb(self, msg: PoseStamped) -> None:
+        self.reference_pose = self._pose2d_from_pose(msg.pose)
 
     def _start_condition_cb(self, msg: Bool) -> None:
         was_enabled = self.control_enabled
@@ -203,7 +212,7 @@ class SimpleBaseFollower(Node):
             )
         lookahead = float(self.get_parameter('lookahead_distance').value)
         target_index = self.current_index
-        if self.follower_type == 'pure_pursuit':
+        if self.follower_type == 'pure_pursuit' and self.reference_pose is None:
             target_index = select_lookahead_index(
                 self.path,
                 self.robot_pose,
@@ -230,15 +239,19 @@ class SimpleBaseFollower(Node):
             # a large initial P error and immediately drives at max velocity.
             # Pure Pursuit still uses lookahead for its steering direction.
             target_index = self.current_index
+            target_pose = self.reference_pose or self.path[target_index]
+            command_override = self.velocity_override
+            if command_override <= 0.0 and self._as_bool(self.get_parameter('hold_reference_on_pause').value):
+                command_override = 1.0
             command = compute_velocity_command(
                 self.robot_pose,
-                self.path[target_index],
+                target_pose,
                 self.path[-1],
                 self._gains(),
                 self._limits(),
                 self._tolerances(),
                 self.diff_drive_mode,
-                self.velocity_override,
+                command_override,
             )
         self.goal_reached = command.reached_goal
         if self.goal_reached:

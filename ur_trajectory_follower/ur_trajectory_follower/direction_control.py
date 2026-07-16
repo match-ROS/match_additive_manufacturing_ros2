@@ -12,6 +12,56 @@ class OrthogonalControlResult:
     tangent: np.ndarray
 
 
+@dataclass(frozen=True)
+class CartesianTrackingResult:
+    command: np.ndarray
+    along: np.ndarray
+    lateral: np.ndarray
+    spray: np.ndarray
+
+
+def limit_vector(vector: np.ndarray, maximum: float) -> np.ndarray:
+    maximum = max(0.0, float(maximum))
+    norm = float(np.linalg.norm(vector))
+    if maximum <= 0.0:
+        return np.zeros(3)
+    return vector * min(1.0, maximum / norm) if norm > 1e-12 else vector
+
+
+def cartesian_tracking_command(
+    reference: np.ndarray,
+    measured: np.ndarray,
+    tangent: np.ndarray,
+    spray_axis: np.ndarray,
+    feedforward: np.ndarray,
+    along_track_kp: float,
+    orthogonal_kp: float,
+    spray_kp: float,
+    max_along: float,
+    max_orthogonal: float,
+    max_spray: float,
+    max_linear: float,
+    correction_scale: float = 1.0,
+) -> CartesianTrackingResult:
+    """Build mutually orthogonal Cartesian tracking corrections."""
+    axis = normalize(spray_axis)
+    plane_error = project_onto_plane(reference - measured, axis)
+    planar_tangent = normalize(project_onto_plane(tangent, axis))
+    along_error = float(np.dot(plane_error, planar_tangent)) * planar_tangent if np.any(planar_tangent) else np.zeros(3)
+    lateral_error = plane_error - along_error
+    spray_error = float(np.dot(reference - measured, axis))
+    scale = max(0.0, float(correction_scale))
+    along = limit_vector(along_error * max(0.0, along_track_kp), max_along) * scale
+    lateral = limit_vector(lateral_error * max(0.0, orthogonal_kp), max_orthogonal) * scale
+    spray = limit_vector(axis * spray_error * max(0.0, spray_kp), max_spray) * scale
+    return CartesianTrackingResult(
+        command=limit_vector(feedforward + along + lateral + spray, max_linear),
+        along=along,
+        lateral=lateral,
+        spray=spray,
+    )
+
+
 def normalize(vector: np.ndarray) -> np.ndarray:
     norm = float(np.linalg.norm(vector))
     if norm < 1e-9:

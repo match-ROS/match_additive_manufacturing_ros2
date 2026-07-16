@@ -122,27 +122,12 @@ DEFAULT_PID_GAINS = {
     'base_move.max_lateral_velocity': 0.2,
     'base_move.max_angular_velocity': 0.5,
     'arm_direction.kp_z': 0.7,
-    'arm_direction.ki_z': 0.0,
-    'arm_direction.kd_z': 0.0,
+    'arm_direction.along_track_kp': 2.0,
     'arm_direction.orthogonal_kp': 1.0,
-    'arm_pid_twist.Kp_linear_x': 1.0,
-    'arm_pid_twist.Ki_linear_x': 0.0,
-    'arm_pid_twist.Kd_linear_x': 0.0,
-    'arm_pid_twist.Kp_linear_y': 1.0,
-    'arm_pid_twist.Ki_linear_y': 0.0,
-    'arm_pid_twist.Kd_linear_y': 0.0,
-    'arm_pid_twist.Kp_linear_z': 1.0,
-    'arm_pid_twist.Ki_linear_z': 0.0,
-    'arm_pid_twist.Kd_linear_z': 0.0,
-    'arm_pid_twist.Kp_angular_x': 1.0,
-    'arm_pid_twist.Ki_angular_x': 0.0,
-    'arm_pid_twist.Kd_angular_x': 0.0,
-    'arm_pid_twist.Kp_angular_y': 1.0,
-    'arm_pid_twist.Ki_angular_y': 0.0,
-    'arm_pid_twist.Kd_angular_y': 0.0,
-    'arm_pid_twist.Kp_angular_z': 1.0,
-    'arm_pid_twist.Ki_angular_z': 0.0,
-    'arm_pid_twist.Kd_angular_z': 0.0,
+    'arm_direction.max_along_track_correction': 0.03,
+    'arm_direction.max_spray_axis_correction': 0.03,
+    'arm_direction.max_tracking_linear_velocity': 0.12,
+    'arm_direction.final_position_tolerance': 0.005,
     'arm_orientation.kp_orientation': 1.0,
     'arm_orientation.ki_orientation': 0.0,
     'arm_orientation.kd_orientation': 0.0,
@@ -180,32 +165,12 @@ PID_GAIN_GROUPS = (
         'Arm Path Direction',
         (
             ('arm_direction.kp_z', 'Kp Z'),
-            ('arm_direction.ki_z', 'Ki Z'),
-            ('arm_direction.kd_z', 'Kd Z'),
+            ('arm_direction.along_track_kp', 'Along-track Kp'),
             ('arm_direction.orthogonal_kp', 'Orthogonal Kp'),
-        ),
-    ),
-    (
-        'Arm Twist PID',
-        (
-            ('arm_pid_twist.Kp_linear_x', 'Kp linear X'),
-            ('arm_pid_twist.Ki_linear_x', 'Ki linear X'),
-            ('arm_pid_twist.Kd_linear_x', 'Kd linear X'),
-            ('arm_pid_twist.Kp_linear_y', 'Kp linear Y'),
-            ('arm_pid_twist.Ki_linear_y', 'Ki linear Y'),
-            ('arm_pid_twist.Kd_linear_y', 'Kd linear Y'),
-            ('arm_pid_twist.Kp_linear_z', 'Kp linear Z'),
-            ('arm_pid_twist.Ki_linear_z', 'Ki linear Z'),
-            ('arm_pid_twist.Kd_linear_z', 'Kd linear Z'),
-            ('arm_pid_twist.Kp_angular_x', 'Kp angular X'),
-            ('arm_pid_twist.Ki_angular_x', 'Ki angular X'),
-            ('arm_pid_twist.Kd_angular_x', 'Kd angular X'),
-            ('arm_pid_twist.Kp_angular_y', 'Kp angular Y'),
-            ('arm_pid_twist.Ki_angular_y', 'Ki angular Y'),
-            ('arm_pid_twist.Kd_angular_y', 'Kd angular Y'),
-            ('arm_pid_twist.Kp_angular_z', 'Kp angular Z'),
-            ('arm_pid_twist.Ki_angular_z', 'Ki angular Z'),
-            ('arm_pid_twist.Kd_angular_z', 'Kd angular Z'),
+            ('arm_direction.max_along_track_correction', 'Max along correction'),
+            ('arm_direction.max_spray_axis_correction', 'Max spray correction'),
+            ('arm_direction.max_tracking_linear_velocity', 'Max tracking velocity'),
+            ('arm_direction.final_position_tolerance', 'Final position tolerance'),
         ),
     ),
     (
@@ -1494,7 +1459,7 @@ class OperatorWindow(QMainWindow):
             'simple_base_follower',
             '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}',
-            '-p', f"path_topic:={profile['path_topic']}",
+            '-p', 'path_topic:=/base_path_tracking',
             '-p', f"robot_pose_topic:={profile['robot_pose_topic']}",
             '-p', 'robot_pose_type:=pose_stamped',
             '-p', f"cmd_vel_topic:={profile['cmd_vel_topic']}",
@@ -1504,6 +1469,7 @@ class OperatorWindow(QMainWindow):
             '-p', f'diff_drive_mode:={str(diff_drive).lower()}',
             '-p', 'use_external_path_index:=true',
             '-p', 'path_index_topic:=/path_index',
+            '-p', 'reference_pose_topic:=/base_trajectory_reference',
             '-p', f"external_path_index_stride:={int(self._base_smoothing('external_path_index_stride'))}",
             '-p', 'wait_for_start_condition:=true',
             '-p', 'start_condition_topic:=/start_condition',
@@ -1579,36 +1545,17 @@ class OperatorWindow(QMainWindow):
             'wait_for_start_condition:=true',
             'start_condition_topic:=/start_condition',
             f'initial_path_index:={self.index_spin.value()}',
-            f'direction_control_mode:={self.direction_mode.currentText()}',
+            'progress_mode:=desired_speed' if getattr(self, 'default_velocity_checkbox', None) is not None and self.default_velocity_checkbox.isChecked() else 'progress_mode:=timestamp',
+            'arm_reference_topic:=/arm_trajectory_reference',
+            'desired_speed_topic:=/desired_arm_speed',
             f'default_velocity:={self._ros_float_literal(self._default_velocity_param())}',
         ]
         command.extend(OperatorWindow._tool_offset_launch_arguments(self))
         command.extend(self._pid_launch_arguments(
             'arm_direction',
-            ('kp_z', 'ki_z', 'kd_z', 'orthogonal_kp'),
-        ))
-        command.extend(self._pid_launch_arguments(
-            'arm_pid_twist',
-            (
-                'Kp_linear_x',
-                'Ki_linear_x',
-                'Kd_linear_x',
-                'Kp_linear_y',
-                'Ki_linear_y',
-                'Kd_linear_y',
-                'Kp_linear_z',
-                'Ki_linear_z',
-                'Kd_linear_z',
-                'Kp_angular_x',
-                'Ki_angular_x',
-                'Kd_angular_x',
-                'Kp_angular_y',
-                'Ki_angular_y',
-                'Kd_angular_y',
-                'Kp_angular_z',
-                'Ki_angular_z',
-                'Kd_angular_z',
-            ),
+            ('kp_z', 'along_track_kp', 'orthogonal_kp',
+             'max_along_track_correction', 'max_spray_axis_correction',
+             'max_tracking_linear_velocity', 'final_position_tolerance'),
         ))
         command.extend(self._pid_launch_arguments(
             'arm_orientation',
@@ -1630,6 +1577,9 @@ class OperatorWindow(QMainWindow):
 
     def _start_path_index(self) -> None:
         self._calculate_path_index_rate(restart_if_running=False)
+        publish_speed = getattr(self, '_publish_desired_arm_speed', None)
+        if publish_speed is not None:
+            publish_speed()
         profile = self._current_platform_profile()
         command = [
             'ros2',
@@ -1644,8 +1594,18 @@ class OperatorWindow(QMainWindow):
             '-p', 'additional_goal_topic:=/next_goal',
             '-p', 'normal_topic:=/normal_vector',
             '-p', f'initial_path_index:={self.index_spin.value()}',
-            '-p', f"path_topic:={profile['path_topic']}",
+            '-p', 'path_topic:=/ur_path_transformed',
+            '-p', f"base_path_topic:={profile['path_topic']}",
             '-p', f'publish_rate:={self._ros_float_literal(self.path_index_rate_spin.value())}',
+            '-p', f"progress_mode:={'desired_speed' if getattr(self, 'default_velocity_checkbox', None) is not None and self.default_velocity_checkbox.isChecked() else 'timestamp'}",
+            '-p', 'arm_reference_topic:=/arm_trajectory_reference',
+            '-p', 'base_reference_topic:=/base_trajectory_reference',
+            '-p', 'processed_path_topic:=/ur_path_tracking',
+            '-p', 'processed_base_path_topic:=/base_path_tracking',
+            '-p', 'desired_speed_topic:=/desired_arm_speed',
+            '-p', f"desired_arm_speed:={self._ros_float_literal(getattr(self, '_default_velocity_param', lambda: -1.0)())}",
+            '-p', 'enable_path_resampling:=true',
+            '-p', 'resample_spacing:=0.005',
             '-p', 'velocity_override_topic:=/velocity_override',
             '-p', 'start_condition_topic:=/start_condition',
             '-p', 'wait_for_start_condition:=true',
@@ -1732,9 +1692,13 @@ class OperatorWindow(QMainWindow):
             self._append_process_output(name, 'not started: wait for fresh path and pose topics')
             return
         if mode == 'base':
-            actual_topic, path_topic = '/robot_pose', self._current_platform_profile()['path_topic']
+            actual_topic, path_topic, reference_topic = (
+                '/robot_pose', self._current_platform_profile()['path_topic'], '/base_trajectory_reference',
+            )
         else:
-            actual_topic, path_topic = '/current_deposition_pose', '/ur_path_transformed'
+            actual_topic, path_topic, reference_topic = (
+                '/current_deposition_pose', '/ur_path_tracking', '/arm_trajectory_reference',
+            )
         phase = str(self.accuracy_phase_combo.currentData())
         run_name = f'{mode}_{phase}_{datetime.now().strftime("%Y%m%dT%H%M%S")}'
         snapshot_path = Path('/tmp/am_trajectory_runs') / f'{run_name}_config.json'
@@ -1746,6 +1710,7 @@ class OperatorWindow(QMainWindow):
             '-p', f'mode:={mode}',
             '-p', f'actual_pose_topic:={actual_topic}',
             '-p', f'reference_path_topic:={path_topic}',
+            '-p', f'reference_pose_topic:={reference_topic}',
             '-p', 'path_index_topic:=/path_index',
             '-p', 'output_directory:=/tmp/am_trajectory_runs',
             '-p', f'run_name:={run_name}',
@@ -1757,6 +1722,9 @@ class OperatorWindow(QMainWindow):
             command.extend([
                 '-p', 'base_reference_path_topic:=/base_path',
                 '-p', 'arm_base_offset:=[0.26,0.0,1.046]',
+                '-p', 'command_twist_topic:=/ur_twist_world',
+                '-p', 'joint_states_topic:=/robot/joint_states',
+                '-p', f"max_tracking_linear_velocity:={self._ros_float_literal(self._pid_gain('arm_direction.max_tracking_linear_velocity'))}",
             ])
         self._append_process_output(name, ' '.join(command))
         self.processes.start(name, command)
@@ -2115,12 +2083,10 @@ class OperatorWindow(QMainWindow):
         process = self.processes.get(PATH_INDEX_NAME)
         if process is None or not process.is_running():
             return
-        self.processes.stop(PATH_INDEX_NAME)
         self._append_process_output(
             PATH_INDEX_NAME,
-            'restarting path index advancer to apply updated publish_rate',
+            'kept coupled trajectory progress running; desired speed is updated on /desired_arm_speed without resetting phase',
         )
-        self._start_path_index()
 
     def _arm_path_median_segment_length_from_file(self) -> Optional[float]:
         total_length, step_count = self._arm_path_length_and_step_count_from_file()
@@ -2221,18 +2187,25 @@ class OperatorWindow(QMainWindow):
         self._config['default_velocity_enabled'] = bool(enabled)
         self._save_config()
         if enabled:
-            self._calculate_path_index_rate()
+            self._calculate_path_index_rate(restart_if_running=False)
+        self._publish_desired_arm_speed()
 
     def _set_default_velocity(self, value: float) -> None:
         self._config['default_velocity'] = float(value)
         self._save_config()
         if self.default_velocity_checkbox.isChecked():
-            self._calculate_path_index_rate()
+            self._calculate_path_index_rate(restart_if_running=False)
+        self._publish_desired_arm_speed()
 
     def _default_velocity_param(self) -> float:
         if not self.default_velocity_checkbox.isChecked():
             return -1.0
         return self.default_velocity_spin.value()
+
+    def _publish_desired_arm_speed(self) -> None:
+        publisher = getattr(self.ros_bridge, 'publish_desired_arm_speed', None)
+        if publisher is not None:
+            publisher(max(0.0, self._default_velocity_param()))
 
     def _publish_overrides(self) -> None:
         velocity_percent = self.velocity_slider.value()

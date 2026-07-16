@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction, TimerAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
@@ -201,6 +201,16 @@ def generate_launch_description():
             'normal_topic': LaunchConfiguration('normal_topic'),
             'initial_path_index': LaunchConfiguration('initial_path_index'),
             'path_topic': LaunchConfiguration('arm_path_topic'),
+            'base_path_topic': LaunchConfiguration('base_path_topic'),
+            'progress_mode': LaunchConfiguration('progress_mode'),
+            'enable_path_resampling': LaunchConfiguration('enable_path_resampling'),
+            'resample_spacing': LaunchConfiguration('resample_spacing'),
+            'processed_path_topic': LaunchConfiguration('tracking_path_topic'),
+            'processed_base_path_topic': LaunchConfiguration('tracking_base_path_topic'),
+            'arm_reference_topic': LaunchConfiguration('arm_reference_topic'),
+            'base_reference_topic': LaunchConfiguration('base_reference_topic'),
+            'desired_speed_topic': LaunchConfiguration('desired_speed_topic'),
+            'desired_arm_speed': LaunchConfiguration('desired_arm_speed'),
             'publish_rate': LaunchConfiguration('path_index_rate'),
             'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
             'start_condition_topic': LaunchConfiguration('start_condition_topic'),
@@ -212,15 +222,17 @@ def generate_launch_description():
         executable='simple_base_follower',
         name='simple_base_follower',
         output='screen',
+        condition=IfCondition(LaunchConfiguration('start_base_follower')),
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'path_topic': LaunchConfiguration('base_path_topic'),
+            'path_topic': LaunchConfiguration('tracking_base_path_topic'),
             'robot_pose_topic': LaunchConfiguration('robot_pose_topic'),
             'robot_pose_type': 'pose_stamped',
             'cmd_vel_topic': LaunchConfiguration('cmd_vel_topic'),
             'output_stamped': LaunchConfiguration('output_stamped'),
             'use_external_path_index': True,
             'path_index_topic': LaunchConfiguration('path_index_topic'),
+            'reference_pose_topic': LaunchConfiguration('base_reference_topic'),
             'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
             'start_condition_topic': LaunchConfiguration('start_condition_topic'),
             'lookahead_distance': LaunchConfiguration('lookahead_distance'),
@@ -250,17 +262,27 @@ def generate_launch_description():
             'joint_states_topic': LaunchConfiguration('joint_states_topic'),
             'velocity_command_topic': LaunchConfiguration('arm_velocity_command_topic'),
             'start_jparse_controller': LaunchConfiguration('start_jparse_controller'),
+            'start_orientation_controller': LaunchConfiguration('start_orientation_controller'),
             'publish_current_pose_from_tf': 'false',
             'publish_path': 'false',
             'publish_path_index': 'false',
             'move_to_start_pose': LaunchConfiguration('move_to_start_pose'),
             'start_pose_trajectory_topic': LaunchConfiguration('start_pose_trajectory_topic'),
             'start_pose_publish_delay': LaunchConfiguration('start_pose_publish_delay'),
-            'current_pose_topic': LaunchConfiguration('current_arm_pose_topic'),
+            'nozzle_pose_topic': LaunchConfiguration('current_arm_pose_topic'),
+            # The measured nozzle pose remains on current_arm_pose_topic.  The
+            # Cartesian tracking loop must use the virtual deposition point,
+            # matching the Operator GUI arm-follower configuration.
+            'current_pose_topic': LaunchConfiguration('deposition_pose_topic'),
             'path_topic': LaunchConfiguration('arm_path_topic'),
             'original_path_topic': LaunchConfiguration('arm_original_path_topic'),
             'normal_topic': LaunchConfiguration('normal_topic'),
             'path_index_topic': LaunchConfiguration('path_index_topic'),
+            'arm_reference_topic': LaunchConfiguration('arm_reference_topic'),
+            'tracking_path_topic': LaunchConfiguration('tracking_path_topic'),
+            'desired_speed_topic': LaunchConfiguration('desired_speed_topic'),
+            'progress_mode': LaunchConfiguration('progress_mode'),
+            'default_velocity': LaunchConfiguration('desired_arm_speed'),
             'next_goal_topic': LaunchConfiguration('next_goal_topic'),
             'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
             'start_condition_topic': LaunchConfiguration('start_condition_topic'),
@@ -272,25 +294,20 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('run_arm_control')),
     )
 
-    activate_arm_velocity_controller = TimerAction(
-        period=LaunchConfiguration('arm_velocity_activation_delay'),
-        actions=[
-            ExecuteProcess(
-                cmd=[
-                    'ros2',
-                    'control',
-                    'switch_controllers',
-                    '--controller-manager',
-                    ['/', LaunchConfiguration('robot_id'), '/controller_manager'],
-                    '--deactivate',
-                    'joint_trajectory_controller',
-                    '--activate',
-                    'arm_forward_velocity_controller',
-                ],
-                output='screen',
-                condition=IfCondition(LaunchConfiguration('start_jparse_controller')),
-            )
-        ],
+    arm_velocity_controller_guard = Node(
+        package='am_operator_gui',
+        executable='controller_switch_guard',
+        name='paired_demo_arm_controller_guard',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('start_jparse_controller')),
+        parameters=[{
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'controller_manager': ['/', LaunchConfiguration('robot_id'), '/controller_manager'],
+            'activate_controller': 'arm_forward_velocity_controller',
+            'deactivate_controller': 'joint_trajectory_controller',
+            'ready_topic': '/am/paired_demo_arm_controller_ready',
+            'switch_on_start': True,
+        }],
     )
 
     delayed_move_to_start = TimerAction(
@@ -311,11 +328,13 @@ def generate_launch_description():
         DeclareLaunchArgument('normal_topic', default_value='/normal_vector'),
         DeclareLaunchArgument('robot_pose_topic', default_value='/robot_pose'),
         DeclareLaunchArgument('current_arm_pose_topic', default_value='/current_tcp_pose'),
+        DeclareLaunchArgument('deposition_pose_topic', default_value='/current_deposition_pose'),
         DeclareLaunchArgument('use_current_poses', default_value='true'),
         DeclareLaunchArgument('base_start_offset', default_value='[0.35, 0.0, 0.0]'),
         DeclareLaunchArgument('final_base_start_offset', default_value='[0.0, 0.0, 0.0]'),
         DeclareLaunchArgument('sideways_distance', default_value='0.8'),
         DeclareLaunchArgument('diagonal_distance', default_value='0.8'),
+        DeclareLaunchArgument('start_base_follower', default_value='true'),
         DeclareLaunchArgument('arm_xy_offset', default_value='[0.15, 0.0, 0.0]'),
         DeclareLaunchArgument('ramp_arm_xy_offset', default_value='true'),
         DeclareLaunchArgument('arm_height_delta', default_value='0.2'),
@@ -341,6 +360,15 @@ def generate_launch_description():
         DeclareLaunchArgument('next_goal_topic', default_value='/next_goal'),
         DeclareLaunchArgument('initial_path_index', default_value='0'),
         DeclareLaunchArgument('path_index_rate', default_value='5.0'),
+        DeclareLaunchArgument('progress_mode', default_value='timestamp'),
+        DeclareLaunchArgument('enable_path_resampling', default_value='true'),
+        DeclareLaunchArgument('resample_spacing', default_value='0.005'),
+        DeclareLaunchArgument('tracking_path_topic', default_value='/ur_path_tracking'),
+        DeclareLaunchArgument('tracking_base_path_topic', default_value='/base_path_tracking'),
+        DeclareLaunchArgument('arm_reference_topic', default_value='/arm_trajectory_reference'),
+        DeclareLaunchArgument('base_reference_topic', default_value='/base_trajectory_reference'),
+        DeclareLaunchArgument('desired_speed_topic', default_value='/desired_arm_speed'),
+        DeclareLaunchArgument('desired_arm_speed', default_value='-1.0'),
         DeclareLaunchArgument('wait_for_start_condition', default_value='true'),
         DeclareLaunchArgument('start_condition_topic', default_value='/start_condition'),
         DeclareLaunchArgument('start_pose_reached_topic', default_value='/start_pose_reached'),
@@ -365,6 +393,11 @@ def generate_launch_description():
         DeclareLaunchArgument('joint_states_topic', default_value='/robot/joint_states'),
         DeclareLaunchArgument('arm_velocity_command_topic', default_value='/robot/arm_forward_velocity_controller/commands'),
         DeclareLaunchArgument('start_jparse_controller', default_value='true'),
+        DeclareLaunchArgument(
+            'start_orientation_controller',
+            default_value='true',
+            description='Keep orientation tracking enabled except for translation-only campaign runs.',
+        ),
         DeclareLaunchArgument('arm_velocity_activation_delay', default_value='13.0'),
         DeclareLaunchArgument('direction_control_mode', default_value='speed_orthogonal'),
         DeclareLaunchArgument('orthogonal_kp', default_value='1.0'),
@@ -380,5 +413,5 @@ def generate_launch_description():
         path_index,
         base_follower,
         arm_control,
-        activate_arm_velocity_controller,
+        arm_velocity_controller_guard,
     ])

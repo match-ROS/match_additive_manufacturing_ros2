@@ -1,12 +1,15 @@
 import math
 
 from geometry_msgs.msg import Pose
+import pytest
 from tf_transformations import quaternion_from_euler
 
 from print_path_monitoring.error_metrics import (
     compute_planar_error,
     compute_pose_error,
+    compute_tracking_error,
     summarize_distances,
+    tool_z_axis,
     wrap_to_pi,
 )
 
@@ -50,6 +53,22 @@ def test_planar_error_is_resolved_into_path_axes():
 
     assert math.isclose(planar.tangential, 0.2)
     assert math.isclose(planar.cross_track, -0.3)
+
+
+def test_tracking_error_matches_along_lateral_and_spray_axes():
+    reference = _pose(1.0, 0.0, 1.0, 0.0)
+    current = _pose(0.8, 0.3, 0.7, 0.0)
+
+    tracking = compute_tracking_error(
+        current,
+        reference,
+        tangent=(1.0, 0.0, 0.0),
+        spray_axis=tool_z_axis(reference),
+    )
+
+    assert tracking.along_track == pytest.approx(0.2)
+    assert tracking.lateral == pytest.approx(0.3)
+    assert tracking.spray_axis == pytest.approx(0.3)
 
 
 def test_distance_summary_has_rmse_percentile_and_spread():

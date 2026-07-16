@@ -1,10 +1,54 @@
 import numpy as np
 
 from ur_trajectory_follower.direction_control import (
+    cartesian_tracking_command,
     has_forward_segment,
     segment_speed,
     speed_dependent_orthogonal_command,
 )
+
+
+def test_cartesian_tracking_recovers_along_track_lag_with_bounded_boost():
+    result = cartesian_tracking_command(
+        reference=np.array([1.0, 0.0, 0.0]),
+        measured=np.array([0.95, 0.01, 0.02]),
+        tangent=np.array([1.0, 0.0, 0.0]),
+        spray_axis=np.array([0.0, 0.0, 1.0]),
+        feedforward=np.array([0.048, 0.0, 0.0]),
+        along_track_kp=2.0,
+        orthogonal_kp=1.0,
+        spray_kp=0.7,
+        max_along=0.03,
+        max_orthogonal=0.02,
+        max_spray=0.02,
+        max_linear=0.12,
+    )
+
+    assert np.allclose(result.along, [0.03, 0.0, 0.0])
+    assert np.allclose(result.lateral, [0.0, -0.01, 0.0])
+    assert np.allclose(result.spray, [0.0, 0.0, -0.014])
+    assert result.command[0] > 0.048
+    assert np.linalg.norm(result.command) <= 0.12
+
+
+def test_cartesian_tracking_hold_reference_keeps_feedback_without_feedforward():
+    result = cartesian_tracking_command(
+        reference=np.array([1.0, 0.0, 0.0]),
+        measured=np.zeros(3),
+        tangent=np.array([1.0, 0.0, 0.0]),
+        spray_axis=np.array([0.0, 0.0, 1.0]),
+        feedforward=np.zeros(3),
+        along_track_kp=2.0,
+        orthogonal_kp=1.0,
+        spray_kp=1.0,
+        max_along=0.03,
+        max_orthogonal=0.02,
+        max_spray=0.02,
+        max_linear=0.12,
+        correction_scale=1.0,
+    )
+
+    assert np.allclose(result.command, [0.03, 0.0, 0.0])
 
 
 def test_segment_speed_uses_full_3d_distance():

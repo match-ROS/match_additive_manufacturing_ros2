@@ -111,3 +111,65 @@ def test_increment_path_index_advances_monotonically_and_scales_with_velocity_ov
         advancer.destroy_node()
         node.destroy_node()
         rclpy.shutdown()
+
+
+@pytest.mark.timeout(20)
+def test_segment_progress_preserves_phase_when_desired_speed_changes_and_pauses() -> None:
+    os.environ['ROS_DOMAIN_ID'] = '177'
+    os.environ['ROS_LOG_DIR'] = '/tmp/ur_trajectory_follower_test_logs'
+    rclpy.init(args=[
+        '--ros-args',
+        '-p', 'path_index_topic:=/segment_path_index',
+        '-p', 'next_goal_topic:=/segment_next_goal',
+        '-p', 'normal_topic:=/segment_normal',
+        '-p', 'initial_path_index:=0',
+        '-p', 'path_topic:=/segment_path',
+        '-p', 'progress_mode:=desired_speed',
+        '-p', 'desired_arm_speed:=0.1',
+        '-p', 'control_rate:=100.0',
+        '-p', 'velocity_override_topic:=/segment_velocity_override',
+        '-p', 'start_condition_topic:=/segment_start',
+        '-p', 'wait_for_start_condition:=true',
+    ])
+    node = Node('segment_progress_runtime_test', use_global_arguments=False)
+    advancer = IncrementPathIndex()
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+    executor.add_node(advancer)
+    path_pub = node.create_publisher(Path, '/segment_path', LATCH_QOS)
+    start_pub = node.create_publisher(Bool, '/segment_start', 10)
+    override_pub = node.create_publisher(Float32, '/segment_velocity_override', 10)
+    speed_pub = node.create_publisher(Float32, '/desired_arm_speed', LATCH_QOS)
+    phases = []
+    indices = []
+    node.create_subscription(Float32, '/trajectory_phase', lambda msg: phases.append(float(msg.data)), LATCH_QOS)
+    node.create_subscription(Int32, '/segment_path_index', lambda msg: indices.append(int(msg.data)), LATCH_QOS)
+
+    path = _make_path(4)
+    for pose in path.poses:
+        pose.pose.position.x *= 2.0  # 2 cm segments: 0.2 s at 0.1 m/s.
+
+    try:
+        for _ in range(10):
+            path_pub.publish(path)
+            executor.spin_once(timeout_sec=0.02)
+        start_pub.publish(Bool(data=True))
+        _spin_for(executor, 0.12)
+        assert phases and max(phases) > 0.2
+        phase_before_change = phases[-1]
+        speed_pub.publish(Float32(data=0.2))
+        _spin_for(executor, 0.03)
+        assert phases[-1] >= phase_before_change
+
+        override_pub.publish(Float32(data=0.0))
+        _spin_for(executor, 0.05)
+        paused_phase = phases[-1]
+        _spin_for(executor, 0.08)
+        assert abs(phases[-1] - paused_phase) < 0.02
+        assert indices and indices[0] == 0
+    finally:
+        executor.remove_node(advancer)
+        executor.remove_node(node)
+        advancer.destroy_node()
+        node.destroy_node()
+        rclpy.shutdown()

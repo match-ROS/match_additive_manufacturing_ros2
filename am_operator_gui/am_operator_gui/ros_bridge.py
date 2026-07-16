@@ -54,8 +54,9 @@ class OperatorGuiNode(Node):
             reliability=QoSReliabilityPolicy.RELIABLE,
         )
         self._path_index_pub = self.create_publisher(Int32, '/path_index', path_index_qos)
-        self._start_condition_pub = self.create_publisher(Bool, '/start_condition', 10)
+        self._start_condition_pub = self.create_publisher(Bool, '/start_condition', path_index_qos)
         self._velocity_override_pub = self.create_publisher(Float32, '/velocity_override', 10)
+        self._desired_arm_speed_pub = self.create_publisher(Float32, '/desired_arm_speed', path_index_qos)
         self._nozzle_height_pub = self.create_publisher(Float32, '/nozzle_height_override', 10)
         self._spray_distance_pub = self.create_publisher(Float32, '/spray_distance', 10)
         self._tf_buffer = Buffer()
@@ -92,6 +93,9 @@ class OperatorGuiNode(Node):
 
     def publish_velocity_override(self, value: float) -> None:
         self._velocity_override_pub.publish(Float32(data=float(value)))
+
+    def publish_desired_arm_speed(self, value: float) -> None:
+        self._desired_arm_speed_pub.publish(Float32(data=max(0.0, float(value))))
 
     def publish_nozzle_height(self, value: float) -> None:
         self._nozzle_height_pub.publish(Float32(data=float(value)))

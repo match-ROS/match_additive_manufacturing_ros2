@@ -3,6 +3,7 @@ import numpy as np
 import rclpy
 from geometry_msgs.msg import TwistStamped
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, QoSReliabilityPolicy
 from tf2_ros import Buffer, TransformException, TransformListener
 from tf_transformations import quaternion_matrix
 
@@ -22,7 +23,7 @@ class TransformTwistStamped(Node):
         self.pub = self.create_publisher(
             TwistStamped,
             str(self.get_parameter('output_topic').value),
-            10,
+            QoSProfile(depth=10, reliability=QoSReliabilityPolicy.BEST_EFFORT),
         )
         self.create_subscription(
             TwistStamped,

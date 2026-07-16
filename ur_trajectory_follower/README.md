@@ -1,42 +1,59 @@
 # ur_trajectory_follower
 
-ROS 2 nodes for following an arm path with linear and orientation twist commands.
+ROS 2 Cartesian arm tracking for coupled mobile-base and arm trajectories.
 
-## Direction Control Modes
+## Coupled trajectory progress
 
-`ur_direction_controller` supports two planar direction modes:
+`increment_path_index` keeps the legacy shared `/path_index` contract and adds a
+continuous segment phase `/trajectory_phase`.  It publishes interpolated,
+transient-local references for both paths:
 
-- `goal_direction`: points the planar velocity from the current TCP pose toward the
-  selected goal waypoint. This preserves the original ROS 2 behavior.
-- `speed_orthogonal`: follows the current path-segment tangent at the speed encoded
-  by waypoint positions and timestamps, then adds bounded cross-track correction.
+- `/arm_trajectory_reference`
+- `/base_trajectory_reference`
 
-For `speed_orthogonal`, the planar command is:
+For segment `i -> i + 1`, both references use the same phase `alpha`:
 
 ```text
-v = tangent * trajectory_speed * velocity_override
-    + clamp(orthogonal_kp * cross_track_error, orthogonal_max_velocity)
+p_ref(alpha) = (1 - alpha) * p_i + alpha * p_(i+1)
+q_ref(alpha) = SLERP(q_i, q_(i+1), alpha)
 ```
 
-The tangent and cross-track correction are projected onto the plane orthogonal to
-the configured spray axis. Spray-axis/nozzle-height PID control remains separate.
+`progress_mode:=timestamp` uses the exported segment timestamps.
+`progress_mode:=desired_speed` derives each non-zero arm segment duration from
+`desired_arm_speed`; zero-length arm segments retain their original timestamp
+duration so base motion, orientation-only motion, and dwell segments remain
+valid. Coupled paths must have equal lengths and matching, strictly increasing
+timestamps.
 
-Relevant parameters:
+`/velocity_override` scales phase advancement. At zero it freezes the reference
+phase; by default the arm and base controllers continue bounded feedback to the
+frozen reference. This is a trajectory pause, not an emergency stop.
 
-- `control_mode`: `goal_direction` or `speed_orthogonal`.
-- `from_index_offset`: segment start relative to `/path_index`.
-- `goal_index_offset`: segment goal relative to `/path_index`.
-- `orthogonal_kp`: proportional cross-track correction gain.
-- `orthogonal_max_velocity`: maximum cross-track correction speed in m/s.
-- `velocity_override_topic`: scales the trajectory feed-forward speed.
+## Cartesian arm control
 
-Standalone launch:
+`ur_direction_controller` commands a world-frame linear twist:
 
-```bash
-ros2 launch ur_trajectory_follower ur_direction_controller.launch.py \
-  control_mode:=speed_orthogonal \
-  orthogonal_kp:=1.0 \
-  orthogonal_max_velocity:=0.1
+```text
+v_cmd = v_feedforward + v_along + v_lateral + v_spray
 ```
 
-The paired Robotnik base+arm demo enables `speed_orthogonal` by default.
+The feedforward follows the active segment. Along-track, lateral, and spray-axis
+terms use measured deposition-pose error and are independently bounded before a
+global Cartesian velocity limit. The defaults are:
+
+```text
+along_track_kp: 2.0 s^-1
+orthogonal_kp: 1.0 s^-1
+max_along_track_correction: 0.03 m/s
+orthogonal_max_velocity: 0.02 m/s
+max_spray_axis_correction: 0.03 m/s
+max_tracking_linear_velocity: 0.12 m/s
+final_position_tolerance: 0.005 m
+```
+
+The legacy `pid_twist_controller` remains available for external users but is
+not launched in the arm-following chain: it processed a velocity command rather
+than a measured Cartesian tracking error.
+
+J-PARSE remains responsible only for mapping the Cartesian twist to bounded
+joint velocities.

@@ -21,12 +21,16 @@ class OrientationController(Node):
         self.declare_parameter('output_smoothing_coeff', 0.9)
         self.declare_parameter('initial_path_index', -1)
         self.declare_parameter('path_topic', '/ur_path_transformed')
+        self.declare_parameter('reference_pose_topic', '/arm_trajectory_reference')
         self.declare_parameter('current_pose_topic', '/current_tcp_pose')
         self.declare_parameter('path_index_topic', '/path_index')
         self.declare_parameter('velocity_override_topic', '/velocity_override')
         self.declare_parameter('twist_topic', '/ur_orientation_twist')
         self.declare_parameter('start_condition_topic', '/start_condition')
         self.declare_parameter('wait_for_start_condition', False)
+        self.declare_parameter('hold_reference_on_pause', True)
+        self.declare_parameter('final_orientation_tolerance', 0.03)
+        self.declare_parameter('final_tolerance_cycles', 3)
 
         self.kp = float(self.get_parameter('kp_orientation').value)
         self.ki = float(self.get_parameter('ki_orientation').value)
@@ -37,15 +41,23 @@ class OrientationController(Node):
         self.old_twist = Twist()
         self.path: Optional[Path] = None
         self.current_pose: Optional[PoseStamped] = None
+        self.reference_pose: Optional[PoseStamped] = None
         self.current_index = max(0, int(self.get_parameter('initial_path_index').value))
         self.velocity_override = 1.0
         self.wait_for_start_condition = self._as_bool(
             self.get_parameter('wait_for_start_condition').value
         )
         self.control_enabled = not self.wait_for_start_condition
+        self.final_cycles = 0
 
         path_qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL, reliability=QoSReliabilityPolicy.RELIABLE)
         self.create_subscription(Path, str(self.get_parameter('path_topic').value), self._path_cb, path_qos)
+        self.create_subscription(
+            PoseStamped,
+            str(self.get_parameter('reference_pose_topic').value),
+            self._reference_cb,
+            path_qos,
+        )
         self.create_subscription(Int32, str(self.get_parameter('path_index_topic').value), self._index_cb, 10)
         self.create_subscription(PoseStamped, str(self.get_parameter('current_pose_topic').value), self._pose_cb, 10)
         self.create_subscription(Float32, str(self.get_parameter('velocity_override_topic').value), self._velocity_cb, 10)
@@ -74,6 +86,11 @@ class OrientationController(Node):
         if self.path is None:
             return
         self.current_index = max(1, min(int(msg.data), len(self.path.poses) - 1))
+        self.final_cycles = 0
+        self._calculate()
+
+    def _reference_cb(self, msg: PoseStamped) -> None:
+        self.reference_pose = msg
         self._calculate()
 
     def _pose_cb(self, msg: PoseStamped) -> None:
@@ -81,7 +98,8 @@ class OrientationController(Node):
         self._calculate()
 
     def _velocity_cb(self, msg: Float32) -> None:
-        self.velocity_override = max(0.0, min(float(msg.data), 1.0))
+        self.velocity_override = max(0.0, float(msg.data))
+        self._calculate()
 
     def _start_condition_cb(self, msg: Bool) -> None:
         new_state = bool(msg.data) or not self.wait_for_start_condition
@@ -120,11 +138,15 @@ class OrientationController(Node):
         return out
 
     def _calculate(self) -> None:
-        if self.path is None or self.current_pose is None:
+        if self.current_pose is None:
             return
         if not self.control_enabled:
             return
-        goal = self.path.poses[self.current_index]
+        goal = self.reference_pose
+        if goal is None:
+            if self.path is None:
+                return
+            goal = self.path.poses[self.current_index]
         q_des = np.array([goal.pose.orientation.x, goal.pose.orientation.y, goal.pose.orientation.z, goal.pose.orientation.w], dtype=float)
         q_cur = np.array([
             self.current_pose.pose.orientation.x,
@@ -140,9 +162,20 @@ class OrientationController(Node):
         axis, angle = self._axis_angle(np.array(q_err, dtype=float))
         error = axis * angle
         omega = (error * self.kp + self.integral_error * self.ki + (error - self.prev_error) * self.kd)
-        omega *= self.velocity_override
-        self.integral_error += error
+        paused = self.velocity_override <= 0.0
+        if not (paused and self._as_bool(self.get_parameter('hold_reference_on_pause').value)):
+            omega *= self.velocity_override
+        if not paused:
+            self.integral_error += error
         self.prev_error = error
+
+        at_final = self.path is not None and self.current_index >= len(self.path.poses) - 1
+        if at_final and float(np.linalg.norm(error)) <= float(self.get_parameter('final_orientation_tolerance').value):
+            self.final_cycles += 1
+        else:
+            self.final_cycles = 0
+        if self.final_cycles >= max(1, int(self.get_parameter('final_tolerance_cycles').value)):
+            omega = np.zeros(3)
 
         twist = Twist()
         twist.angular.x = float(omega[0])

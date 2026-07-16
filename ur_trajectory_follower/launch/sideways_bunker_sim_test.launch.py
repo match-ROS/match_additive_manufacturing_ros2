@@ -18,6 +18,7 @@ def generate_launch_description():
         ),
         launch_arguments={
             'launch_rviz': LaunchConfiguration('launch_rviz'),
+            'headless': LaunchConfiguration('headless'),
         }.items(),
     )
 
@@ -93,6 +94,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('launch_rviz', default_value='false'),
+        DeclareLaunchArgument('headless', default_value='true'),
         DeclareLaunchArgument('controller_manager', default_value='/controller_manager'),
         DeclareLaunchArgument('switch_to_velocity_controller', default_value='true'),
         DeclareLaunchArgument('path_length', default_value='1.2'),

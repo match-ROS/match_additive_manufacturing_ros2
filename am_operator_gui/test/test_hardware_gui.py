@@ -508,7 +508,7 @@ def test_hardware_pose_adapters_can_use_odometry_for_robot_pose() -> None:
     assert 'robot_base_frame:=base_link' in odom_command
 
 
-def test_arm_follower_uses_configured_pid_gains() -> None:
+def test_arm_follower_uses_configured_tracking_gains() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
         processes=processes,
@@ -523,8 +523,12 @@ def test_arm_follower_uses_configured_pid_gains() -> None:
             'arm_direction.kp_z': 2.1,
             'arm_direction.ki_z': 2.2,
             'arm_direction.kd_z': 2.3,
+            'arm_direction.along_track_kp': 2.5,
             'arm_direction.orthogonal_kp': 2.4,
-            'arm_pid_twist.Kp_linear_x': 3.1,
+            'arm_direction.max_along_track_correction': 0.031,
+            'arm_direction.max_spray_axis_correction': 0.021,
+            'arm_direction.max_tracking_linear_velocity': 0.121,
+            'arm_direction.final_position_tolerance': 0.006,
             'arm_orientation.kp_orientation': 4.1,
             'arm_orientation.ki_orientation': 4.2,
             'arm_orientation.kd_orientation': 4.3,
@@ -540,10 +544,12 @@ def test_arm_follower_uses_configured_pid_gains() -> None:
     assert 'tip_link:=robot_arm_tool0' in command
     assert 'current_pose_topic:=/current_deposition_pose' in command
     assert 'kp_z:=2.100000' in command
-    assert 'ki_z:=2.200000' in command
-    assert 'kd_z:=2.300000' in command
+    assert 'ki_z:=2.200000' not in command
+    assert 'kd_z:=2.300000' not in command
+    assert 'along_track_kp:=2.500000' in command
     assert 'orthogonal_kp:=2.400000' in command
-    assert 'Kp_linear_x:=3.100000' in command
+    assert 'max_tracking_linear_velocity:=0.121000' in command
+    assert 'arm_reference_topic:=/arm_trajectory_reference' in command
     assert 'kp_orientation:=4.100000' in command
     assert 'ki_orientation:=4.200000' in command
     assert 'kd_orientation:=4.300000' in command
@@ -612,7 +618,7 @@ def test_start_following_warns_but_publishes_when_follower_missing() -> None:
     )
 
 
-def test_path_index_advancer_uses_base_path_topic() -> None:
+def test_path_index_advancer_uses_coupled_arm_and_base_paths() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
         processes=processes,
@@ -630,8 +636,10 @@ def test_path_index_advancer_uses_base_path_topic() -> None:
     OperatorWindow._start_path_index(fake)
 
     command = processes.started[0][1]
-    assert 'path_topic:=/base_path' in command
-    assert 'path_topic:=/ur_path_transformed' not in command
+    assert 'path_topic:=/ur_path_transformed' in command
+    assert 'base_path_topic:=/base_path' in command
+    assert 'arm_reference_topic:=/arm_trajectory_reference' in command
+    assert 'base_reference_topic:=/base_trajectory_reference' in command
 
 
 def test_path_index_advancer_recalculates_rate_before_launch() -> None:
