@@ -27,6 +27,7 @@ setup(
             'ur_direction_controller = ur_trajectory_follower.ur_path_direction_controller:main',
             'combine_twists = ur_trajectory_follower.combine_twists:main',
             'current_pose_from_tf = ur_trajectory_follower.current_pose_from_tf:main',
+            'deposition_pose = ur_trajectory_follower.deposition_pose:main',
             'increment_path_index = ur_trajectory_follower.increment_path_index:main',
             'pid_twist_controller = ur_trajectory_follower.pid_twist_controller:main',
             'publish_joint_pose_once = ur_trajectory_follower.publish_joint_pose_once:main',

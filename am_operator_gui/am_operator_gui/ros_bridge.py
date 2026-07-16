@@ -10,6 +10,7 @@ from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool, Float32, Int32
+from tf2_ros import Buffer, TransformException, TransformListener
 
 
 StatusCallback = Callable[[bool, bool, bool, bool, bool], None]
@@ -34,6 +35,8 @@ class OperatorGuiNode(Node):
         self._controller_ready = False
         self._last_robot_pose_time = None
         self._last_arm_pose_time = None
+        self._last_base_path_time = None
+        self._last_arm_path_time = None
         self._last_jparse_ready_time = None
         self._last_controller_ready_time = None
         self._latest_ur_path_rate: Optional[float] = None
@@ -54,11 +57,14 @@ class OperatorGuiNode(Node):
         self._start_condition_pub = self.create_publisher(Bool, '/start_condition', 10)
         self._velocity_override_pub = self.create_publisher(Float32, '/velocity_override', 10)
         self._nozzle_height_pub = self.create_publisher(Float32, '/nozzle_height_override', 10)
+        self._spray_distance_pub = self.create_publisher(Float32, '/spray_distance', 10)
+        self._tf_buffer = Buffer()
+        self._tf_listener = TransformListener(self._tf_buffer, self)
         self.create_subscription(Int32, '/path_index', self._path_index_cb, path_index_qos)
         self.create_subscription(Path, '/base_path', self._base_path_cb, 10)
         self.create_subscription(Path, '/ur_path_transformed', self._ur_path_cb, path_index_qos)
         self.create_subscription(PoseStamped, '/robot_pose', self._robot_pose_cb, 10)
-        self.create_subscription(PoseStamped, '/current_tcp_pose', self._arm_pose_cb, 10)
+        self.create_subscription(PoseStamped, '/current_deposition_pose', self._arm_pose_cb, 10)
         self.create_subscription(Bool, '/am/jparse_ready', self._jparse_ready_cb, path_index_qos)
         self.create_subscription(
             Bool,
@@ -89,6 +95,15 @@ class OperatorGuiNode(Node):
 
     def publish_nozzle_height(self, value: float) -> None:
         self._nozzle_height_pub.publish(Float32(data=float(value)))
+
+    def publish_spray_distance(self, value: float) -> None:
+        self._spray_distance_pub.publish(Float32(data=float(value)))
+
+    def lookup_tool_offset(self, tool_frame: str, controller_frame: str):
+        try:
+            return self._tf_buffer.lookup_transform(tool_frame, controller_frame, rclpy.time.Time())
+        except TransformException:
+            return None
 
     def publish_stop_commands(self, arm_frame: str) -> None:
         self._base_stop_pub.publish(Twist())
@@ -150,26 +165,28 @@ class OperatorGuiNode(Node):
             return deepcopy(self._latest_robot_pose)
 
     def _base_path_cb(self, msg: Path) -> None:
-        self._has_base_path = bool(msg.poses)
+        self._has_base_path = self._is_map_path(msg)
+        self._last_base_path_time = self.get_clock().now() if self._has_base_path else None
         self._has_path = self._has_base_path and self._has_arm_path
         with self._latest_pose_lock:
             self._latest_base_path = msg
         self._emit_status()
 
     def _robot_pose_cb(self, msg: PoseStamped) -> None:
-        self._has_robot_pose = True
-        self._last_robot_pose_time = self.get_clock().now()
+        self._has_robot_pose = self._is_fresh_map_pose(msg)
+        self._last_robot_pose_time = self.get_clock().now() if self._has_robot_pose else None
         with self._latest_pose_lock:
             self._latest_robot_pose = msg
         self._emit_status()
 
-    def _arm_pose_cb(self, _msg: PoseStamped) -> None:
-        self._has_arm_pose = True
-        self._last_arm_pose_time = self.get_clock().now()
+    def _arm_pose_cb(self, msg: PoseStamped) -> None:
+        self._has_arm_pose = self._is_fresh_map_pose(msg)
+        self._last_arm_pose_time = self.get_clock().now() if self._has_arm_pose else None
         self._emit_status()
 
     def _ur_path_cb(self, msg: Path) -> None:
-        self._has_arm_path = bool(msg.poses)
+        self._has_arm_path = self._is_map_path(msg)
+        self._last_arm_path_time = self.get_clock().now() if self._has_arm_path else None
         self._has_path = self._has_base_path and self._has_arm_path
         rate = self._mean_path_timestamp_rate(msg)
         median_segment_length = self._median_path_segment_length(msg)
@@ -200,6 +217,11 @@ class OperatorGuiNode(Node):
             self._has_robot_pose = (now - self._last_robot_pose_time).nanoseconds / 1e9 <= 0.75
         if self._last_arm_pose_time is not None:
             self._has_arm_pose = (now - self._last_arm_pose_time).nanoseconds / 1e9 <= 0.75
+        if self._last_base_path_time is not None:
+            self._has_base_path = (now - self._last_base_path_time).nanoseconds / 1e9 <= 0.75
+        if self._last_arm_path_time is not None:
+            self._has_arm_path = (now - self._last_arm_path_time).nanoseconds / 1e9 <= 0.75
+        self._has_path = self._has_base_path and self._has_arm_path
         if self._last_jparse_ready_time is not None:
             fresh = (now - self._last_jparse_ready_time).nanoseconds / 1e9 <= 2.5
             self._jparse_ready = self._jparse_ready and fresh
@@ -207,6 +229,25 @@ class OperatorGuiNode(Node):
             fresh = (now - self._last_controller_ready_time).nanoseconds / 1e9 <= 2.5
             self._controller_ready = self._controller_ready and fresh
         self._emit_status()
+
+    def _is_fresh_map_pose(self, msg: PoseStamped) -> bool:
+        if msg.header.frame_id.strip().lstrip('/') != 'map':
+            return False
+        stamp = msg.header.stamp
+        if not (stamp.sec or stamp.nanosec):
+            return False
+        age = (self.get_clock().now() - rclpy.time.Time.from_msg(stamp)).nanoseconds / 1e9
+        return 0.0 <= age <= 0.75
+
+    @staticmethod
+    def _is_map_path(msg: Path) -> bool:
+        if (not msg.poses or not (msg.header.stamp.sec or msg.header.stamp.nanosec) or
+                msg.header.frame_id.strip().lstrip('/') != 'map'):
+            return False
+        return all(
+            (pose.header.frame_id or msg.header.frame_id).strip().lstrip('/') == 'map'
+            for pose in msg.poses
+        )
 
     def _emit_status(self) -> None:
         if self._status_callback is not None:
@@ -318,6 +359,15 @@ class RosBridge:
     def publish_nozzle_height(self, value: float) -> None:
         if self._node is not None:
             self._node.publish_nozzle_height(value)
+
+    def publish_spray_distance(self, value: float) -> None:
+        if self._node is not None:
+            self._node.publish_spray_distance(value)
+
+    def lookup_tool_offset(self, tool_frame: str, controller_frame: str):
+        if self._node is None:
+            return None
+        return self._node.lookup_tool_offset(tool_frame, controller_frame)
 
     def publish_stop_commands(self, arm_frame: str) -> None:
         if self._node is not None:

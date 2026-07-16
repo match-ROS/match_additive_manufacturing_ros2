@@ -44,7 +44,7 @@ class ViconTcpRobotPoseBackup(Node):
         self.declare_parameter("output_topic", "/robot_pose")
         self.declare_parameter("map_frame", "map")
         self.declare_parameter("robot_base_frame", "base_link")
-        self.declare_parameter("robot_tcp_frame", "robot_arm_tool0")
+        self.declare_parameter("robot_tcp_frame", "robot_arm_nozzle_tip")
         self.declare_parameter("robot_tree_root_frame", "odom")
         self.declare_parameter("ready_topic", "~/ready")
         self.declare_parameter("stale_timeout", 0.5)

@@ -12,7 +12,7 @@
   },
   "control_frame": "map",
   "default_velocity": 0.048,
-  "default_velocity_enabled": false,
+  "default_velocity_enabled": true,
   "external_map_frame": "map",
   "follower_type": "pid",
   "path_index_rate": 4.741,
@@ -25,5 +25,5 @@
   "robot_base_frame": "robot_base_footprint",
   "robot_tree_root_frame": "robot_odom",
   "simulation_gui": false,
-  "trajectory_directory": "/home/rosmatch/workspaces/print_wattle_daub/src/match_additive_manufacturing_ros2/components/david_path"
+  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path"
 }

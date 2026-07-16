@@ -69,6 +69,15 @@ class FakeSpinBox:
         pass
 
 
+class FakeLabel:
+
+    def __init__(self) -> None:
+        self.text = ''
+
+    def setText(self, text: str) -> None:
+        self.text = text
+
+
 class FakeProcess:
 
     def is_running(self) -> bool:
@@ -201,6 +210,8 @@ def test_hardware_arm_stack_uses_jparse_and_forward_velocity_controller() -> Non
     command = processes.started[0][1]
     assert 'use_sim_time:=false' in command
     assert 'controller_manager:=/robot/arm/controller_manager' in command
+    assert 'tip_link:=robot_arm_tool0' in command
+    assert 'fixed_tool_offset_xyz:=[-0.250000, 0.000000, 0.015000]' in command
     assert 'activate_controller:=forward_velocity_controller' in command
     assert (
         'velocity_command_topic:=/robot/arm/forward_velocity_controller/commands'
@@ -232,11 +243,33 @@ def test_simulation_arm_stack_keeps_sim_controller_names() -> None:
     command = processes.started[0][1]
     assert 'use_sim_time:=true' in command
     assert 'controller_manager:=/robot/controller_manager' in command
+    assert 'tip_link:=robot_arm_tool0' in command
     assert 'activate_controller:=arm_forward_velocity_controller' in command
     assert (
         'velocity_command_topic:=/robot/arm_forward_velocity_controller/commands'
         in command
     )
+
+
+def test_gui_publishes_effective_spray_distance() -> None:
+    published = []
+    fake = SimpleNamespace(
+        velocity_slider=FakeSpinBox(75),
+        nozzle_reference=FakeSpinBox(120),
+        nozzle_offset=FakeSpinBox(-15),
+        velocity_value=FakeLabel(),
+        nozzle_offset_value=FakeLabel(),
+        nozzle_effective_value=FakeLabel(),
+        ros_bridge=SimpleNamespace(
+            publish_velocity_override=lambda value: published.append(('velocity', value)),
+            publish_spray_distance=lambda value: published.append(('spray_distance', value)),
+        ),
+    )
+
+    OperatorWindow._publish_overrides(fake)
+
+    assert published == [('velocity', 0.75), ('spray_distance', 0.105)]
+    assert fake.nozzle_effective_value.text == '105.0 mm effective'
 
 def test_robotnik_sim_launch_uses_real_robot_arm_type() -> None:
     processes = FakeProcesses(running=())
@@ -504,6 +537,8 @@ def test_arm_follower_uses_configured_pid_gains() -> None:
     OperatorWindow._start_arm_follower(fake, move_to_start_pose=False)
 
     command = processes.started[0][1]
+    assert 'tip_link:=robot_arm_tool0' in command
+    assert 'current_pose_topic:=/current_deposition_pose' in command
     assert 'kp_z:=2.100000' in command
     assert 'ki_z:=2.200000' in command
     assert 'kd_z:=2.300000' in command

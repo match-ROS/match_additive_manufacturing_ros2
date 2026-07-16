@@ -50,6 +50,12 @@ DEFAULT_PATH_TRANSFORM = {
     'z': 0.0,
     'yaw_deg': 0.0,
 }
+DEFAULT_FIXED_TOOL_OFFSET = {
+    # Matches the modeled robot_arm_tool0 -> robot_arm_nozzle_tip transform.
+    'xyz': [-0.25, 0.0, 0.015],
+    'quaternion_xyzw': [0.0, -0.7071067812, 0.0, 0.7071067812],
+}
+DEFAULT_SPRAY_DISTANCE_MAX_RATE = 0.02
 DEFAULT_BASE_SMOOTHING = {
     'enabled': True,
     'method': 'moving_average',
@@ -572,6 +578,47 @@ class OperatorWindow(QMainWindow):
         configured = str(self._config.get('trajectory_directory', '')).strip()
         return Path(configured).expanduser() if configured else DEFAULT_TRAJECTORY_DIR
 
+    def _configured_fixed_tool_offset(self) -> dict[str, list[float]]:
+        configured = self._config.get('fixed_tool_offset', {})
+        if not isinstance(configured, dict):
+            return dict(DEFAULT_FIXED_TOOL_OFFSET)
+        xyz = configured.get('xyz', DEFAULT_FIXED_TOOL_OFFSET['xyz'])
+        quaternion = configured.get('quaternion_xyzw', DEFAULT_FIXED_TOOL_OFFSET['quaternion_xyzw'])
+        try:
+            if len(xyz) != 3 or len(quaternion) != 4:
+                raise ValueError
+            return {
+                'xyz': [float(value) for value in xyz],
+                'quaternion_xyzw': [float(value) for value in quaternion],
+            }
+        except (TypeError, ValueError):
+            return dict(DEFAULT_FIXED_TOOL_OFFSET)
+
+    def _configured_spray_distance_max_rate(self) -> float:
+        try:
+            value = float(self._config.get('spray_distance_max_rate', DEFAULT_SPRAY_DISTANCE_MAX_RATE))
+        except (TypeError, ValueError):
+            value = DEFAULT_SPRAY_DISTANCE_MAX_RATE
+        return max(0.001, min(1.0, value))
+
+    def _tool_offset_launch_arguments(self) -> list[str]:
+        offset = (
+            self._configured_fixed_tool_offset()
+            if hasattr(self, '_configured_fixed_tool_offset') else dict(DEFAULT_FIXED_TOOL_OFFSET)
+        )
+        xyz = ', '.join(OperatorWindow._ros_float_literal(value) for value in offset['xyz'])
+        quaternion = ', '.join(
+            OperatorWindow._ros_float_literal(value) for value in offset['quaternion_xyzw'])
+        return [
+            f'fixed_tool_offset_xyz:=[{xyz}]',
+            f'fixed_tool_offset_quaternion_xyzw:=[{quaternion}]',
+        ]
+
+    def _effective_spray_distance_m(self) -> float:
+        if not hasattr(self, 'nozzle_reference') or not hasattr(self, 'nozzle_offset'):
+            return 0.0
+        return (self.nozzle_reference.value() + self.nozzle_offset.value()) / 1000.0
+
     def _configured_pid_gains(self) -> dict[str, float]:
         configured = self._config.get('pid_gains', {})
         gains = self._pid_gain_defaults()
@@ -756,6 +803,7 @@ class OperatorWindow(QMainWindow):
         self.current_tcp_pose_button = QPushButton('Launch Transformations')
         self.arm_controllers_button = QPushButton('Start Controllers')
         self.switch_arm_velocity_button = QPushButton('Switch Arm Velocity')
+        self.capture_tool_offset_button = QPushButton('Capture UR TCP Offset')
         self.base_accuracy_monitor_button = QPushButton('Record Base Accuracy')
         self.tcp_accuracy_monitor_button = QPushButton('Record TCP Accuracy')
         self.accuracy_phase_combo = QComboBox()
@@ -786,6 +834,7 @@ class OperatorWindow(QMainWindow):
         component_layout.addWidget(self.current_tcp_pose_button, 2, 0)
         component_layout.addWidget(self.arm_controllers_button, 2, 1)
         component_layout.addWidget(self.switch_arm_velocity_button, 2, 2)
+        component_layout.addWidget(self.capture_tool_offset_button, 2, 3)
         component_layout.addWidget(self.base_accuracy_monitor_button, 5, 0)
         component_layout.addWidget(self.tcp_accuracy_monitor_button, 5, 1)
         component_layout.addWidget(QLabel('Accuracy phase'), 6, 0)
@@ -830,10 +879,10 @@ class OperatorWindow(QMainWindow):
         override_layout.addWidget(QLabel('Velocity override'), 0, 0)
         override_layout.addWidget(self.velocity_slider, 0, 1)
         override_layout.addWidget(self.velocity_value, 0, 2)
-        override_layout.addWidget(QLabel('Nozzle reference'), 1, 0)
+        override_layout.addWidget(QLabel('Spray distance'), 1, 0)
         override_layout.addWidget(self.nozzle_reference, 1, 1)
         override_layout.addWidget(self.nozzle_effective_value, 1, 2)
-        override_layout.addWidget(QLabel('Nozzle offset'), 2, 0)
+        override_layout.addWidget(QLabel('Spray distance offset'), 2, 0)
         override_layout.addWidget(self.nozzle_offset, 2, 1)
         override_layout.addWidget(self.nozzle_offset_value, 2, 2)
 
@@ -841,7 +890,7 @@ class OperatorWindow(QMainWindow):
         status_layout = QHBoxLayout(status_group)
         self.path_status = QLabel('/base_path: waiting')
         self.pose_status = QLabel('/robot_pose: waiting')
-        self.arm_pose_status = QLabel('/current_tcp_pose: waiting')
+        self.arm_pose_status = QLabel('/current_deposition_pose: waiting')
         self.arm_control_status = QLabel('arm control: waiting')
         status_layout.addWidget(self.path_status)
         status_layout.addWidget(self.pose_status)
@@ -900,6 +949,7 @@ class OperatorWindow(QMainWindow):
         self.arm_controllers_button.clicked.connect(self._toggle_arm_controllers)
         self.calculate_path_index_rate_button.clicked.connect(self._calculate_path_index_rate)
         self.switch_arm_velocity_button.clicked.connect(self._switch_arm_velocity_controller)
+        self.capture_tool_offset_button.clicked.connect(self._capture_tool_offset)
         self.base_accuracy_monitor_button.clicked.connect(self._toggle_base_accuracy_monitor)
         self.tcp_accuracy_monitor_button.clicked.connect(self._toggle_tcp_accuracy_monitor)
         self.accuracy_report_button.clicked.connect(self._summarize_accuracy_runs)
@@ -991,6 +1041,29 @@ class OperatorWindow(QMainWindow):
             spin.setValue(float(value))
             spin.blockSignals(False)
         self._set_path_transform()
+
+    def _capture_tool_offset(self) -> None:
+        if self.simulation_checkbox.isChecked():
+            self._append_process_output('gui', 'UR TCP offset capture is available in hardware mode only')
+            return
+        transform = self.ros_bridge.lookup_tool_offset(
+            'robot_arm_tool0', 'robot_arm_tool0_controller')
+        if transform is None:
+            self._append_process_output(
+                'gui', 'cannot capture UR TCP offset: TF robot_arm_tool0 <- robot_arm_tool0_controller unavailable')
+            return
+        translation = transform.transform.translation
+        rotation = transform.transform.rotation
+        self._config['fixed_tool_offset'] = {
+            'xyz': [float(translation.x), float(translation.y), float(translation.z)],
+            'quaternion_xyzw': [float(rotation.x), float(rotation.y), float(rotation.z), float(rotation.w)],
+        }
+        self._save_config()
+        self._append_process_output(
+            'gui',
+            'saved fixed tool offset from robot_arm_tool0 -> robot_arm_tool0_controller; '
+            'restart arm controllers and follower to apply',
+        )
 
     def _calculate_path_transform(self) -> None:
         index = self.index_spin.value()
@@ -1464,6 +1537,11 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_arm_follower(self, move_to_start_pose: bool = False) -> None:
+        simulation_checkbox = getattr(self, 'simulation_checkbox', None)
+        nozzle_pose_topic = (
+            '/current_tcp_pose' if simulation_checkbox is not None and simulation_checkbox.isChecked()
+            else '/current_nozzle_tip_pose'
+        )
         command = [
             'ros2',
             'launch',
@@ -1487,7 +1565,12 @@ class OperatorWindow(QMainWindow):
             f'move_to_start_pose:={str(move_to_start_pose).lower()}',
             f"start_pose_trajectory_topic:={self._arm_trajectory_topic()}",
             'start_pose_publish_delay:=8.0',
-            'current_pose_topic:=/current_tcp_pose',
+            f'nozzle_pose_topic:={nozzle_pose_topic}',
+            'current_pose_topic:=/current_deposition_pose',
+            'spray_distance_topic:=/spray_distance',
+            'smoothed_spray_distance_topic:=/spray_distance_smoothed',
+            f'spray_distance_initial:={self._ros_float_literal(OperatorWindow._effective_spray_distance_m(self))}',
+            f'spray_distance_max_rate:={self._ros_float_literal(OperatorWindow._configured_spray_distance_max_rate(self) if hasattr(self, "_configured_spray_distance_max_rate") else DEFAULT_SPRAY_DISTANCE_MAX_RATE)}',
             'path_topic:=/ur_path_transformed',
             'original_path_topic:=/ur_path_original',
             'normal_topic:=/normal_vector',
@@ -1499,6 +1582,7 @@ class OperatorWindow(QMainWindow):
             f'direction_control_mode:={self.direction_mode.currentText()}',
             f'default_velocity:={self._ros_float_literal(self._default_velocity_param())}',
         ]
+        command.extend(OperatorWindow._tool_offset_launch_arguments(self))
         command.extend(self._pid_launch_arguments(
             'arm_direction',
             ('kp_z', 'ki_z', 'kd_z', 'orthogonal_kp'),
@@ -1555,7 +1639,9 @@ class OperatorWindow(QMainWindow):
             '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', 'path_index_topic:=/path_index',
-            '-p', 'next_goal_topic:=/next_goal',
+            '-p', 'next_goal_topic:=/base_next_goal',
+            '-p', 'additional_goal_path_topic:=/ur_path_transformed',
+            '-p', 'additional_goal_topic:=/next_goal',
             '-p', 'normal_topic:=/normal_vector',
             '-p', f'initial_path_index:={self.index_spin.value()}',
             '-p', f"path_topic:={profile['path_topic']}",
@@ -1621,8 +1707,8 @@ class OperatorWindow(QMainWindow):
             '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', f'target_frame:={self.control_frame.text().strip()}',
-            '-p', 'source_frame:=robot_arm_tool0',
-            '-p', 'pose_topic:=/current_tcp_pose',
+            '-p', 'source_frame:=robot_arm_nozzle_tip',
+            '-p', 'pose_topic:=/current_nozzle_tip_pose',
             '-p', 'publish_rate:=20.0',
         ]
         self._append_process_output(CURRENT_TCP_POSE_NAME, ' '.join(command))
@@ -1648,7 +1734,7 @@ class OperatorWindow(QMainWindow):
         if mode == 'base':
             actual_topic, path_topic = '/robot_pose', self._current_platform_profile()['path_topic']
         else:
-            actual_topic, path_topic = '/current_tcp_pose', '/ur_path_transformed'
+            actual_topic, path_topic = '/current_deposition_pose', '/ur_path_transformed'
         phase = str(self.accuracy_phase_combo.currentData())
         run_name = f'{mode}_{phase}_{datetime.now().strftime("%Y%m%dT%H%M%S")}'
         snapshot_path = Path('/tmp/am_trajectory_runs') / f'{run_name}_config.json'
@@ -1664,7 +1750,14 @@ class OperatorWindow(QMainWindow):
             '-p', 'output_directory:=/tmp/am_trajectory_runs',
             '-p', f'run_name:={run_name}',
             '-p', f'phase:={phase}',
+            '-p', 'required_frame:=map',
+            '-p', f"start_condition_topic:={'/start_pose_reached' if mode == 'base' else '/start_condition'}",
         ]
+        if mode == 'tcp':
+            command.extend([
+                '-p', 'base_reference_path_topic:=/base_path',
+                '-p', 'arm_base_offset:=[0.26,0.0,1.046]',
+            ])
         self._append_process_output(name, ' '.join(command))
         self.processes.start(name, command)
         self._refresh_process_states()
@@ -1674,6 +1767,7 @@ class OperatorWindow(QMainWindow):
             'ros2', 'run', 'print_path_monitoring', 'trajectory_accuracy_report',
             '--input-directory', '/tmp/am_trajectory_runs',
             '--trajectory-directory', self.path_folder.text().strip(),
+            '--arm-base-offset', '0.26,0,1.046',
         ]
         self._append_process_output(ACCURACY_REPORT_NAME, ' '.join(command))
         self.processes.start(ACCURACY_REPORT_NAME, command)
@@ -1736,7 +1830,7 @@ class OperatorWindow(QMainWindow):
             '-r', f'__node:={ARM_POSE_ADAPTER_NAME}',
             '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', f'input_topic:={self.arm_pose_topic.text().strip()}',
-            '-p', 'output_topic:=/current_tcp_pose',
+            '-p', 'output_topic:=/current_nozzle_tip_pose',
             '-p', f'target_frame:={self.control_frame.text().strip()}',
             '-p', 'ready_topic:=/am/arm_pose_ready',
             '-p', 'stale_timeout:=0.5',
@@ -1806,6 +1900,7 @@ class OperatorWindow(QMainWindow):
             'robot_arm_elbow_joint,robot_arm_wrist_1_joint,robot_arm_wrist_2_joint,'
             'robot_arm_wrist_3_joint',
         ]
+        command.extend(OperatorWindow._tool_offset_launch_arguments(self))
         self._append_process_output(ARM_CONTROLLERS_NAME, ' '.join(command))
         self.processes.start(ARM_CONTROLLERS_NAME, command)
 
@@ -1872,7 +1967,7 @@ class OperatorWindow(QMainWindow):
             'move_ur_to_path_idx.launch.py',
             f'use_sim_time:={self._use_sim_time()}',
             'path_topic:=/ur_path_transformed',
-            'current_pose_topic:=/current_tcp_pose',
+            'current_pose_topic:=/current_deposition_pose',
             f'path_index:={self.index_spin.value()}',
             f'wait_for_start_condition:={str(wait_for_start_condition).lower()}',
             'start_condition_topic:=/start_pose_reached',
@@ -2149,7 +2244,7 @@ class OperatorWindow(QMainWindow):
         self.nozzle_offset_value.setText(f'{offset_mm:+d} mm')
         self.nozzle_effective_value.setText(f'{effective_mm:.1f} mm effective')
         self.ros_bridge.publish_velocity_override(velocity_scale)
-        self.ros_bridge.publish_nozzle_height(effective_mm / 1000.0)
+        self.ros_bridge.publish_spray_distance(effective_mm / 1000.0)
 
     def _on_process_output(self, name: str, line: str) -> None:
         self.process_output.emit(name, line)
@@ -2195,7 +2290,7 @@ class OperatorWindow(QMainWindow):
         self.path_status.setText(f'{path_topic}: ready' if has_path else f'{path_topic}: waiting')
         self.pose_status.setText(f'{pose_topic}: ready' if has_robot_pose else f'{pose_topic}: waiting')
         self.arm_pose_status.setText(
-            '/current_tcp_pose: ready' if has_arm_pose else '/current_tcp_pose: waiting'
+            '/current_deposition_pose: ready' if has_arm_pose else '/current_deposition_pose: waiting'
         )
         arm_ready = jparse_ready and controller_ready
         self.arm_control_status.setText(

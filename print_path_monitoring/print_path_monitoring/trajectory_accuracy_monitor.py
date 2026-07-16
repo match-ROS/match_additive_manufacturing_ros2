@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,7 @@ from print_path_monitoring.error_metrics import (
     compute_planar_error,
     compute_pose_error,
     summarize_distances,
+    yaw_from_quaternion,
 )
 
 
@@ -29,6 +31,11 @@ class TrajectoryAccuracyMonitor(Node):
         self.declare_parameter('mode', 'tcp')
         self.declare_parameter('actual_pose_topic', '/current_tcp_pose')
         self.declare_parameter('reference_path_topic', '/ur_path_transformed')
+        self.declare_parameter('base_reference_path_topic', '/base_path')
+        self.declare_parameter('arm_base_offset', [0.0, 0.0, 0.0])
+        self.declare_parameter('min_reachable_radius', 0.25)
+        self.declare_parameter('max_reachable_radius', 0.85)
+        self.declare_parameter('reach_boundary_margin', 0.05)
         self.declare_parameter('path_index_topic', '/path_index')
         self.declare_parameter('fixed_path_index', -1)
         self.declare_parameter('output_directory', '/tmp/am_trajectory_runs')
@@ -48,6 +55,7 @@ class TrajectoryAccuracyMonitor(Node):
         if self.phase not in {'baseline', 'tuned'}:
             raise ValueError("phase must be 'baseline' or 'tuned'")
         self.path: Optional[RosPath] = None
+        self.base_path: Optional[RosPath] = None
         self.path_index: Optional[int] = None
         fixed = int(self.get_parameter('fixed_path_index').value)
         self.fixed_path_index: Optional[int] = fixed if fixed >= 0 else None
@@ -60,6 +68,13 @@ class TrajectoryAccuracyMonitor(Node):
         qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                          reliability=QoSReliabilityPolicy.RELIABLE)
         self.create_subscription(RosPath, str(self.get_parameter('reference_path_topic').value), self._path_cb, qos)
+        if self.mode == 'tcp':
+            self.create_subscription(
+                RosPath,
+                str(self.get_parameter('base_reference_path_topic').value),
+                self._base_path_cb,
+                qos,
+            )
         self.create_subscription(Int32, str(self.get_parameter('path_index_topic').value), self._index_cb, 10)
         self.create_subscription(PoseStamped, str(self.get_parameter('actual_pose_topic').value), self._pose_cb, 10)
         if start_topic:
@@ -82,12 +97,17 @@ class TrajectoryAccuracyMonitor(Node):
             'stamp_sec', 'path_index', 'actual_x', 'actual_y', 'actual_z',
             'dx', 'dy', 'dz', 'absolute_error', 'yaw_error',
             'planar_tangential_error', 'planar_cross_track_error',
+            'reach_class', 'planned_arm_base_x', 'planned_arm_base_y',
+            'planned_arm_base_z', 'planned_arm_base_planar_radius',
         ])
         self.writer.writeheader()
         self.get_logger().info(f'Recording {self.mode} trajectory accuracy to {self.csv_path}')
 
     def _path_cb(self, msg: RosPath) -> None:
         self.path = msg
+
+    def _base_path_cb(self, msg: RosPath) -> None:
+        self.base_path = msg
 
     def _index_cb(self, msg: Int32) -> None:
         self.path_index = max(0, int(msg.data))
@@ -136,6 +156,7 @@ class TrajectoryAccuracyMonitor(Node):
         previous = self.path.poses[max(0, index - 1)].pose
         following = self.path.poses[min(len(self.path.poses) - 1, index + 1)].pose
         planar = compute_planar_error(actual.pose, reference.pose, previous, following)
+        reach = self._reach_classification(index, reference)
         stamp = actual.header.stamp
         row = {
             'stamp_sec': float(stamp.sec) + float(stamp.nanosec) / 1e9,
@@ -147,6 +168,7 @@ class TrajectoryAccuracyMonitor(Node):
             'absolute_error': error.distance, 'yaw_error': error.yaw_error,
             'planar_tangential_error': planar.tangential,
             'planar_cross_track_error': planar.cross_track,
+            **reach,
         }
         self.samples.append(row)
         self.writer.writerow(row)
@@ -180,6 +202,7 @@ class TrajectoryAccuracyMonitor(Node):
                 abs(float(row['planar_tangential_error'])) for row in self.samples)
             summary['planar_cross_track_error'] = summarize_distances(
                 abs(float(row['planar_cross_track_error'])) for row in self.samples)
+            summary['reachability'] = self._reachability_summary()
         self.summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + '\n', encoding='utf-8')
         self.get_logger().info(f'Wrote accuracy summary to {self.summary_path}')
 
@@ -192,6 +215,73 @@ class TrajectoryAccuracyMonitor(Node):
         )
         total = len(self.samples) + attempted_invalid
         return len(self.samples) / total if total else 0.0
+
+    def _reach_classification(self, index: int, tcp_reference: PoseStamped) -> dict[str, float | str]:
+        unavailable = {
+            'reach_class': 'not_evaluated',
+            'planned_arm_base_x': 0.0,
+            'planned_arm_base_y': 0.0,
+            'planned_arm_base_z': 0.0,
+            'planned_arm_base_planar_radius': 0.0,
+        }
+        if self.mode != 'tcp' or self.base_path is None or index >= len(self.base_path.poses):
+            return unavailable
+        base = self.base_path.poses[index].pose
+        offset = list(self.get_parameter('arm_base_offset').value)
+        if len(offset) < 3:
+            return unavailable
+        yaw = yaw_from_quaternion(
+            base.orientation.x, base.orientation.y, base.orientation.z, base.orientation.w,
+        )
+        ox, oy, oz = (float(offset[0]), float(offset[1]), float(offset[2]))
+        arm_x = base.position.x + math.cos(yaw) * ox - math.sin(yaw) * oy
+        arm_y = base.position.y + math.sin(yaw) * ox + math.cos(yaw) * oy
+        arm_z = base.position.z + oz
+        radius = math.hypot(tcp_reference.pose.position.x - arm_x, tcp_reference.pose.position.y - arm_y)
+        minimum = float(self.get_parameter('min_reachable_radius').value)
+        maximum = float(self.get_parameter('max_reachable_radius').value)
+        margin = max(0.0, float(self.get_parameter('reach_boundary_margin').value))
+        if radius < minimum or radius > maximum:
+            reach_class = 'unreachable_planar'
+        elif radius <= minimum + margin or radius >= maximum - margin:
+            reach_class = 'poor_reachability'
+        else:
+            reach_class = 'well_reachable'
+        return {
+            'reach_class': reach_class,
+            'planned_arm_base_x': arm_x,
+            'planned_arm_base_y': arm_y,
+            'planned_arm_base_z': arm_z,
+            'planned_arm_base_planar_radius': radius,
+        }
+
+    def _reachability_summary(self) -> dict[str, object]:
+        classes: dict[str, dict[str, object]] = {}
+        for reach_class in ('well_reachable', 'poor_reachability', 'unreachable_planar', 'not_evaluated'):
+            rows = [row for row in self.samples if row.get('reach_class') == reach_class]
+            if not rows:
+                continue
+            classes[reach_class] = {
+                'samples': len(rows),
+                'absolute_error': summarize_distances(float(row['absolute_error']) for row in rows),
+                'axis_bias': {
+                    axis: sum(float(row[axis]) for row in rows) / len(rows)
+                    for axis in ('dx', 'dy', 'dz')
+                },
+                'planar_tangential_error': summarize_distances(
+                    abs(float(row['planar_tangential_error'])) for row in rows),
+                'planar_cross_track_error': summarize_distances(
+                    abs(float(row['planar_cross_track_error'])) for row in rows),
+            }
+        return {
+            'arm_base_offset': list(self.get_parameter('arm_base_offset').value),
+            'planar_radius_range': [
+                float(self.get_parameter('min_reachable_radius').value),
+                float(self.get_parameter('max_reachable_radius').value),
+            ],
+            'boundary_margin': float(self.get_parameter('reach_boundary_margin').value),
+            'classes': classes,
+        }
 
     def _path_index_alignment(self) -> dict[str, float | int | bool | str]:
         """Diagnose a constant index lag without overwriting primary metrics."""

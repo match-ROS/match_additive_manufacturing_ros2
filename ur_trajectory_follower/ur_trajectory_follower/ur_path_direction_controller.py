@@ -23,7 +23,9 @@ class DirectionController(Node):
     def __init__(self) -> None:
         super().__init__('ur_direction_controller')
 
-        self.declare_parameter('nozzle_height_default', 0.1)
+        # Deprecated compatibility parameters.  The stand-off is now encoded in
+        # /current_deposition_pose, so it must not be added to the PID error.
+        self.declare_parameter('nozzle_height_default', 0.0)
         self.declare_parameter('kp_z', 0.0)
         self.declare_parameter('ki_z', 0.0)
         self.declare_parameter('kd_z', 0.0)
@@ -369,7 +371,8 @@ class DirectionController(Node):
                 * self.velocity_override
             )
 
-        error_spray += self.nozzle_height_default + self.nozzle_height_override
+        # current_pose is the virtual deposition point.  Its distance from the
+        # physical nozzle is already included by deposition_pose.py.
         v_spray = (
             error_spray * self.kp_z
             + self.integral_z * self.ki_z

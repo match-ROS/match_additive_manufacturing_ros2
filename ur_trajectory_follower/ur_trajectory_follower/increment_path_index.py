@@ -16,6 +16,8 @@ class IncrementPathIndex(Node):
         super().__init__('increment_path_index')
         self.declare_parameter('path_index_topic', '/path_index')
         self.declare_parameter('next_goal_topic', '/next_goal')
+        self.declare_parameter('additional_goal_path_topic', '')
+        self.declare_parameter('additional_goal_topic', '')
         self.declare_parameter('normal_topic', '/normal_vector')
         self.declare_parameter('initial_path_index', 0)
         self.declare_parameter('path_topic', '/ur_path_transformed')
@@ -25,6 +27,7 @@ class IncrementPathIndex(Node):
         self.declare_parameter('wait_for_start_condition', True)
 
         self.path: Optional[Path] = None
+        self.additional_goal_path: Optional[Path] = None
         self.path_index = max(0, int(self.get_parameter('initial_path_index').value))
         self._last_published_index: Optional[int] = None
         self.start_enabled = not as_bool(self.get_parameter('wait_for_start_condition').value)
@@ -45,6 +48,30 @@ class IncrementPathIndex(Node):
             str(self.get_parameter('next_goal_topic').value),
             latch_qos,
         )
+        self.additional_goal_pose_pub = None
+        additional_goal_path_topic = str(
+            self.get_parameter('additional_goal_path_topic').value
+        ).strip()
+        additional_goal_topic = str(
+            self.get_parameter('additional_goal_topic').value
+        ).strip()
+        if additional_goal_path_topic and additional_goal_topic:
+            self.additional_goal_pose_pub = self.create_publisher(
+                PoseStamped,
+                additional_goal_topic,
+                latch_qos,
+            )
+            self.create_subscription(
+                Path,
+                additional_goal_path_topic,
+                self._additional_goal_path_cb,
+                latch_qos,
+            )
+        elif additional_goal_path_topic or additional_goal_topic:
+            self.get_logger().warn(
+                'Ignoring additional goal publisher: both additional_goal_path_topic '
+                'and additional_goal_topic must be set.'
+            )
         self.normal_pub = self.create_publisher(
             Vector3,
             str(self.get_parameter('normal_topic').value),
@@ -74,6 +101,13 @@ class IncrementPathIndex(Node):
         self.path_index = clamped_index
         if not had_path or index_changed:
             self._publish_state(force=True)
+
+    def _additional_goal_path_cb(self, msg: Path) -> None:
+        if not msg.poses:
+            self.get_logger().warn("Ignoring empty additional goal path.")
+            return
+        self.additional_goal_path = msg
+        self._publish_state(force=True)
 
     def _normal_cb(self, msg: Vector3) -> None:
         self.normal = msg
@@ -131,6 +165,15 @@ class IncrementPathIndex(Node):
             return
         self.index_pub.publish(Int32(data=self.path_index))
         self.goal_pose_pub.publish(self.path.poses[self.path_index])
+        if (
+            self.additional_goal_pose_pub is not None
+            and self.additional_goal_path is not None
+        ):
+            additional_index = min(
+                self.path_index,
+                len(self.additional_goal_path.poses) - 1,
+            )
+            self.additional_goal_pose_pub.publish(self.additional_goal_path.poses[additional_index])
         self.normal_pub.publish(self.normal)
         self._last_published_index = self.path_index
 
