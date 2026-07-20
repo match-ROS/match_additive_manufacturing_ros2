@@ -640,6 +640,8 @@ def test_path_index_advancer_uses_coupled_arm_and_base_paths() -> None:
     assert 'base_path_topic:=/base_path' in command
     assert 'arm_reference_topic:=/arm_trajectory_reference' in command
     assert 'base_reference_topic:=/base_trajectory_reference' in command
+    assert 'next_goal_topic:=/next_goal' in command
+    assert not any(argument.startswith('additional_goal_') for argument in command)
 
 
 def test_path_index_advancer_recalculates_rate_before_launch() -> None:

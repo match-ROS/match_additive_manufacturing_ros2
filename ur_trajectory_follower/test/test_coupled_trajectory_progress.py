@@ -6,6 +6,7 @@ from nav_msgs.msg import Path
 
 from ur_trajectory_follower.increment_path_index import (
     interpolate_pose,
+    paths_have_same_trajectory,
     position_distance,
     resample_coupled_paths,
     stamp_seconds,
@@ -37,6 +38,22 @@ def test_zero_length_arm_segment_is_preserved_for_progress_classification():
     goal = _pose(1.0)
 
     assert position_distance(start, goal) == 0.0
+
+
+def test_republished_path_with_only_a_new_header_stamp_is_unchanged():
+    first = Path()
+    first.header.frame_id = 'map'
+    first.header.stamp.sec = 10
+    first.poses = [_pose(0.0), _pose(1.0)]
+    second = Path()
+    second.header.frame_id = 'map'
+    second.header.stamp.sec = 11
+    second.poses = [_pose(0.0), _pose(1.0)]
+
+    assert paths_have_same_trajectory(first, second)
+
+    second.poses[1].pose.position.x = 2.0
+    assert not paths_have_same_trajectory(first, second)
 
 
 def test_resampling_makes_arm_segments_uniform_and_preserves_timing_profile():

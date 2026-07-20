@@ -82,6 +82,19 @@ def segment_speed(start: np.ndarray, goal: np.ndarray, duration: float) -> float
     return float(np.linalg.norm(goal - start)) / duration
 
 
+def path_feedforward(
+    segment_delta: np.ndarray,
+    trajectory_speed: float,
+    velocity_override: float,
+) -> np.ndarray:
+    """Return the 3D derivative of a linearly interpolated path reference."""
+    return (
+        normalize(segment_delta)
+        * max(0.0, float(trajectory_speed))
+        * max(0.0, float(velocity_override))
+    )
+
+
 def has_forward_segment(current_index: int, path_size: int) -> bool:
     return 0 <= current_index < path_size - 1
 

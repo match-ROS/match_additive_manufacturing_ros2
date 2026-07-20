@@ -16,6 +16,7 @@ from ur_trajectory_follower.direction_control import (
     cartesian_tracking_command,
     limit_vector,
     normalize,
+    path_feedforward,
     project_onto_plane,
     segment_speed,
 )
@@ -137,19 +138,16 @@ class DirectionController(Node):
         column = {'tool_x': 0, 'tool_y': 1, 'tool_z': 2}.get(self.spray_axis_source, 2)
         return normalize(rotation[:3, column]) * (-1.0 if self.spray_axis_sign < 0.0 else 1.0)
 
-    def _feedforward(self, spray_axis: np.ndarray) -> np.ndarray:
+    def _feedforward(self) -> np.ndarray:
         if self.path is None or self.current_index >= len(self.path.poses) - 1:
             return np.zeros(3)
         start, goal = self.path.poses[self.current_index], self.path.poses[self.current_index + 1]
         delta = self._position(goal) - self._position(start)
-        tangent = normalize(project_onto_plane(delta, spray_axis))
-        if not np.any(tangent):
-            return np.zeros(3)
         if self.desired_speed > 1e-6:
             speed = self.desired_speed
         else:
             speed = segment_speed(self._position(start), self._position(goal), max(0.0, (goal.header.stamp.sec - start.header.stamp.sec) + (goal.header.stamp.nanosec - start.header.stamp.nanosec) / 1e9))
-        return tangent * speed * self.velocity_override
+        return path_feedforward(delta, speed, self.velocity_override)
 
     def _smooth(self, command: np.ndarray) -> np.ndarray:
         coeff = max(0.0, min(1.0, float(self.get_parameter('output_smoothing_coeff').value)))
@@ -171,7 +169,7 @@ class DirectionController(Node):
             measured=measured,
             tangent=self._segment_tangent(),
             spray_axis=spray_axis,
-            feedforward=self._feedforward(spray_axis),
+            feedforward=self._feedforward(),
             along_track_kp=float(self.get_parameter('along_track_kp').value),
             orthogonal_kp=float(self.get_parameter('orthogonal_kp').value),
             spray_kp=float(self.get_parameter('kp_z').value),

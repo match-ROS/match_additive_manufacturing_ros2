@@ -3,6 +3,7 @@ import numpy as np
 from ur_trajectory_follower.direction_control import (
     cartesian_tracking_command,
     has_forward_segment,
+    path_feedforward,
     segment_speed,
     speed_dependent_orthogonal_command,
 )
@@ -59,6 +60,16 @@ def test_segment_speed_uses_full_3d_distance():
     )
 
     assert speed == 2.5
+
+
+def test_path_feedforward_uses_full_3d_reference_tangent():
+    command = path_feedforward(
+        np.array([3.0, 0.0, 4.0]),
+        trajectory_speed=0.1,
+        velocity_override=0.5,
+    )
+
+    assert np.allclose(command, [0.03, 0.0, 0.04])
 
 
 def test_forward_segment_stops_at_final_path_index():

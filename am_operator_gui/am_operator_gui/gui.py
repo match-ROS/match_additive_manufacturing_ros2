@@ -1589,9 +1589,8 @@ class OperatorWindow(QMainWindow):
             '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', 'path_index_topic:=/path_index',
-            '-p', 'next_goal_topic:=/base_next_goal',
-            '-p', 'additional_goal_path_topic:=/ur_path_transformed',
-            '-p', 'additional_goal_topic:=/next_goal',
+            '-p', 'path_index_command_topic:=/path_index_command',
+            '-p', 'next_goal_topic:=/next_goal',
             '-p', 'normal_topic:=/normal_vector',
             '-p', f'initial_path_index:={self.index_spin.value()}',
             '-p', 'path_topic:=/ur_path_transformed',
@@ -1979,7 +1978,10 @@ class OperatorWindow(QMainWindow):
                 + ', '.join(missing_processes),
             )
         self.ros_bridge.publish_path_index(self.index_spin.value())
-        self._append_process_output('ros', f'published /path_index {self.index_spin.value()}')
+        self._append_process_output(
+            'ros',
+            f'published /path_index_command {self.index_spin.value()}',
+        )
         self._start_condition_publish_count = 5
         self._publish_start_condition_once(True)
         self._style_button(self.start_following_button, 'green')
@@ -2033,7 +2035,7 @@ class OperatorWindow(QMainWindow):
 
     def _publish_path_index(self, value: int) -> None:
         self.ros_bridge.publish_path_index(value)
-        self._append_process_output('ros', f'published /path_index {value}')
+        self._append_process_output('ros', f'published /path_index_command {value}')
 
     def _calculate_path_index_rate(self, restart_if_running: bool = True) -> None:
         if self.default_velocity_checkbox.isChecked():

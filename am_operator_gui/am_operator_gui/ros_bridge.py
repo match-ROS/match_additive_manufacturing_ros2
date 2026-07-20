@@ -53,7 +53,11 @@ class OperatorGuiNode(Node):
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
             reliability=QoSReliabilityPolicy.RELIABLE,
         )
-        self._path_index_pub = self.create_publisher(Int32, '/path_index', path_index_qos)
+        self._path_index_pub = self.create_publisher(
+            Int32,
+            '/path_index_command',
+            path_index_qos,
+        )
         self._start_condition_pub = self.create_publisher(Bool, '/start_condition', path_index_qos)
         self._velocity_override_pub = self.create_publisher(Float32, '/velocity_override', 10)
         self._desired_arm_speed_pub = self.create_publisher(Float32, '/desired_arm_speed', path_index_qos)
@@ -238,10 +242,10 @@ class OperatorGuiNode(Node):
         if msg.header.frame_id.strip().lstrip('/') != 'map':
             return False
         stamp = msg.header.stamp
-        if not (stamp.sec or stamp.nanosec):
-            return False
-        age = (self.get_clock().now() - rclpy.time.Time.from_msg(stamp)).nanoseconds / 1e9
-        return 0.0 <= age <= 0.75
+        # Freshness is measured from the local subscription receipt time in
+        # _freshness_tick().  Comparing the message stamp here is invalid when
+        # the GUI uses wall time and the robot/simulation publishes ROS time.
+        return bool(stamp.sec or stamp.nanosec)
 
     @staticmethod
     def _is_map_path(msg: Path) -> bool:
@@ -408,6 +412,20 @@ class RosBridge:
         if self._node is None:
             return None
         return self._node.latest_ur_path_median_segment_length
+
+    @property
+    def latest_ur_path_total_length(self) -> Optional[float]:
+        """Return the most recent transformed arm-path length, if available."""
+        if self._node is None:
+            return None
+        return self._node.latest_ur_path_total_length
+
+    @property
+    def latest_ur_path_step_count(self) -> Optional[int]:
+        """Return the number of index transitions in the transformed arm path."""
+        if self._node is None:
+            return None
+        return self._node.latest_ur_path_step_count
 
     def latest_base_path_pose(self, index: int) -> Optional[PoseStamped]:
         if self._node is None:

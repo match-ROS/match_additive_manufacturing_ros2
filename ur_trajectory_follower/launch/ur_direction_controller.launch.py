@@ -44,13 +44,13 @@ def _launch_setup(context, *args, **kwargs):
                 'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
                 'initial_path_index': LaunchConfiguration('initial_path_index'),
                 'joint_state_topic': LaunchConfiguration('joint_state_topic'),
+                'path_topic': path_topic,
                 'path_index_topic': path_index_topic,
+                'current_pose_topic': LaunchConfiguration('current_pose_topic'),
+                'velocity_override_topic': LaunchConfiguration('velocity_override_topic'),
             }
         ],
         remappings=[
-            ('path', path_topic),
-            ('current_pose', LaunchConfiguration('current_pose_topic')),
-            ('velocity_override', LaunchConfiguration('velocity_override_topic')),
             ('nozzle_height_override', LaunchConfiguration('nozzle_height_override_topic')),
             ('ur_twist_world', LaunchConfiguration('twist_topic')),
         ],

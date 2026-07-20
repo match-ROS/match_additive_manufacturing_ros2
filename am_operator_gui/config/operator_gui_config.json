@@ -15,7 +15,7 @@
   "default_velocity_enabled": true,
   "external_map_frame": "map",
   "follower_type": "pid",
-  "path_index_rate": 4.741,
+  "path_index_rate": 2.276,
   "path_transform": {
     "x": -1.8786,
     "y": 2.4423,

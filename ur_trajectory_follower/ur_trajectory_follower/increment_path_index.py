@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Shared, coupled arm/base trajectory progress.
 
-The historical interface is an ``Int32 /path_index``.  In segment modes this
-node keeps that interface while also publishing continuous references for both
-paths.  The index identifies the start of the active segment and ``phase`` is
-the common progress through that segment.
+The historical status output is an ``Int32 /path_index``. External index
+requests arrive separately on ``/path_index_command`` so this node never
+interprets delayed copies of its own status as commands. In segment modes the
+index identifies the start of the active segment and ``phase`` is the common
+progress through that segment.
 """
 
 from copy import deepcopy
@@ -63,6 +64,15 @@ def position_distance(start: PoseStamped, goal: PoseStamped) -> float:
         goal.pose.position.y - start.pose.position.y,
         goal.pose.position.z - start.pose.position.z,
     ]))
+
+
+def paths_have_same_trajectory(first: Optional[Path], second: Path) -> bool:
+    """Compare path content while ignoring its periodically refreshed header stamp."""
+    if first is None or first.header.frame_id != second.header.frame_id:
+        return False
+    if len(first.poses) != len(second.poses):
+        return False
+    return all(first_pose == second_pose for first_pose, second_pose in zip(first.poses, second.poses))
 
 
 def resample_coupled_paths(
@@ -128,6 +138,7 @@ class IncrementPathIndex(Node):
     def __init__(self) -> None:
         super().__init__('increment_path_index')
         self.declare_parameter('path_index_topic', '/path_index')
+        self.declare_parameter('path_index_command_topic', '/path_index_command')
         self.declare_parameter('next_goal_topic', '/next_goal')
         self.declare_parameter('additional_goal_path_topic', '')
         self.declare_parameter('additional_goal_topic', '')
@@ -178,6 +189,9 @@ class IncrementPathIndex(Node):
 
         latch_qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL, reliability=QoSReliabilityPolicy.RELIABLE)
         self.path_index_topic = str(self.get_parameter('path_index_topic').value)
+        self.path_index_command_topic = str(
+            self.get_parameter('path_index_command_topic').value
+        )
         self.index_pub = self.create_publisher(Int32, self.path_index_topic, latch_qos)
         self.goal_pose_pub = self.create_publisher(PoseStamped, str(self.get_parameter('next_goal_topic').value), latch_qos)
         self.normal_pub = self.create_publisher(Vector3, str(self.get_parameter('normal_topic').value), latch_qos)
@@ -199,7 +213,12 @@ class IncrementPathIndex(Node):
         if base_path_topic:
             self.create_subscription(Path, base_path_topic, self._base_path_cb, latch_qos)
         self.create_subscription(Vector3, str(self.get_parameter('normal_topic').value), self._normal_cb, latch_qos)
-        self.create_subscription(Int32, self.path_index_topic, self._external_index_cb, 10)
+        self.create_subscription(
+            Int32,
+            self.path_index_command_topic,
+            self._external_index_cb,
+            10,
+        )
         self.create_subscription(Float32, str(self.get_parameter('velocity_override_topic').value), self._velocity_override_cb, 10)
         desired_speed_topic = str(self.get_parameter('desired_speed_topic').value).strip()
         if desired_speed_topic:
@@ -215,12 +234,16 @@ class IncrementPathIndex(Node):
         if not msg.poses:
             self.get_logger().warn('Ignoring empty arm path.')
             return
+        if paths_have_same_trajectory(self._source_path, msg):
+            return
         self._source_path = msg
         self._rebuild_processed_paths()
 
     def _base_path_cb(self, msg: Path) -> None:
         if not msg.poses:
             self.get_logger().warn('Ignoring empty base path.')
+            return
+        if paths_have_same_trajectory(self._source_base_path, msg):
             return
         self._source_base_path = msg
         self._rebuild_processed_paths()

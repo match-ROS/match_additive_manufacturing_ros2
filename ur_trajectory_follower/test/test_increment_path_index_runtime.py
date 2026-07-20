@@ -156,16 +156,25 @@ def test_segment_progress_preserves_phase_when_desired_speed_changes_and_pauses(
         start_pub.publish(Bool(data=True))
         _spin_for(executor, 0.12)
         assert phases and max(phases) > 0.2
-        phase_before_change = phases[-1]
+
+        # The path publisher periodically refreshes only Path.header.stamp.
+        # Receiving that identical trajectory must not reset segment phase.
+        progress_before_republish = advancer.path_index + advancer.phase
+        path.header.stamp.sec += 1
+        path_pub.publish(path)
+        _spin_for(executor, 0.03)
+        assert advancer.path_index + advancer.phase >= progress_before_republish
+
+        progress_before_change = advancer.path_index + advancer.phase
         speed_pub.publish(Float32(data=0.2))
         _spin_for(executor, 0.03)
-        assert phases[-1] >= phase_before_change
+        assert advancer.path_index + advancer.phase >= progress_before_change
 
         override_pub.publish(Float32(data=0.0))
         _spin_for(executor, 0.05)
-        paused_phase = phases[-1]
+        paused_progress = advancer.path_index + advancer.phase
         _spin_for(executor, 0.08)
-        assert abs(phases[-1] - paused_phase) < 0.02
+        assert abs(advancer.path_index + advancer.phase - paused_progress) < 0.02
         assert indices and indices[0] == 0
     finally:
         executor.remove_node(advancer)
