@@ -47,5 +47,6 @@
   "simulation_gui": false,
   "spray_distance_mm": 100.0,
   "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path",
-  "use_odometry_robot_pose": false
+  "use_odometry_robot_pose": false,
+  "use_vicon_tcp_base_pose_fallback": false
 }

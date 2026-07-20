@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from am_operator_gui.gui import (
     ARM_FOLLOWER_NAME,
     BASE_FOLLOWER_NAME,
+    BASE_POSE_ADAPTER_NAME,
     CURRENT_TCP_POSE_NAME,
     DEFAULT_TRAJECTORY_DIR,
     DEFAULT_PID_GAINS,
@@ -19,6 +20,7 @@ from am_operator_gui.gui import (
     VICON_BASE_STATIC_TF,
     VICON_BASE_STATIC_TF_NAME,
     VICON_EE_STATIC_TF_NAME,
+    VICON_TCP_POSE_BACKUP_NAME,
     WORKSPACE_SRC_ROOT,
 )
 
@@ -665,6 +667,44 @@ def test_hardware_pose_adapters_can_use_odometry_for_robot_pose() -> None:
     assert 'map_frame:=map' in odom_command
     assert 'odom_frame:=odom' in odom_command
     assert 'robot_base_frame:=base_link' in odom_command
+
+
+def test_hardware_pose_adapters_can_use_vicon_tcp_base_pose_fallback() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        base_pose_topic=FakeLineEdit('/vicon/Base_RB/Base_RB'),
+        arm_pose_topic=FakeLineEdit('/vicon/tool_transformed'),
+        odometry_pose_checkbox=FakeCheckBox(False),
+        vicon_tcp_base_pose_fallback_checkbox=FakeCheckBox(True),
+        control_frame=FakeLineEdit('map'),
+        external_map_frame=FakeLineEdit('map'),
+        robot_base_frame=FakeLineEdit('base_link'),
+        robot_tree_root_frame=FakeLineEdit('odom'),
+        _use_sim_time=lambda: 'false',
+        _append_process_output=lambda *_args: None,
+    )
+    fake._use_vicon_tcp_base_pose_fallback = (
+        lambda: OperatorWindow._use_vicon_tcp_base_pose_fallback(fake)
+    )
+
+    OperatorWindow._start_pose_adapters(fake)
+
+    started_names = [name for name, _command in processes.started]
+    assert VICON_BASE_STATIC_TF_NAME not in started_names
+    assert BASE_POSE_ADAPTER_NAME not in started_names
+    assert VICON_TCP_POSE_BACKUP_NAME in started_names
+    backup_command = next(
+        command for name, command in processes.started
+        if name == VICON_TCP_POSE_BACKUP_NAME
+    )
+    assert 'vicon_tcp_robot_pose_backup' in backup_command
+    assert 'input_topic:=/vicon/tool_transformed' in backup_command
+    assert 'output_topic:=/robot_pose' in backup_command
+    assert 'map_frame:=map' in backup_command
+    assert 'robot_base_frame:=base_link' in backup_command
+    assert 'robot_tcp_frame:=robot_arm_nozzle_tip' in backup_command
+    assert 'robot_tree_root_frame:=odom' in backup_command
 
 
 def test_arm_follower_uses_configured_tracking_gains() -> None:
