@@ -196,6 +196,8 @@ PID_GAIN_GROUPS = (
 PLATFORM_PROFILES = {
     'robotnik': {
         'label': 'Robotnik',
+        'follower_type': 'pid',
+        'diff_drive_mode': False,
         'path_topic': '/base_path',
         'robot_pose_topic': '/robot_pose',
         'odom_topic': '/robot/robotnik_base_control/odom',
@@ -215,6 +217,8 @@ PLATFORM_PROFILES = {
     },
     'bunker': {
         'label': 'Bunker',
+        'follower_type': 'pure_pursuit',
+        'diff_drive_mode': True,
         'path_topic': '/base_path',
         'robot_pose_topic': '/robot_pose',
         'odom_topic': '/odom',
@@ -424,6 +428,7 @@ class OperatorWindow(QMainWindow):
         self._controller_ready = False
         self._launch_all_active = False
         self._launch_all_timers: list[QTimer] = []
+        self._updating_path_indices = False
         self._config = self._load_config()
         self._pid_gains_dialog: Optional[PidGainsDialog] = None
         self._base_smoothing_dialog: Optional[BaseSmoothingDialog] = None
@@ -488,7 +493,22 @@ class OperatorWindow(QMainWindow):
         return bool(self._config.get('default_velocity_enabled', False))
 
     def _configured_path_transform(self) -> dict[str, float]:
-        configured = self._config.get('path_transform', {})
+        return self._path_transform_for_directory(self._configured_trajectory_directory())
+
+    @staticmethod
+    def _path_directory_key(directory: Path) -> str:
+        return str(directory.expanduser().resolve())
+
+    def _path_transform_for_directory(self, directory: Path) -> dict[str, float]:
+        transforms = self._config.get('path_transforms_by_directory', {})
+        configured = {}
+        if isinstance(transforms, dict):
+            configured = transforms.get(self._path_directory_key(directory), {})
+        # Support older configuration files until the transform is next saved.
+        if not isinstance(configured, dict):
+            configured = {}
+        if not configured and not isinstance(transforms, dict):
+            configured = self._config.get('path_transform', {})
         transform = dict(DEFAULT_PATH_TRANSFORM)
         if not isinstance(configured, dict):
             return transform
@@ -504,13 +524,42 @@ class OperatorWindow(QMainWindow):
         return value if value in PLATFORM_PROFILES else 'robotnik'
 
     def _configured_follower_type(self) -> str:
-        value = str(self._config.get('follower_type', 'pid')).strip().lower()
-        return value if value in {'pid', 'pure_pursuit'} else 'pid'
+        # Keep platform-specific drive settings separate.  Old configurations
+        # may have a global follower_type, which remains a Robotnik-only
+        # fallback for backwards compatibility.
+        platform = self._configured_platform()
+        configured = self._config.get('platform_control_settings', {})
+        if isinstance(configured, dict):
+            settings = configured.get(platform, {})
+            if isinstance(settings, dict):
+                value = str(settings.get('follower_type', '')).strip().lower()
+                if value in {'pid', 'pure_pursuit'}:
+                    return value
+        if platform == 'robotnik':
+            value = str(self._config.get('follower_type', 'pid')).strip().lower()
+            if value in {'pid', 'pure_pursuit'}:
+                return value
+        return str(PLATFORM_PROFILES[platform]['follower_type'])
 
     def _configured_diff_drive_mode(self) -> bool:
-        if self._configured_platform() == 'bunker':
-            return True
-        return bool(self._config.get('diff_drive_mode', False))
+        platform = self._configured_platform()
+        configured = self._config.get('platform_control_settings', {})
+        if isinstance(configured, dict):
+            settings = configured.get(platform, {})
+            if isinstance(settings, dict) and 'diff_drive_mode' in settings:
+                return bool(settings['diff_drive_mode'])
+        return bool(PLATFORM_PROFILES[platform]['diff_drive_mode'])
+
+    def _configured_platform_text(self, key: str, fallback: str) -> str:
+        """Read a text setting for the configured platform, with legacy fallback."""
+        configured = self._config.get('platform_control_settings', {})
+        if isinstance(configured, dict):
+            settings = configured.get(self._configured_platform(), {})
+            if isinstance(settings, dict):
+                value = str(settings.get(key, '')).strip()
+                if value:
+                    return value
+        return fallback
 
     def _configured_use_odometry_robot_pose(self) -> bool:
         return bool(self._config.get('use_odometry_robot_pose', False))
@@ -533,11 +582,13 @@ class OperatorWindow(QMainWindow):
 
     def _configured_robot_base_frame(self) -> str:
         configured = str(self._config.get('robot_base_frame', '')).strip()
-        return configured or str(self._current_platform_profile()['robot_base_frame'])
+        fallback = configured or str(self._current_platform_profile()['robot_base_frame'])
+        return self._configured_platform_text('robot_base_frame', fallback)
 
     def _configured_robot_tree_root_frame(self) -> str:
         configured = str(self._config.get('robot_tree_root_frame', '')).strip()
-        return configured or str(self._current_platform_profile()['robot_tree_root_frame'])
+        fallback = configured or str(self._current_platform_profile()['robot_tree_root_frame'])
+        return self._configured_platform_text('robot_tree_root_frame', fallback)
 
     def _configured_control_frame(self) -> str:
         configured = str(self._config.get('control_frame', '')).strip()
@@ -690,6 +741,9 @@ class OperatorWindow(QMainWindow):
         self.index_spin = QSpinBox()
         self.index_spin.setRange(0, 100000)
         self.index_spin.setValue(0)
+        self.original_arm_index_spin = QSpinBox()
+        self.original_arm_index_spin.setRange(0, 100000)
+        self.original_arm_index_spin.setValue(0)
 
         self.path_folder = QLineEdit(str(self._configured_trajectory_directory()))
         self.path_folder.setReadOnly(True)
@@ -732,12 +786,14 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.diff_drive_checkbox, 0, 5)
         launch_layout.addWidget(QLabel('Direction'), 1, 0)
         launch_layout.addWidget(self.direction_mode, 1, 1)
-        launch_layout.addWidget(QLabel('Current index'), 1, 2)
+        launch_layout.addWidget(QLabel('Interpolated index'), 1, 2)
         launch_layout.addWidget(self.index_spin, 1, 3)
-        launch_layout.addWidget(self.odometry_pose_checkbox, 1, 4, 1, 2)
+        launch_layout.addWidget(QLabel('Non-interpolated arm index'), 1, 4)
+        launch_layout.addWidget(self.original_arm_index_spin, 1, 5)
+        launch_layout.addWidget(self.odometry_pose_checkbox, 2, 4, 1, 2)
         launch_layout.addWidget(QLabel('Path folder'), 2, 0)
-        launch_layout.addWidget(self.path_folder, 2, 1, 1, 4)
-        launch_layout.addWidget(self.browse_button, 2, 5)
+        launch_layout.addWidget(self.path_folder, 2, 1, 1, 3)
+        launch_layout.addWidget(self.browse_button, 2, 3)
         launch_layout.addWidget(QLabel('Path transform X'), 3, 0)
         launch_layout.addWidget(self.path_transform_x_spin, 3, 1)
         launch_layout.addWidget(QLabel('Y'), 3, 2)
@@ -937,6 +993,8 @@ class OperatorWindow(QMainWindow):
         self.rviz_button.clicked.connect(self._open_rviz)
         self.sync_workspace_button.clicked.connect(self._sync_workspace)
         self.index_spin.valueChanged.connect(self._publish_path_index)
+        self.index_spin.valueChanged.connect(self._set_original_arm_index_from_tracking)
+        self.original_arm_index_spin.valueChanged.connect(self._set_tracking_index_from_original_arm)
         self.velocity_slider.valueChanged.connect(self._publish_overrides)
         self.path_index_rate_spin.valueChanged.connect(self._set_path_index_rate)
         self.default_velocity_checkbox.toggled.connect(self._set_default_velocity_enabled)
@@ -973,26 +1031,51 @@ class OperatorWindow(QMainWindow):
         self.diff_drive_checkbox.setEnabled(not is_bunker)
         self.diff_drive_checkbox.blockSignals(False)
 
+    def _sync_platform_control_widgets(self) -> None:
+        """Load the selected platform's drive settings without cross-contamination."""
+        follower_type = self._configured_follower_type()
+        self.follower_type_combo.blockSignals(True)
+        self.follower_type_combo.setCurrentIndex(self.follower_type_combo.findData(follower_type))
+        self.follower_type_combo.setEnabled(self._current_platform_key() != 'bunker')
+        self.follower_type_combo.blockSignals(False)
+        self._sync_diff_drive_checkbox()
+
+    def _sync_platform_frame_widgets(self) -> None:
+        for widget, value in (
+            (self.robot_base_frame, self._configured_robot_base_frame()),
+            (self.robot_tree_root_frame, self._configured_robot_tree_root_frame()),
+        ):
+            widget.blockSignals(True)
+            widget.setText(value)
+            widget.blockSignals(False)
+
+    def _save_platform_control_setting(self, key: str, value) -> None:
+        platform = self._current_platform_key()
+        settings = self._config.setdefault('platform_control_settings', {})
+        if not isinstance(settings, dict):
+            settings = {}
+            self._config['platform_control_settings'] = settings
+        platform_settings = settings.setdefault(platform, {})
+        if not isinstance(platform_settings, dict):
+            platform_settings = {}
+            settings[platform] = platform_settings
+        platform_settings[key] = value
+
     def _set_platform(self, *_args) -> None:
         platform = self._current_platform_key()
-        previous_platform = str(self._config.get('platform', 'robotnik')).strip().lower()
-        if platform == 'robotnik' and previous_platform == 'bunker':
-            self.diff_drive_checkbox.blockSignals(True)
-            self.diff_drive_checkbox.setChecked(False)
-            self.diff_drive_checkbox.blockSignals(False)
         self._config['platform'] = platform
-        self._sync_diff_drive_checkbox()
-        self._config['diff_drive_mode'] = self._diff_drive_mode()
+        self._sync_platform_control_widgets()
+        self._sync_platform_frame_widgets()
         self._save_config()
         profile = self._current_platform_profile()
         self.path_status.setText(f"{profile['path_topic']}: ready" if self._has_path else f"{profile['path_topic']}: waiting")
 
     def _set_follower_type(self, *_args) -> None:
-        self._config['follower_type'] = self._current_follower_type()
+        self._save_platform_control_setting('follower_type', self._current_follower_type())
         self._save_config()
 
     def _set_diff_drive_mode(self, enabled: bool) -> None:
-        self._config['diff_drive_mode'] = bool(enabled)
+        self._save_platform_control_setting('diff_drive_mode', bool(enabled))
         self._save_config()
 
     def _set_use_odometry_robot_pose(self, enabled: bool) -> None:
@@ -1000,7 +1083,12 @@ class OperatorWindow(QMainWindow):
         self._save_config()
 
     def _set_path_transform(self, *_args) -> None:
-        self._config['path_transform'] = {
+        directory = Path(self.path_folder.text().strip()).expanduser()
+        transforms = self._config.setdefault('path_transforms_by_directory', {})
+        if not isinstance(transforms, dict):
+            transforms = {}
+            self._config['path_transforms_by_directory'] = transforms
+        transforms[self._path_directory_key(directory)] = {
             'x': float(self.path_transform_x_spin.value()),
             'y': float(self.path_transform_y_spin.value()),
             'z': float(self.path_transform_z_spin.value()),
@@ -1009,6 +1097,10 @@ class OperatorWindow(QMainWindow):
         self._save_config()
 
     def _set_path_transform_values(self, x: float, y: float, z: float, yaw_deg: float) -> None:
+        self._set_path_transform_widget_values(x, y, z, yaw_deg)
+        self._set_path_transform()
+
+    def _set_path_transform_widget_values(self, x: float, y: float, z: float, yaw_deg: float) -> None:
         for spin, value in (
             (self.path_transform_x_spin, x),
             (self.path_transform_y_spin, y),
@@ -1018,7 +1110,6 @@ class OperatorWindow(QMainWindow):
             spin.blockSignals(True)
             spin.setValue(float(value))
             spin.blockSignals(False)
-        self._set_path_transform()
 
     def _capture_tool_offset(self) -> None:
         if self.simulation_checkbox.isChecked():
@@ -1160,6 +1251,8 @@ class OperatorWindow(QMainWindow):
         )
         if folder:
             self.path_folder.setText(folder)
+            transform = self._path_transform_for_directory(Path(folder))
+            self._set_path_transform_widget_values(**transform)
             frame = self._path_frame_from_folder(Path(folder))
             if frame:
                 self.control_frame.setText(frame)
@@ -1183,8 +1276,8 @@ class OperatorWindow(QMainWindow):
         self._config['arm_pose_topic'] = self.arm_pose_topic.text().strip()
         self._config['control_frame'] = self.control_frame.text().strip()
         self._config['external_map_frame'] = self.external_map_frame.text().strip()
-        self._config['robot_base_frame'] = self.robot_base_frame.text().strip()
-        self._config['robot_tree_root_frame'] = self.robot_tree_root_frame.text().strip()
+        self._save_platform_control_setting('robot_base_frame', self.robot_base_frame.text().strip())
+        self._save_platform_control_setting('robot_tree_root_frame', self.robot_tree_root_frame.text().strip())
         self._save_config()
 
     def _open_pid_gains_window(self) -> None:
@@ -1327,6 +1420,10 @@ class OperatorWindow(QMainWindow):
         self._launch_all_timers.clear()
         for name in self._launch_all_process_names():
             self.processes.stop(name)
+        # Restarted simulators reset /clock. Clear the GUI's TF cache after all
+        # transform publishers have stopped so the next run cannot be rejected
+        # as TF_OLD_DATA from the previous clock epoch.
+        self.ros_bridge.reset_tf_buffer()
         self._launch_all_active = False
         self._append_process_output(LAUNCH_ALL_NAME, 'stopped managed component set')
         self._refresh_process_states()
@@ -1372,6 +1469,8 @@ class OperatorWindow(QMainWindow):
             BASE_ACCURACY_MONITOR_NAME,
             TCP_ACCURACY_MONITOR_NAME,
             ACCURACY_REPORT_NAME,
+            RVIZ_NAME,
+            SYNC_WORKSPACE_NAME,
         ]
 
     def _toggle_sim(self) -> None:
@@ -1387,7 +1486,7 @@ class OperatorWindow(QMainWindow):
 
     def _start_sim(self) -> None:
         if self._current_platform_key() == 'bunker':
-            headless_value = 'false' if self.simulation_checkbox.isChecked() else 'true'
+            headless_value = 'false' if self._simulation_gui_enabled() else 'true'
             command = [
                 'ros2',
                 'launch',
@@ -1950,7 +2049,7 @@ class OperatorWindow(QMainWindow):
             f'use_sim_time:={self._use_sim_time()}',
             'path_topic:=/ur_path_transformed',
             'current_pose_topic:=/current_deposition_pose',
-            f'path_index:={self.index_spin.value()}',
+            f'path_index:={OperatorWindow._original_arm_path_index(self)}',
             f'wait_for_start_condition:={str(wait_for_start_condition).lower()}',
             'start_condition_topic:=/start_pose_reached',
             'cmd_vel_topic:=/jparse_velocity_controller_ur/twist_cmd_world',
@@ -2019,7 +2118,12 @@ class OperatorWindow(QMainWindow):
             QTimer.singleShot(200, lambda: self._publish_start_condition_once(value))
 
     def _open_rviz(self) -> None:
-        rviz_config = Path(get_package_share_directory('am_operator_gui')) / 'rviz' / 'robotnik_operator.rviz'
+        rviz_name = (
+            'bunker_operator.rviz'
+            if self._current_platform_key() == 'bunker'
+            else 'robotnik_operator.rviz'
+        )
+        rviz_config = Path(get_package_share_directory('am_operator_gui')) / 'rviz' / rviz_name
         command = ['rviz2', '-d', str(rviz_config), '-f', self.control_frame.text().strip()]
         self._append_process_output(RVIZ_NAME, ' '.join(command))
         self.processes.start(RVIZ_NAME, command)
@@ -2051,6 +2155,28 @@ class OperatorWindow(QMainWindow):
     def _publish_path_index(self, value: int) -> None:
         self.ros_bridge.publish_path_index(value)
         self._append_process_output('ros', f'published /path_index_command {value}')
+
+    def _original_arm_path_index(self) -> int:
+        spin = getattr(self, 'original_arm_index_spin', self.index_spin)
+        return int(spin.value())
+
+    def _set_original_arm_index_from_tracking(self, value: int) -> None:
+        if self._updating_path_indices:
+            return
+        mapper = getattr(self.ros_bridge, 'original_arm_index_for_tracking_index', None)
+        original_index = int(mapper(value)) if mapper is not None else int(value)
+        self._updating_path_indices = True
+        self.original_arm_index_spin.setValue(max(0, original_index))
+        self._updating_path_indices = False
+
+    def _set_tracking_index_from_original_arm(self, value: int) -> None:
+        if self._updating_path_indices:
+            return
+        mapper = getattr(self.ros_bridge, 'tracking_arm_index_for_original_index', None)
+        tracking_index = int(mapper(value)) if mapper is not None else int(value)
+        self._updating_path_indices = True
+        self.index_spin.setValue(max(0, tracking_index))
+        self._updating_path_indices = False
 
     def _calculate_path_index_rate(self, restart_if_running: bool = True) -> None:
         if self.default_velocity_checkbox.isChecked():
@@ -2296,6 +2422,8 @@ class OperatorWindow(QMainWindow):
         self.index_spin.blockSignals(True)
         self.index_spin.setValue(max(0, value))
         self.index_spin.blockSignals(False)
+        if hasattr(self, 'original_arm_index_spin'):
+            self._set_original_arm_index_from_tracking(value)
 
     def _refresh_process_states(self) -> None:
         self._set_launch_button_state()

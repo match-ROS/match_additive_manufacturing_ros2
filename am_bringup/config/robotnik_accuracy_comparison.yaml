@@ -1,0 +1,41 @@
+# Same path, speed, and progress reference as the Bunker accuracy trial.
+test_path_generator:
+  ros__parameters:
+    path_topic: /base_path
+    original_path_topic: /base_path_original
+    frame_id: map
+    path_type: line
+    publish_once: true
+    publish_rate: 1.0
+    num_points: 40
+    time_step: 0.1
+    orientation_mode: tangent
+    line_start: [0.0, 0.0, 0.0]
+    line_end: [1.0, 0.0, 0.0]
+
+simple_base_follower:
+  ros__parameters:
+    path_topic: /base_path
+    robot_pose_topic: /robot_pose
+    robot_pose_type: pose_stamped
+    cmd_vel_topic: /robot/robotnik_base_control/cmd_vel_unstamped
+    output_stamped: false
+    command_frame_id: base_link
+    follower_type: pid
+    diff_drive_mode: false
+    use_external_path_index: true
+    path_index_topic: /path_index
+    external_path_index_stride: 1
+    publish_rate: 20.0
+    lookahead_distance: 0.35
+    stale_pose_timeout: 0.5
+    stop_on_goal: true
+    allow_reverse: false
+    kp_x: 0.8
+    kp_y: 0.8
+    kp_yaw: 1.2
+    max_vx: 0.25
+    max_vy: 0.0
+    max_wz: 0.6
+    xy_goal_tolerance: 0.06
+    yaw_goal_tolerance: 0.1

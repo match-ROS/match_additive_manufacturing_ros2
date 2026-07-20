@@ -86,7 +86,7 @@ class MoveUrToPathIdx(Node):
         self.declare_parameter('current_pose_topic', '/current_tcp_pose')
         self.declare_parameter('path_index', 0)
         self.declare_parameter('publish_rate', 20.0)
-        self.declare_parameter('distance_tolerance', 0.03)
+        self.declare_parameter('distance_tolerance', 0.005)
         self.declare_parameter('orientation_tolerance', 0.06)
         self.declare_parameter('yaw_tolerance', 0.06)
         self.declare_parameter('kp_linear', 0.8)
@@ -254,7 +254,9 @@ class MoveUrToPathIdx(Node):
             return
 
         if self.state == ControlState.ALIGN_ORIENTATION:
-            if orientation_error <= self._orientation_tolerance():
+            distance_tolerance = float(self.get_parameter('distance_tolerance').value)
+            orientation_tolerance = self._orientation_tolerance()
+            if dist <= distance_tolerance and orientation_error <= orientation_tolerance:
                 self.state = ControlState.DONE
                 self.stop_count_remaining = max(1, int(self.get_parameter('publish_stop_count').value))
                 self._publish_stop()
@@ -264,6 +266,14 @@ class MoveUrToPathIdx(Node):
                 )
                 self._publish_completion()
             else:
+                max_linear = float(self.get_parameter('max_linear_velocity').value)
+                kp_linear = float(self.get_parameter('kp_linear').value)
+                vx, vy, vz = scale_to_limit(
+                    kp_linear * dx,
+                    kp_linear * dy,
+                    kp_linear * dz,
+                    max_linear,
+                )
                 kp_angular = float(self.get_parameter('kp_angular').value)
                 max_angular = float(self.get_parameter('max_angular_velocity').value)
                 wx, wy, wz = scale_to_limit(
@@ -272,6 +282,9 @@ class MoveUrToPathIdx(Node):
                     kp_angular * oz,
                     max_angular,
                 )
+                cmd.twist.linear.x = float(vx)
+                cmd.twist.linear.y = float(vy)
+                cmd.twist.linear.z = float(vz)
                 cmd.twist.angular.x = float(wx)
                 cmd.twist.angular.y = float(wy)
                 cmd.twist.angular.z = float(wz)

@@ -193,6 +193,31 @@ def test_simulation_launch_all_schedules_base_move_after_startup() -> None:
     assert ('stop', 'map') in calls
 
 
+def test_stop_all_stops_all_managed_processes_and_clears_tf_history() -> None:
+    calls = []
+    processes = FakeProcesses(running=())
+    fake = SimpleNamespace(
+        control_frame=FakeLineEdit('map'),
+        ros_bridge=SimpleNamespace(
+            publish_start_condition=lambda value: calls.append(('start_condition', value)),
+            publish_stop_commands=lambda frame: calls.append(('stop', frame)),
+            reset_tf_buffer=lambda: calls.append('reset_tf_buffer'),
+        ),
+        _launch_all_timers=[],
+        processes=processes,
+        _launch_all_process_names=lambda: ['launch_sim', 'rviz', 'sync_workspace'],
+        _append_process_output=lambda *_args: None,
+        _refresh_process_states=lambda: None,
+        _launch_all_active=True,
+    )
+
+    OperatorWindow._stop_launch_all_components(fake)
+
+    assert processes.stopped == ['launch_sim', 'rviz', 'sync_workspace']
+    assert 'reset_tf_buffer' in calls
+    assert fake._launch_all_active is False
+
+
 def test_hardware_arm_stack_uses_jparse_and_forward_velocity_controller() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
@@ -318,6 +343,28 @@ def test_robotnik_sim_launch_uses_real_robot_arm_type() -> None:
     )]
 
 
+def test_bunker_sim_launch_honors_simulation_gui_setting() -> None:
+    processes = FakeProcesses(running=())
+    fake = SimpleNamespace(
+        simulation_checkbox=FakeCheckBox(True),
+        odometry_pose_checkbox=FakeCheckBox(False),
+        processes=processes,
+        _config={'simulation_gui': False},
+        _current_platform_key=lambda: 'bunker',
+        _append_process_output=lambda *_args: None,
+    )
+    fake._sim_publish_robot_pose = lambda: OperatorWindow._sim_publish_robot_pose(fake)
+    fake._simulation_gui_enabled = lambda: OperatorWindow._simulation_gui_enabled(fake)
+
+    OperatorWindow._start_sim(fake)
+
+    assert 'headless:=true' in processes.started[0][1]
+
+    fake._config['simulation_gui'] = True
+    OperatorWindow._start_sim(fake)
+    assert 'headless:=false' in processes.started[1][1]
+
+
 def test_sim_launch_disables_builtin_robot_pose_when_odometry_pose_is_used() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
@@ -409,6 +456,60 @@ def test_base_follower_uses_configured_pid_gains() -> None:
     assert 'lookahead_distance:=0.3' in command
 
 
+def test_bunker_control_defaults_do_not_change_robotnik_defaults() -> None:
+    window = OperatorWindow.__new__(OperatorWindow)
+    window._config = {
+        'platform_control_settings': {
+            'bunker': {
+                'follower_type': 'pure_pursuit',
+                'diff_drive_mode': True,
+            },
+        },
+    }
+
+    window._configured_platform = lambda: 'bunker'
+    assert OperatorWindow._configured_follower_type(window) == 'pure_pursuit'
+    assert OperatorWindow._configured_diff_drive_mode(window) is True
+
+    window._configured_platform = lambda: 'robotnik'
+    assert OperatorWindow._configured_follower_type(window) == 'pid'
+    assert OperatorWindow._configured_diff_drive_mode(window) is False
+
+
+def test_bunker_base_follower_uses_pure_pursuit_and_diff_drive() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        platform_combo=FakeComboBox(data='bunker'),
+        diff_drive_checkbox=FakeCheckBox(True),
+        follower_type_combo=FakeComboBox(data='pure_pursuit'),
+        _use_sim_time=lambda: 'true',
+        _pid_gain=lambda key: DEFAULT_PID_GAINS[key],
+        _base_smoothing=lambda key: {
+            'enabled': True,
+            'method': 'moving_average',
+            'max_accel_x': 0.25,
+            'max_accel_y': 0.25,
+            'max_accel_wz': 0.5,
+            'moving_average_window_size': 5,
+            'external_path_index_stride': 10,
+        }[key],
+        _ros_float_literal=OperatorWindow._ros_float_literal,
+        _append_process_output=lambda *_args: None,
+    )
+    fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
+    fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
+    fake._diff_drive_mode = lambda: OperatorWindow._diff_drive_mode(fake)
+    fake._current_follower_type = lambda: OperatorWindow._current_follower_type(fake)
+
+    OperatorWindow._start_base_follower(fake)
+
+    command = processes.started[0][1]
+    assert 'follower_type:=pure_pursuit' in command
+    assert 'diff_drive_mode:=true' in command
+    assert 'cmd_vel_topic:=/diff_drive_controller/cmd_vel' in command
+
+
 def test_move_base_to_start_uses_configured_velocity_limits() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
@@ -440,6 +541,45 @@ def test_move_base_to_start_uses_configured_velocity_limits() -> None:
     assert 'max_linear_velocity:=0.120000' in command
     assert 'max_lateral_velocity:=0.070000' in command
     assert 'max_angular_velocity:=0.340000' in command
+
+
+def test_move_arm_to_start_uses_non_interpolated_arm_index() -> None:
+    processes = FakeProcesses()
+    fake = SimpleNamespace(
+        processes=processes,
+        index_spin=FakeSpinBox(120),
+        original_arm_index_spin=FakeSpinBox(12),
+        control_frame=FakeLineEdit('map'),
+        _use_sim_time=lambda: 'false',
+        _pid_launch_arguments=lambda *_args: [],
+        _append_process_output=lambda *_args: None,
+    )
+
+    OperatorWindow._start_move_arm_to_start(fake)
+
+    command = processes.started[0][1]
+    assert 'path_index:=12' in command
+    assert 'path_index:=120' not in command
+
+
+def test_interpolated_and_original_arm_indices_stay_linked() -> None:
+    tracking_index = FakeSpinBox(0)
+    original_index = FakeSpinBox(0)
+    fake = SimpleNamespace(
+        index_spin=tracking_index,
+        original_arm_index_spin=original_index,
+        ros_bridge=SimpleNamespace(
+            original_arm_index_for_tracking_index=lambda value: value // 10,
+            tracking_arm_index_for_original_index=lambda value: value * 10,
+        ),
+        _updating_path_indices=False,
+    )
+
+    OperatorWindow._set_original_arm_index_from_tracking(fake, 120)
+    assert original_index.value() == 12
+
+    OperatorWindow._set_tracking_index_from_original_arm(fake, 7)
+    assert tracking_index.value() == 70
 
 
 def test_hardware_pose_adapters_start_external_base_reference() -> None:
@@ -726,6 +866,29 @@ def test_control_frame_defaults_from_path_json(tmp_path: Path) -> None:
     assert OperatorWindow._path_frame_from_folder(tmp_path) == 'vicon_world'
 
 
+def test_path_transform_is_selected_by_trajectory_directory(tmp_path: Path) -> None:
+    bunker_directory = tmp_path / 'bunker_paired_demo'
+    david_directory = tmp_path / 'david_path'
+    fake = SimpleNamespace(_config={
+        'path_transforms_by_directory': {
+            OperatorWindow._path_directory_key(bunker_directory): {
+                'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw_deg': 0.0,
+            },
+            OperatorWindow._path_directory_key(david_directory): {
+                'x': -1.8786, 'y': 2.4423, 'z': 0.0, 'yaw_deg': -93.109,
+            },
+        },
+    })
+    fake._path_directory_key = OperatorWindow._path_directory_key
+
+    assert OperatorWindow._path_transform_for_directory(fake, bunker_directory) == {
+        'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw_deg': 0.0,
+    }
+    assert OperatorWindow._path_transform_for_directory(fake, david_directory) == {
+        'x': -1.8786, 'y': 2.4423, 'z': 0.0, 'yaw_deg': -93.109,
+    }
+
+
 def test_trajectory_directory_defaults_and_saves_with_hardware_topics(tmp_path: Path) -> None:
     default_directory = OperatorWindow._configured_trajectory_directory(
         SimpleNamespace(_config={})
@@ -743,12 +906,21 @@ def test_trajectory_directory_defaults_and_saves_with_hardware_topics(tmp_path: 
         robot_tree_root_frame=FakeLineEdit('odom'),
         _save_config=lambda: None,
     )
+    fake._save_platform_control_setting = lambda key, value: (
+        fake._config.setdefault('platform_control_settings', {})
+        .setdefault('robotnik', {})
+        .__setitem__(key, value)
+    )
 
     assert OperatorWindow._configured_trajectory_directory(fake) == tmp_path / 'previous'
 
     OperatorWindow._save_hardware_topics(fake)
 
     assert fake._config['trajectory_directory'] == str(tmp_path / 'selected')
+    assert fake._config['platform_control_settings']['robotnik'] == {
+        'robot_base_frame': 'base_footprint',
+        'robot_tree_root_frame': 'odom',
+    }
 
 
 def test_sync_workspace_uses_rsync_to_remote_src() -> None:
@@ -823,6 +995,9 @@ def test_calculate_path_transform_updates_fields_and_restarts_publisher() -> Non
         _refresh_process_states=lambda: None,
     )
     fake._composed_path_transform = OperatorWindow._composed_path_transform
+    fake._set_path_transform_widget_values = (
+        lambda x, y, z, yaw: OperatorWindow._set_path_transform_widget_values(fake, x, y, z, yaw)
+    )
     fake._set_path_transform_values = (
         lambda x, y, z, yaw: OperatorWindow._set_path_transform_values(fake, x, y, z, yaw)
     )

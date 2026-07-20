@@ -14,18 +14,39 @@
   "default_velocity": 0.048,
   "default_velocity_enabled": true,
   "external_map_frame": "map",
-  "follower_type": "pid",
   "path_index_rate": 2.276,
-  "path_transform": {
-    "x": -1.8786,
-    "y": 2.4423,
-    "yaw_deg": -93.109,
-    "z": -0.0
+  "path_transforms_by_directory": {
+    "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/bunker_paired_demo": {
+      "x": 1.0,
+      "y": 0.0,
+      "yaw_deg": 0.0,
+      "z": 0.0
+    },
+    "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path": {
+      "x": -1.8786,
+      "y": 2.4423,
+      "yaw_deg": -93.109,
+      "z": 0.0
+    }
   },
-  "robot_base_frame": "robot_base_footprint",
-  "robot_tree_root_frame": "robot_odom",
-  "simulation": false,
+  "platform": "robotnik",
+  "platform_control_settings": {
+    "bunker": {
+      "diff_drive_mode": true,
+      "follower_type": "pure_pursuit",
+      "robot_base_frame": "base_footprint",
+      "robot_tree_root_frame": "odom"
+    },
+    "robotnik": {
+      "diff_drive_mode": false,
+      "follower_type": "pid",
+      "robot_base_frame": "robot_base_footprint",
+      "robot_tree_root_frame": "robot_odom"
+    }
+  },
+  "simulation": true,
   "simulation_gui": false,
   "spray_distance_mm": 100.0,
-  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path"
+  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path",
+  "use_odometry_robot_pose": true
 }

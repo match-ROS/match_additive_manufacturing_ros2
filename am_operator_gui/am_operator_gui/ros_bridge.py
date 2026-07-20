@@ -45,6 +45,8 @@ class OperatorGuiNode(Node):
         self._latest_ur_path_step_count: Optional[int] = None
         self._path_rate_lock = threading.Lock()
         self._latest_base_path: Optional[Path] = None
+        self._latest_arm_path: Optional[Path] = None
+        self._latest_tracking_arm_path: Optional[Path] = None
         self._latest_robot_pose: Optional[PoseStamped] = None
         self._latest_pose_lock = threading.Lock()
 
@@ -68,6 +70,7 @@ class OperatorGuiNode(Node):
         self.create_subscription(Int32, '/path_index', self._path_index_cb, path_index_qos)
         self.create_subscription(Path, '/base_path', self._base_path_cb, 10)
         self.create_subscription(Path, '/ur_path_transformed', self._ur_path_cb, path_index_qos)
+        self.create_subscription(Path, '/ur_path_tracking', self._tracking_arm_path_cb, path_index_qos)
         self.create_subscription(PoseStamped, '/robot_pose', self._robot_pose_cb, 10)
         self.create_subscription(PoseStamped, '/current_deposition_pose', self._arm_pose_cb, 10)
         self.create_subscription(Bool, '/am/jparse_ready', self._jparse_ready_cb, path_index_qos)
@@ -112,6 +115,10 @@ class OperatorGuiNode(Node):
             return self._tf_buffer.lookup_transform(tool_frame, controller_frame, rclpy.time.Time())
         except TransformException:
             return None
+
+    def reset_tf_buffer(self) -> None:
+        """Discard transforms from a previous simulation clock epoch."""
+        self._tf_buffer.clear()
 
     def publish_stop_commands(self, arm_frame: str) -> None:
         self._base_stop_pub.publish(Twist())
@@ -172,6 +179,53 @@ class OperatorGuiNode(Node):
         with self._latest_pose_lock:
             return deepcopy(self._latest_robot_pose)
 
+    def original_arm_index_for_tracking_index(self, index: int) -> int:
+        with self._latest_pose_lock:
+            return self._index_for_relative_progress(
+                self._latest_tracking_arm_path,
+                self._latest_arm_path,
+                index,
+            )
+
+    def tracking_arm_index_for_original_index(self, index: int) -> int:
+        with self._latest_pose_lock:
+            return self._index_for_relative_progress(
+                self._latest_arm_path,
+                self._latest_tracking_arm_path,
+                index,
+            )
+
+    @staticmethod
+    def _index_for_relative_progress(
+        source: Optional[Path], target: Optional[Path], index: int,
+    ) -> int:
+        if source is None or target is None or not source.poses or not target.poses:
+            return max(0, int(index))
+        source_index = max(0, min(int(index), len(source.poses) - 1))
+
+        def cumulative_lengths(path: Path) -> list[float]:
+            lengths = [0.0]
+            for previous, current in zip(path.poses, path.poses[1:]):
+                start = previous.pose.position
+                end = current.pose.position
+                lengths.append(lengths[-1] + math.dist(
+                    (start.x, start.y, start.z),
+                    (end.x, end.y, end.z),
+                ))
+            return lengths
+
+        source_lengths = cumulative_lengths(source)
+        target_lengths = cumulative_lengths(target)
+        source_total = source_lengths[-1]
+        target_total = target_lengths[-1]
+        if source_total <= 1e-9 or target_total <= 1e-9:
+            return int(round(source_index * (len(target.poses) - 1) / max(1, len(source.poses) - 1)))
+        target_distance = source_lengths[source_index] / source_total * target_total
+        return min(
+            range(len(target_lengths)),
+            key=lambda candidate: abs(target_lengths[candidate] - target_distance),
+        )
+
     def _base_path_cb(self, msg: Path) -> None:
         self._has_base_path = self._is_map_path(msg)
         self._last_base_path_time = self.get_clock().now() if self._has_base_path else None
@@ -204,6 +258,12 @@ class OperatorGuiNode(Node):
             self._latest_ur_path_median_segment_length = median_segment_length
             self._latest_ur_path_total_length = total_length
             self._latest_ur_path_step_count = max(0, len(msg.poses) - 1)
+        with self._latest_pose_lock:
+            self._latest_arm_path = msg
+
+    def _tracking_arm_path_cb(self, msg: Path) -> None:
+        with self._latest_pose_lock:
+            self._latest_tracking_arm_path = msg
 
     def _path_index_cb(self, msg: Int32) -> None:
         if self._path_index_callback is not None:
@@ -356,6 +416,10 @@ class RosBridge:
         if self._node is not None:
             self._node.publish_path_index(value)
 
+    def reset_tf_buffer(self) -> None:
+        if self._node is not None:
+            self._node.reset_tf_buffer()
+
     def publish_start_condition(self, value: bool = True) -> None:
         if self._node is not None:
             self._node.publish_start_condition(value)
@@ -436,3 +500,13 @@ class RosBridge:
         if self._node is None:
             return None
         return self._node.latest_robot_pose()
+
+    def original_arm_index_for_tracking_index(self, index: int) -> int:
+        if self._node is None:
+            return max(0, int(index))
+        return self._node.original_arm_index_for_tracking_index(index)
+
+    def tracking_arm_index_for_original_index(self, index: int) -> int:
+        if self._node is None:
+            return max(0, int(index))
+        return self._node.tracking_arm_index_for_original_index(index)
