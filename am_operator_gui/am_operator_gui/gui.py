@@ -56,6 +56,7 @@ DEFAULT_FIXED_TOOL_OFFSET = {
     'quaternion_xyzw': [0.0, -0.7071067812, 0.0, 0.7071067812],
 }
 DEFAULT_SPRAY_DISTANCE_MAX_RATE = 0.02
+DEFAULT_SPRAY_DISTANCE_MM = 100.0
 DEFAULT_BASE_SMOOTHING = {
     'enabled': True,
     'method': 'moving_average',
@@ -514,6 +515,9 @@ class OperatorWindow(QMainWindow):
     def _configured_use_odometry_robot_pose(self) -> bool:
         return bool(self._config.get('use_odometry_robot_pose', False))
 
+    def _configured_simulation(self) -> bool:
+        return bool(self._config.get('simulation', False))
+
     def _configured_base_pose_topic(self) -> str:
         return str(self._config.get('base_pose_topic', '/vicon/Base_RB/Base_RB'))
 
@@ -565,6 +569,13 @@ class OperatorWindow(QMainWindow):
         except (TypeError, ValueError):
             value = DEFAULT_SPRAY_DISTANCE_MAX_RATE
         return max(0.001, min(1.0, value))
+
+    def _configured_spray_distance_mm(self) -> float:
+        try:
+            value = float(self._config.get('spray_distance_mm', DEFAULT_SPRAY_DISTANCE_MM))
+        except (TypeError, ValueError):
+            value = DEFAULT_SPRAY_DISTANCE_MM
+        return max(-10000.0, min(10000.0, value))
 
     def _tool_offset_launch_arguments(self) -> list[str]:
         offset = (
@@ -657,6 +668,7 @@ class OperatorWindow(QMainWindow):
         launch_group = QGroupBox('System')
         launch_layout = QGridLayout(launch_group)
         self.simulation_checkbox = QCheckBox('Simulation')
+        self.simulation_checkbox.setChecked(self._configured_simulation())
         self.platform_combo = QComboBox()
         for key, profile in PLATFORM_PROFILES.items():
             self.platform_combo.addItem(str(profile['label']), key)
@@ -834,7 +846,7 @@ class OperatorWindow(QMainWindow):
         self.nozzle_reference.setRange(-10000.0, 10000.0)
         self.nozzle_reference.setDecimals(1)
         self.nozzle_reference.setSuffix(' mm')
-        self.nozzle_reference.setValue(0.0)
+        self.nozzle_reference.setValue(self._configured_spray_distance_mm())
         self.nozzle_offset = QSlider(Qt.Horizontal)
         self.nozzle_offset.setRange(-100, 100)
         self.nozzle_offset.setValue(0)
@@ -933,6 +945,7 @@ class OperatorWindow(QMainWindow):
         self.path_transform_y_spin.valueChanged.connect(self._set_path_transform)
         self.path_transform_z_spin.valueChanged.connect(self._set_path_transform)
         self.path_transform_yaw_spin.valueChanged.connect(self._set_path_transform)
+        self.nozzle_reference.valueChanged.connect(self._set_spray_distance_mm)
         self.nozzle_reference.valueChanged.connect(self._publish_overrides)
         self.nozzle_offset.valueChanged.connect(self._publish_overrides)
 
@@ -1268,6 +1281,8 @@ class OperatorWindow(QMainWindow):
         ]
 
     def _simulation_mode_changed(self, _enabled: bool) -> None:
+        self._config['simulation'] = bool(_enabled)
+        self._save_config()
         self._refresh_process_states()
 
     def _use_sim_time(self) -> str:
@@ -2220,6 +2235,10 @@ class OperatorWindow(QMainWindow):
         self.nozzle_effective_value.setText(f'{effective_mm:.1f} mm effective')
         self.ros_bridge.publish_velocity_override(velocity_scale)
         self.ros_bridge.publish_spray_distance(effective_mm / 1000.0)
+
+    def _set_spray_distance_mm(self, value: float) -> None:
+        self._config['spray_distance_mm'] = float(value)
+        self._save_config()
 
     def _on_process_output(self, name: str, line: str) -> None:
         self.process_output.emit(name, line)

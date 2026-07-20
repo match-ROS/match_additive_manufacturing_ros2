@@ -271,6 +271,25 @@ def test_gui_publishes_effective_spray_distance() -> None:
     assert published == [('velocity', 0.75), ('spray_distance', 0.105)]
     assert fake.nozzle_effective_value.text == '105.0 mm effective'
 
+
+def test_simulation_and_spray_distance_are_configured_and_saved() -> None:
+    saved = []
+    fake = SimpleNamespace(
+        _config={'simulation': True, 'spray_distance_mm': 100.0},
+        _save_config=lambda: saved.append(True),
+        _refresh_process_states=lambda: None,
+    )
+
+    assert OperatorWindow._configured_simulation(fake) is True
+    assert OperatorWindow._configured_spray_distance_mm(fake) == 100.0
+
+    OperatorWindow._set_spray_distance_mm(fake, 125.0)
+    assert fake._config['spray_distance_mm'] == 125.0
+
+    OperatorWindow._simulation_mode_changed(fake, False)
+    assert fake._config['simulation'] is False
+    assert len(saved) == 2
+
 def test_robotnik_sim_launch_uses_real_robot_arm_type() -> None:
     processes = FakeProcesses(running=())
     fake = SimpleNamespace(
