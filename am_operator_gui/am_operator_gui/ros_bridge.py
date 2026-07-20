@@ -1,6 +1,5 @@
 import threading
 import math
-import statistics
 from copy import deepcopy
 from typing import Callable, Optional
 
@@ -39,11 +38,6 @@ class OperatorGuiNode(Node):
         self._last_arm_path_time = None
         self._last_jparse_ready_time = None
         self._last_controller_ready_time = None
-        self._latest_ur_path_rate: Optional[float] = None
-        self._latest_ur_path_median_segment_length: Optional[float] = None
-        self._latest_ur_path_total_length: Optional[float] = None
-        self._latest_ur_path_step_count: Optional[int] = None
-        self._path_rate_lock = threading.Lock()
         self._latest_base_path: Optional[Path] = None
         self._latest_arm_path: Optional[Path] = None
         self._latest_tracking_arm_path: Optional[Path] = None
@@ -147,26 +141,6 @@ class OperatorGuiNode(Node):
     def controller_ready(self) -> bool:
         return self._controller_ready
 
-    @property
-    def latest_ur_path_rate(self) -> Optional[float]:
-        with self._path_rate_lock:
-            return self._latest_ur_path_rate
-
-    @property
-    def latest_ur_path_median_segment_length(self) -> Optional[float]:
-        with self._path_rate_lock:
-            return self._latest_ur_path_median_segment_length
-
-    @property
-    def latest_ur_path_total_length(self) -> Optional[float]:
-        with self._path_rate_lock:
-            return self._latest_ur_path_total_length
-
-    @property
-    def latest_ur_path_step_count(self) -> Optional[int]:
-        with self._path_rate_lock:
-            return self._latest_ur_path_step_count
-
     def latest_base_path_pose(self, index: int) -> Optional[PoseStamped]:
         with self._latest_pose_lock:
             if self._latest_base_path is None:
@@ -250,14 +224,6 @@ class OperatorGuiNode(Node):
         self._has_arm_path = self._is_map_path(msg)
         self._last_arm_path_time = self.get_clock().now() if self._has_arm_path else None
         self._has_path = self._has_base_path and self._has_arm_path
-        rate = self._mean_path_timestamp_rate(msg)
-        median_segment_length = self._median_path_segment_length(msg)
-        total_length = self._path_total_length(msg)
-        with self._path_rate_lock:
-            self._latest_ur_path_rate = rate
-            self._latest_ur_path_median_segment_length = median_segment_length
-            self._latest_ur_path_total_length = total_length
-            self._latest_ur_path_step_count = max(0, len(msg.poses) - 1)
         with self._latest_pose_lock:
             self._latest_arm_path = msg
 
@@ -326,62 +292,6 @@ class OperatorGuiNode(Node):
                 self._jparse_ready,
                 self._controller_ready,
             )
-
-    @staticmethod
-    def _mean_path_timestamp_rate(msg: Path) -> Optional[float]:
-        if len(msg.poses) < 2:
-            return None
-
-        deltas = []
-        previous_stamp = msg.poses[0].header.stamp
-        previous_time = float(previous_stamp.sec) + float(previous_stamp.nanosec) / 1e9
-        for pose in msg.poses[1:]:
-            stamp = pose.header.stamp
-            current_time = float(stamp.sec) + float(stamp.nanosec) / 1e9
-            delta = current_time - previous_time
-            if delta > 0.0:
-                deltas.append(delta)
-            previous_time = current_time
-
-        if not deltas:
-            return None
-        return len(deltas) / sum(deltas)
-
-    @staticmethod
-    def _median_path_segment_length(msg: Path) -> Optional[float]:
-        if len(msg.poses) < 2:
-            return None
-
-        lengths = []
-        previous = msg.poses[0].pose.position
-        for pose in msg.poses[1:]:
-            current = pose.pose.position
-            length = math.dist(
-                (previous.x, previous.y, previous.z),
-                (current.x, current.y, current.z),
-            )
-            if length > 0.0:
-                lengths.append(length)
-            previous = current
-
-        if not lengths:
-            return None
-        return float(statistics.median(lengths))
-
-    @staticmethod
-    def _path_total_length(msg: Path) -> Optional[float]:
-        if len(msg.poses) < 2:
-            return None
-        total = 0.0
-        previous = msg.poses[0].pose.position
-        for pose in msg.poses[1:]:
-            current = pose.pose.position
-            total += math.dist(
-                (previous.x, previous.y, previous.z),
-                (current.x, current.y, current.z),
-            )
-            previous = current
-        return total if total > 0.0 else None
 
 
 class RosBridge:
@@ -464,32 +374,6 @@ class RosBridge:
     @property
     def controller_ready(self) -> bool:
         return bool(self._node and self._node.controller_ready)
-
-    @property
-    def latest_ur_path_rate(self) -> Optional[float]:
-        if self._node is None:
-            return None
-        return self._node.latest_ur_path_rate
-
-    @property
-    def latest_ur_path_median_segment_length(self) -> Optional[float]:
-        if self._node is None:
-            return None
-        return self._node.latest_ur_path_median_segment_length
-
-    @property
-    def latest_ur_path_total_length(self) -> Optional[float]:
-        """Return the most recent transformed arm-path length, if available."""
-        if self._node is None:
-            return None
-        return self._node.latest_ur_path_total_length
-
-    @property
-    def latest_ur_path_step_count(self) -> Optional[int]:
-        """Return the number of index transitions in the transformed arm path."""
-        if self._node is None:
-            return None
-        return self._node.latest_ur_path_step_count
 
     def latest_base_path_pose(self, index: int) -> Optional[PoseStamped]:
         if self._node is None:

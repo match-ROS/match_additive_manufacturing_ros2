@@ -783,11 +783,9 @@ def test_path_index_advancer_uses_coupled_arm_and_base_paths() -> None:
         processes=processes,
         platform_combo=FakeComboBox(data='robotnik'),
         index_spin=FakeSpinBox(12),
-        path_index_rate_spin=FakeSpinBox(5.0),
         _use_sim_time=lambda: 'false',
         _ros_float_literal=OperatorWindow._ros_float_literal,
         _append_process_output=lambda *_args: None,
-        _calculate_path_index_rate=lambda restart_if_running=True: None,
     )
     fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
     fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
@@ -801,27 +799,6 @@ def test_path_index_advancer_uses_coupled_arm_and_base_paths() -> None:
     assert 'base_reference_topic:=/base_trajectory_reference' in command
     assert 'next_goal_topic:=/next_goal' in command
     assert not any(argument.startswith('additional_goal_') for argument in command)
-
-
-def test_path_index_advancer_recalculates_rate_before_launch() -> None:
-    processes = FakeProcesses()
-    fake = SimpleNamespace(
-        processes=processes,
-        platform_combo=FakeComboBox(data='robotnik'),
-        index_spin=FakeSpinBox(12),
-        path_index_rate_spin=FakeSpinBox(1.0),
-        _use_sim_time=lambda: 'false',
-        _ros_float_literal=OperatorWindow._ros_float_literal,
-        _append_process_output=lambda *_args: None,
-    )
-    fake._current_platform_key = lambda: OperatorWindow._current_platform_key(fake)
-    fake._current_platform_profile = lambda: OperatorWindow._current_platform_profile(fake)
-    fake._calculate_path_index_rate = lambda restart_if_running=True: fake.path_index_rate_spin.setValue(4.25)
-
-    OperatorWindow._start_path_index(fake)
-
-    command = processes.started[0][1]
-    assert 'publish_rate:=4.250000' in command
 
 
 def test_control_processes_running_reports_missing_followers() -> None:

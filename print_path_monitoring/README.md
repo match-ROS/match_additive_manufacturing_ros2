@@ -55,11 +55,11 @@ In `am_operator_gui`, use **Record Base Accuracy** for the base-only run and
 is accepted only when its median P95 position error is lower and its median maximum
 position error is not higher.
 
-When Default velocity is enabled in the GUI, its path-index rate is locked to
-`velocity * (number_of_path_steps / total_path_length)`. It is recalculated only
-when the requested default velocity or trajectory changes. The comparison report
-also checks the paired base/TCP trajectory against the configured conservative
-planar reach range and flags it as a possible TCP-error cause.
+When Default velocity is enabled in the GUI, the coupled trajectory advances by
+the requested arm speed. Otherwise, it advances according to the exported
+per-segment timestamps. The comparison report also checks the paired base/TCP
+trajectory against the configured conservative planar reach range and flags it
+as a possible TCP-error cause.
 
 For static smoke tests without a live path-index publisher, set
 `fixed_path_index` to a non-negative index. A live `path_index_topic` message

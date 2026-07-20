@@ -42,7 +42,6 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_SRC_ROOT = REPO_ROOT.parent
 DEFAULT_COMPONENTS_DIR = REPO_ROOT / 'components'
 DEFAULT_TRAJECTORY_DIR = DEFAULT_COMPONENTS_DIR / 'robotnik_paired_demo'
-DEFAULT_PATH_INDEX_RATE = 5.0
 DEFAULT_DEFAULT_VELOCITY = 0.1
 DEFAULT_PATH_TRANSFORM = {
     'x': 0.0,
@@ -475,13 +474,6 @@ class OperatorWindow(QMainWindow):
         except OSError as exc:
             self._append_process_output('gui', f'failed to save config: {exc}')
 
-    def _configured_path_index_rate(self) -> float:
-        try:
-            rate = float(self._config.get('path_index_rate', DEFAULT_PATH_INDEX_RATE))
-        except (TypeError, ValueError):
-            return DEFAULT_PATH_INDEX_RATE
-        return max(0.01, min(1000.0, rate))
-
     def _configured_default_velocity(self) -> float:
         try:
             velocity = float(self._config.get('default_velocity', DEFAULT_DEFAULT_VELOCITY))
@@ -843,13 +835,6 @@ class OperatorWindow(QMainWindow):
         self.accuracy_phase_combo.addItem('Baseline', 'baseline')
         self.accuracy_phase_combo.addItem('Tuned', 'tuned')
         self.accuracy_report_button = QPushButton('Summarize Accuracy Runs')
-        self.path_index_rate_spin = QDoubleSpinBox()
-        self.path_index_rate_spin.setRange(0.01, 1000.0)
-        self.path_index_rate_spin.setDecimals(3)
-        self.path_index_rate_spin.setSuffix(' Hz')
-        self.path_index_rate_spin.setValue(self._configured_path_index_rate())
-        self.path_index_rate_spin.setReadOnly(True)
-        self.calculate_path_index_rate_button = QPushButton('Calculate Index Rate')
         self.default_velocity_checkbox = QCheckBox('Default velocity')
         self.default_velocity_checkbox.setChecked(self._configured_default_velocity_enabled())
         self.default_velocity_spin = QDoubleSpinBox()
@@ -873,9 +858,6 @@ class OperatorWindow(QMainWindow):
         component_layout.addWidget(QLabel('Accuracy phase'), 6, 0)
         component_layout.addWidget(self.accuracy_phase_combo, 6, 1)
         component_layout.addWidget(self.accuracy_report_button, 6, 2)
-        component_layout.addWidget(QLabel('Index rate'), 3, 0)
-        component_layout.addWidget(self.path_index_rate_spin, 3, 1)
-        component_layout.addWidget(self.calculate_path_index_rate_button, 3, 2)
         component_layout.addWidget(self.default_velocity_checkbox, 4, 0)
         component_layout.addWidget(self.default_velocity_spin, 4, 1)
 
@@ -980,7 +962,6 @@ class OperatorWindow(QMainWindow):
         self.path_index_button.clicked.connect(self._toggle_path_index)
         self.current_tcp_pose_button.clicked.connect(self._toggle_current_tcp_pose)
         self.arm_controllers_button.clicked.connect(self._toggle_arm_controllers)
-        self.calculate_path_index_rate_button.clicked.connect(self._calculate_path_index_rate)
         self.switch_arm_velocity_button.clicked.connect(self._switch_arm_velocity_controller)
         self.capture_tool_offset_button.clicked.connect(self._capture_tool_offset)
         self.base_accuracy_monitor_button.clicked.connect(self._toggle_base_accuracy_monitor)
@@ -996,7 +977,6 @@ class OperatorWindow(QMainWindow):
         self.index_spin.valueChanged.connect(self._set_original_arm_index_from_tracking)
         self.original_arm_index_spin.valueChanged.connect(self._set_tracking_index_from_original_arm)
         self.velocity_slider.valueChanged.connect(self._publish_overrides)
-        self.path_index_rate_spin.valueChanged.connect(self._set_path_index_rate)
         self.default_velocity_checkbox.toggled.connect(self._set_default_velocity_enabled)
         self.default_velocity_spin.valueChanged.connect(self._set_default_velocity)
         self.path_transform_x_spin.valueChanged.connect(self._set_path_transform)
@@ -1690,7 +1670,6 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_path_index(self) -> None:
-        self._calculate_path_index_rate(restart_if_running=False)
         publish_speed = getattr(self, '_publish_desired_arm_speed', None)
         if publish_speed is not None:
             publish_speed()
@@ -1709,7 +1688,6 @@ class OperatorWindow(QMainWindow):
             '-p', f'initial_path_index:={self.index_spin.value()}',
             '-p', 'path_topic:=/ur_path_transformed',
             '-p', f"base_path_topic:={profile['path_topic']}",
-            '-p', f'publish_rate:={self._ros_float_literal(self.path_index_rate_spin.value())}',
             '-p', f"progress_mode:={'desired_speed' if getattr(self, 'default_velocity_checkbox', None) is not None and self.default_velocity_checkbox.isChecked() else 'timestamp'}",
             '-p', 'arm_reference_topic:=/arm_trajectory_reference',
             '-p', 'base_reference_topic:=/base_trajectory_reference',
@@ -2178,166 +2156,19 @@ class OperatorWindow(QMainWindow):
         self.index_spin.setValue(max(0, tracking_index))
         self._updating_path_indices = False
 
-    def _calculate_path_index_rate(self, restart_if_running: bool = True) -> None:
-        if self.default_velocity_checkbox.isChecked():
-            velocity = self.default_velocity_spin.value()
-            total_length = self.ros_bridge.latest_ur_path_total_length
-            step_count = self.ros_bridge.latest_ur_path_step_count
-            source = '/ur_path_transformed total length'
-            if total_length is None or total_length <= 0.0 or step_count is None or step_count < 1:
-                total_length, step_count = self._arm_path_length_and_step_count_from_file()
-                source = f'{Path(self.path_folder.text()) / "arm_path.json"} total length'
-            if total_length is None or total_length <= 0.0 or step_count is None or step_count < 1:
-                self._append_process_output(
-                    'gui',
-                    'cannot calculate index rate: no valid arm path length found',
-                )
-                return
-
-            rate = velocity * step_count / total_length
-            self.path_index_rate_spin.setValue(rate)
-            self._append_process_output(
-                'gui',
-                f'locked path index rate {rate:.3f} Hz from {velocity:.3f} m/s, '
-                f'{total_length:.3f} m, and {step_count} index steps ({source})',
-            )
-            self._restart_path_index_if_running(restart_if_running)
-            return
-
-        rate = self.ros_bridge.latest_ur_path_rate
-        source = '/ur_path_transformed'
-        if rate is None or rate <= 0.0:
-            rate = self._path_index_rate_from_file()
-            source = str(Path(self.path_folder.text()) / 'arm_path.json')
-        if rate is None or rate <= 0.0:
-            self._append_process_output(
-                'gui',
-                'cannot calculate index rate: no valid /ur_path_transformed or arm_path.json timestamps found',
-            )
-            return
-
-        self.path_index_rate_spin.setValue(rate)
-        self._append_process_output('gui', f'calculated path index rate {rate:.3f} Hz from {source}')
-        self._restart_path_index_if_running(restart_if_running)
-
-    def _restart_path_index_if_running(self, enabled: bool) -> None:
-        if not enabled:
-            return
-        process = self.processes.get(PATH_INDEX_NAME)
-        if process is None or not process.is_running():
-            return
-        self._append_process_output(
-            PATH_INDEX_NAME,
-            'kept coupled trajectory progress running; desired speed is updated on /desired_arm_speed without resetting phase',
-        )
-
-    def _arm_path_median_segment_length_from_file(self) -> Optional[float]:
-        total_length, step_count = self._arm_path_length_and_step_count_from_file()
-        return total_length / step_count if total_length is not None and step_count else None
-
-    def _arm_path_length_and_step_count_from_file(self) -> tuple[Optional[float], Optional[int]]:
-        path_file = Path(self.path_folder.text()) / 'arm_path.json'
-        try:
-            data = json.loads(path_file.read_text(encoding='utf-8'))
-        except (OSError, json.JSONDecodeError, TypeError):
-            return None, None
-
-        poses = data.get('poses') if isinstance(data, dict) else None
-        if not isinstance(poses, list) or len(poses) < 2:
-            return None, None
-
-        lengths = []
-        previous_position = self._pose_position(poses[0])
-        if previous_position is None:
-            return None, None
-        for pose in poses[1:]:
-            current_position = self._pose_position(pose)
-            if current_position is None:
-                return None, None
-            length = math.dist(previous_position, current_position)
-            if length > 0.0:
-                lengths.append(length)
-            previous_position = current_position
-
-        if not lengths:
-            return None, None
-        return float(sum(lengths)), len(poses) - 1
-
-    def _path_index_rate_from_file(self) -> Optional[float]:
-        path_file = Path(self.path_folder.text()) / 'arm_path.json'
-        try:
-            data = json.loads(path_file.read_text(encoding='utf-8'))
-        except (OSError, json.JSONDecodeError, TypeError):
-            return None
-
-        poses = data.get('poses') if isinstance(data, dict) else None
-        if not isinstance(poses, list) or len(poses) < 2:
-            return None
-
-        deltas = []
-        previous_time = self._stamp_seconds(poses[0].get('stamp') if isinstance(poses[0], dict) else None)
-        if previous_time is None:
-            return None
-        for pose in poses[1:]:
-            stamp = pose.get('stamp') if isinstance(pose, dict) else None
-            current_time = self._stamp_seconds(stamp)
-            if current_time is None:
-                return None
-            delta = current_time - previous_time
-            if delta > 0.0:
-                deltas.append(delta)
-            previous_time = current_time
-
-        if not deltas:
-            return None
-        return len(deltas) / sum(deltas)
-
-    @staticmethod
-    def _pose_position(pose: object) -> Optional[tuple[float, float, float]]:
-        if not isinstance(pose, dict):
-            return None
-        position = pose.get('position')
-        if not isinstance(position, dict):
-            return None
-        try:
-            return (
-                float(position.get('x', 0.0)),
-                float(position.get('y', 0.0)),
-                float(position.get('z', 0.0)),
-            )
-        except (TypeError, ValueError):
-            return None
-
-    @staticmethod
-    def _stamp_seconds(stamp: object) -> Optional[float]:
-        if not isinstance(stamp, dict):
-            return None
-        try:
-            return float(stamp.get('sec', 0.0)) + float(stamp.get('nanosec', 0.0)) / 1e9
-        except (TypeError, ValueError):
-            return None
-
     @staticmethod
     def _ros_float_literal(value: float) -> str:
         return f'{float(value):.6f}'
-
-    def _set_path_index_rate(self, value: float) -> None:
-        self._config['path_index_rate'] = float(value)
-        self._save_config()
 
     def _set_default_velocity_enabled(self, enabled: bool) -> None:
         self.default_velocity_spin.setEnabled(enabled)
         self._config['default_velocity_enabled'] = bool(enabled)
         self._save_config()
-        if enabled:
-            self._calculate_path_index_rate(restart_if_running=False)
         self._publish_desired_arm_speed()
 
     def _set_default_velocity(self, value: float) -> None:
         self._config['default_velocity'] = float(value)
         self._save_config()
-        if self.default_velocity_checkbox.isChecked():
-            self._calculate_path_index_rate(restart_if_running=False)
         self._publish_desired_arm_speed()
 
     def _default_velocity_param(self) -> float:

@@ -11,10 +11,9 @@
     "moving_average_window_size": 5
   },
   "control_frame": "map",
-  "default_velocity": 0.048,
+  "default_velocity": 0.05,
   "default_velocity_enabled": true,
   "external_map_frame": "map",
-  "path_index_rate": 2.276,
   "path_transforms_by_directory": {
     "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/bunker_paired_demo": {
       "x": 1.0,
@@ -48,5 +47,5 @@
   "simulation_gui": false,
   "spray_distance_mm": 100.0,
   "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path",
-  "use_odometry_robot_pose": true
+  "use_odometry_robot_pose": false
 }
