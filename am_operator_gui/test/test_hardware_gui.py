@@ -1028,3 +1028,43 @@ def test_calculate_path_transform_updates_fields_and_restarts_publisher() -> Non
     assert processes.stopped == ['publish_path']
     assert processes.started[-1] == ('publish_path', ['republished'])
     assert any(call[0] == 'gui' and 'calculated path transform' in call[1] for call in outputs)
+
+
+def _tool_offset_transform(xyz, quaternion_xyzw):
+    return SimpleNamespace(
+        transform=SimpleNamespace(
+            translation=SimpleNamespace(x=xyz[0], y=xyz[1], z=xyz[2]),
+            rotation=SimpleNamespace(
+                x=quaternion_xyzw[0],
+                y=quaternion_xyzw[1],
+                z=quaternion_xyzw[2],
+                w=quaternion_xyzw[3],
+            ),
+        )
+    )
+
+
+def test_tool_offset_comparison_accepts_equivalent_quaternion_sign() -> None:
+    configured = {
+        'xyz': [-0.25, 0.0, 0.015],
+        'quaternion_xyzw': [0.0, -0.7071067812, 0.0, 0.7071067812],
+    }
+    transform = _tool_offset_transform(
+        configured['xyz'], [0.0, 0.7071067812, 0.0, -0.7071067812]
+    )
+
+    assert OperatorWindow._tool_offsets_match(configured, transform)
+
+
+def test_tool_offset_comparison_rejects_translation_or_rotation_mismatch() -> None:
+    configured = {
+        'xyz': [-0.25, 0.0, 0.015],
+        'quaternion_xyzw': [0.0, 0.0, 0.0, 1.0],
+    }
+
+    assert not OperatorWindow._tool_offsets_match(
+        configured, _tool_offset_transform([-0.249, 0.0, 0.015], [0.0, 0.0, 0.0, 1.0])
+    )
+    assert not OperatorWindow._tool_offsets_match(
+        configured, _tool_offset_transform(configured['xyz'], [0.0, 1.0, 0.0, 0.0])
+    )

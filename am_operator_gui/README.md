@@ -131,6 +131,10 @@ hardware-only convenience action: it reads that TF transform, stores its transla
 and XYZW quaternion as `fixed_tool_offset`, and passes the values to the arm
 controller/follower when they are next launched.
 
+At GUI startup, the same transform is checked against the configured offset when it
+is available. A mismatch produces a warning and makes the capture button red; a
+matching offset makes it green.
+
 No values are typed into the GUI. Before pressing the button, provide a valid,
 calibrated TF transform with exactly those frame names, keep the robot stationary and
 safe, and verify it first, for example:

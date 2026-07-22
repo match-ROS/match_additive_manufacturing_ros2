@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QPlainTextEdit,
     QSlider,
@@ -54,6 +55,7 @@ DEFAULT_FIXED_TOOL_OFFSET = {
     'xyz': [-0.25, 0.0, 0.015],
     'quaternion_xyzw': [0.0, -0.7071067812, 0.0, 0.7071067812],
 }
+TOOL_OFFSET_COMPARISON_TOLERANCE = 1e-6
 DEFAULT_SPRAY_DISTANCE_MAX_RATE = 0.02
 DEFAULT_SPRAY_DISTANCE_MM = 100.0
 DEFAULT_BASE_SMOOTHING = {
@@ -446,6 +448,9 @@ class OperatorWindow(QMainWindow):
         self._build_ui()
         self._connect_signals()
         self.ros_bridge.start()
+        # Give the TF listener a moment to receive the static tool transform before
+        # checking that the persisted calibration still matches the robot.
+        QTimer.singleShot(1000, self._check_configured_tool_offset)
 
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self._refresh_process_states)
@@ -843,6 +848,7 @@ class OperatorWindow(QMainWindow):
         self.arm_controllers_button = QPushButton('Start Controllers')
         self.switch_arm_velocity_button = QPushButton('Switch Arm Velocity')
         self.capture_tool_offset_button = QPushButton('Capture UR TCP Offset')
+        self._set_tool_offset_capture_button_state(matches=True)
         self.base_accuracy_monitor_button = QPushButton('Record Base Accuracy')
         self.tcp_accuracy_monitor_button = QPushButton('Record TCP Accuracy')
         self.accuracy_phase_combo = QComboBox()
@@ -1133,11 +1139,84 @@ class OperatorWindow(QMainWindow):
             'quaternion_xyzw': [float(rotation.x), float(rotation.y), float(rotation.z), float(rotation.w)],
         }
         self._save_config()
+        # The captured transform has just been saved, so it is now the configured value.
+        self._set_tool_offset_capture_button_state(matches=True)
         self._append_process_output(
             'gui',
             'saved fixed tool offset from robot_arm_tool0 -> robot_arm_tool0_controller; '
             'restart arm controllers and follower to apply',
         )
+
+    @staticmethod
+    def _tool_offsets_match(
+        configured: dict[str, list[float]],
+        transform,
+        tolerance: float = TOOL_OFFSET_COMPARISON_TOLERANCE,
+    ) -> bool:
+        """Compare a persisted tool offset with a TF transform.
+
+        Quaternions q and -q describe the same orientation, so compare their
+        normalized absolute dot product rather than their individual components.
+        """
+        translation = transform.transform.translation
+        rotation = transform.transform.rotation
+        captured_xyz = (float(translation.x), float(translation.y), float(translation.z))
+        captured_quaternion = (
+            float(rotation.x), float(rotation.y), float(rotation.z), float(rotation.w),
+        )
+        configured_xyz = configured['xyz']
+        configured_quaternion = configured['quaternion_xyzw']
+        if any(
+            not math.isclose(expected, actual, abs_tol=tolerance, rel_tol=0.0)
+            for expected, actual in zip(configured_xyz, captured_xyz)
+        ):
+            return False
+
+        configured_norm = math.sqrt(sum(value * value for value in configured_quaternion))
+        captured_norm = math.sqrt(sum(value * value for value in captured_quaternion))
+        if configured_norm == 0.0 or captured_norm == 0.0:
+            return False
+        quaternion_dot = sum(
+            expected * actual
+            for expected, actual in zip(configured_quaternion, captured_quaternion)
+        ) / (configured_norm * captured_norm)
+        return math.isclose(abs(quaternion_dot), 1.0, abs_tol=tolerance, rel_tol=0.0)
+
+    def _tool_offset_matches_transform(self, transform) -> bool:
+        return self._tool_offsets_match(self._configured_fixed_tool_offset(), transform)
+
+    def _set_tool_offset_capture_button_state(self, matches: bool) -> None:
+        if not hasattr(self, 'capture_tool_offset_button'):
+            return
+        color = '#c62828' if not matches else '#2e7d32'
+        self.capture_tool_offset_button.setStyleSheet(
+            f'QPushButton {{ background-color: {color}; color: white; }}'
+        )
+        self.capture_tool_offset_button.setToolTip(
+            'Configured UR TCP offset differs from the robot TF; capture it to update the configuration.'
+            if not matches else
+            'Configured UR TCP offset matches the robot TF.'
+        )
+
+    def _check_configured_tool_offset(self) -> None:
+        """Warn at startup if the hardware TCP calibration differs from configuration."""
+        if self.simulation_checkbox.isChecked():
+            return
+        transform = self.ros_bridge.lookup_tool_offset(
+            'robot_arm_tool0', 'robot_arm_tool0_controller')
+        if transform is None:
+            return
+        matches = self._tool_offset_matches_transform(transform)
+        self._set_tool_offset_capture_button_state(matches)
+        if matches:
+            return
+        message = (
+            'The configured UR TCP offset differs from the transform currently published by '
+            'robot_arm_tool0 -> robot_arm_tool0_controller. Capture the UR TCP offset before '
+            'starting the arm controllers or follower.'
+        )
+        self._append_process_output('gui', f'WARNING: {message}')
+        QMessageBox.warning(self, 'UR TCP Offset Mismatch', message)
 
     def _calculate_path_transform(self) -> None:
         index = self.index_spin.value()
