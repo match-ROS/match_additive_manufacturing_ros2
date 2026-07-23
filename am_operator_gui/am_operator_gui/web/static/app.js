@@ -73,6 +73,33 @@ function renderActionButtons(actions = {}) {
     button.setAttribute('aria-label', `${action.label}: ${action.detail}`);
   });
 }
+function renderHardwareTopicCheck(results = []) {
+  const guide = document.querySelector('.hardware-guide details');
+  if (!guide) return;
+  let table = document.querySelector('#hardware-check-table');
+  if (!table) {
+    table = document.createElement('table');
+    table.id = 'hardware-check-table';
+    table.className = 'hardware-check-table';
+    const header = table.createTHead().insertRow();
+    ['Check', 'Configured topic result'].forEach(label => {
+      const cell = document.createElement('th'); cell.textContent = label; header.append(cell);
+    });
+    const actions = guide.querySelector('.actions');
+    actions.insertAdjacentElement('afterend', table);
+  }
+  const body = table.tBodies[0] || table.createTBody();
+  body.replaceChildren();
+  const rows = results.length ? results : ['Not run yet'];
+  rows.forEach(result => {
+    const row = body.insertRow();
+    const passed = result.startsWith('OK');
+    const failed = result.startsWith('FAIL') || result.includes('skipped') || result.includes('failed');
+    row.className = passed ? 'check-ok' : (failed ? 'check-fail' : 'check-neutral');
+    const mark = row.insertCell(); mark.textContent = passed ? '✓' : (failed ? '✕' : '—');
+    const detail = row.insertCell(); detail.textContent = result;
+  });
+}
 function render(state) {
   latestState = state;
   const config = state.config || {};
@@ -83,6 +110,7 @@ function render(state) {
   document.querySelector('#status').innerHTML = Object.entries(labels).map(([key, label]) => `<span class="${state.status[key] ? 'ok' : 'wait'}">${label}: ${state.status[key] ? 'bereit' : 'wartet'}</span>`).join('');
   document.querySelector('#ros-state').textContent = state.ros_error ? `ROS nicht verbunden: ${state.ros_error}` : 'ROS Bridge aktiv';
   renderActionButtons(state.actions);
+  renderHardwareTopicCheck(state.hardware_topic_results || []);
   renderConsole(state.logs || []);
 }
 function showFeedback(message, isError = false) {

@@ -781,6 +781,8 @@ class OperatorWindow(QMainWindow):
         self.rviz_button = QPushButton('Open RViz')
         self.pid_gains_button = QPushButton('PID Gains...')
         self.base_smoothing_button = QPushButton('Base Smoothing...')
+        self.hardware_guide_button = QPushButton('Hardware Guide...')
+        self.check_hardware_topics_button = QPushButton('Check Hardware Topics')
         self.sync_workspace_button = QPushButton('Sync Workspace')
 
         launch_layout.addWidget(self.simulation_checkbox, 0, 0)
@@ -832,7 +834,9 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.rviz_button, 8, 2)
         launch_layout.addWidget(self.pid_gains_button, 8, 3)
         launch_layout.addWidget(self.base_smoothing_button, 8, 4)
-        launch_layout.addWidget(self.sync_workspace_button, 8, 5)
+        launch_layout.addWidget(self.hardware_guide_button, 8, 5)
+        launch_layout.addWidget(self.check_hardware_topics_button, 9, 4)
+        launch_layout.addWidget(self.sync_workspace_button, 9, 5)
 
         component_group = QGroupBox('Components')
         component_layout = QGridLayout(component_group)
@@ -973,6 +977,10 @@ class OperatorWindow(QMainWindow):
         self.launch_sim_button.clicked.connect(lambda: self._invoke_service_action('simulation'))
         self.pid_gains_button.clicked.connect(self._open_pid_gains_window)
         self.base_smoothing_button.clicked.connect(self._open_base_smoothing_window)
+        self.hardware_guide_button.clicked.connect(self._show_hardware_guide)
+        self.check_hardware_topics_button.clicked.connect(
+            lambda: self._invoke_service_action('check_hardware_topics')
+        )
         self.calculate_path_transform_button.clicked.connect(lambda: self._invoke_service_action('calculate_path_transform'))
         self.publish_path_button.clicked.connect(lambda: self._invoke_service_action('publish_path'))
         self.base_follower_button.clicked.connect(lambda: self._invoke_service_action('base_follower'))
@@ -1004,6 +1012,66 @@ class OperatorWindow(QMainWindow):
         self.nozzle_reference.valueChanged.connect(self._set_spray_distance_mm)
         self.nozzle_reference.valueChanged.connect(self._publish_overrides)
         self.nozzle_offset.valueChanged.connect(self._publish_overrides)
+
+    def _show_hardware_guide(self) -> None:
+        """Show the hardware-only topic contract next to the launch controls."""
+        profile = self._current_platform_profile()
+        pose_source = (
+            f"odometry {profile['odom_topic']}"
+            if self.odometry_pose_checkbox.isChecked()
+            else ('Vicon tool fallback' if self.vicon_tcp_base_pose_fallback_checkbox.isChecked()
+                  else self.base_pose_topic.text().strip())
+        )
+        lines = [
+            'Hardware mode: Launch All topic contract', '',
+            'Launch All starts only AM processing and followers. It does not start a base driver,',
+            'UR driver, Vicon bridge, robot_description publisher, controller manager, or safety system.', '',
+            'Inputs that must already be available',
+            f'  Base pose: {pose_source}',
+            '    Default: Vicon PoseStamped. Odometry mode needs nav_msgs/Odometry; the tool fallback',
+            '    needs the Vicon tool pose plus a live base-to-nozzle TF chain.',
+            f'  Tool marker: {self.arm_pose_topic.text().strip()} (geometry_msgs/PoseStamped, Vicon bridge)',
+            '  UR state: /robot/robot_description and /robot/joint_states (UR stack; robot_arm_ joint prefix)',
+            f'  TF: {self.external_map_frame.text().strip()} -> {self.robot_tree_root_frame.text().strip()} ->',
+            f'    {self.robot_base_frame.text().strip()}, plus the UR tree including robot_arm_nozzle_tip.',
+            f'  Controller manager: {self._arm_controller_manager()} with forward_velocity_controller active.', '',
+            'Publishers started locally by Launch All',
+            '  /base_path, /ur_path_transformed, /normal_vector, /base_path_tracking,',
+            '  /ur_path_tracking, trajectory references, /path_index, /start_condition,',
+            '  /velocity_override, /robot_pose, /vicon/tool_transformed, /current_nozzle_tip_pose,',
+            '  readiness topics under /am/, and the J-PARSE arm velocity chain.', '',
+            'Hardware command endpoints (hardware must subscribe)',
+            f"  Base: {profile['cmd_vel_topic']} ({'geometry_msgs/TwistStamped' if profile['output_stamped'] else 'geometry_msgs/Twist'})",
+            f'  Arm: {self._arm_velocity_command_topic()} (forward_velocity_controller command)', '',
+            'Before launching, verify each external input and command endpoint:',
+            '  ros2 topic info -v <topic>',
+            '  ros2 topic echo <topic> --once',
+            f'  ros2 control list_controllers --controller-manager {self._arm_controller_manager()}',
+            f'  ros2 run tf2_ros tf2_echo {self.robot_tree_root_frame.text().strip()} {self.robot_base_frame.text().strip()}', '',
+            'A command topic may have no publisher until its follower starts, but it must have the',
+            'expected hardware driver/controller subscriber before Start Following. Stop Following',
+            'sends zero commands; it is not an E-stop.',
+        ]
+        dialog = QDialog(self)
+        dialog.setWindowTitle('Hardware Guide')
+        dialog.resize(760, 650)
+        layout = QVBoxLayout(dialog)
+        guide = QPlainTextEdit('\n'.join(lines))
+        guide.setReadOnly(True)
+        layout.addWidget(guide)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        check_button = buttons.addButton('Check configured topics', QDialogButtonBox.ActionRole)
+
+        def check_topics() -> None:
+            results = self.service.check_hardware_topics()
+            guide.appendPlainText('\nTopic check results\n' + '\n'.join(results))
+            self._refresh_process_states()
+
+        check_button.clicked.connect(check_topics)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+        dialog.exec_()
 
     def _invoke_service_action(self, action: str) -> None:
         """Adapter from the retained Qt view to the shared control layer."""

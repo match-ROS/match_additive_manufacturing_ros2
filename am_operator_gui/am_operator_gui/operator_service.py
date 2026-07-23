@@ -65,6 +65,7 @@ ONE_SHOT_ACTIONS = {
     'move_arm': ('move_arm', 'Move Arm To Start', 'Stop Arm Move'),
     'switch_arm_velocity': ('switch_arm_velocity', 'Switch Arm Velocity', 'Switching Arm Velocity'),
     'accuracy_report': ('accuracy_report', 'Summarize Accuracy', 'Summarizing Accuracy'),
+    'check_hardware_topics': ('check_hardware_topics', 'Check Hardware Topics', 'Checking Hardware Topics'),
 }
 
 
@@ -101,6 +102,8 @@ class OperatorService:
         self._timers: list[Timer] = []
         self._following_active = False
         self._last_action_messages: dict[str, str] = {}
+        self._last_action_success: dict[str, bool] = {}
+        self._hardware_topic_results: list[str] = []
         self._live_path_index: int | None = None
         self._live_original_arm_index: int | None = None
 
@@ -235,7 +238,8 @@ class OperatorService:
         config.setdefault('nozzle_offset_mm', 0)
         return {'config': config, 'status': self._status, 'processes': processes,
                 'actions': self._action_states(),
-                'logs': list(self.logs), 'ros_error': self.ros_error}
+                'logs': list(self.logs), 'ros_error': self.ros_error,
+                'hardware_topic_results': self._hardware_topic_results}
 
     def _process_state(self, names: tuple[str, ...], start_label: str, stop_label: str, one_shot: bool = False) -> dict[str, str]:
         managed = [self.processes.get(name) for name in names]
@@ -281,6 +285,7 @@ class OperatorService:
         states['rviz'] = self._process_state(('rviz',), 'Open RViz', 'Open RViz')
         states['capture_tool_offset'] = self._message_state('capture_tool_offset', 'Capture UR TCP Offset')
         states['calculate_path_transform'] = self._message_state('calculate_path_transform', 'Calculate Path Transform')
+        states['check_hardware_topics'] = self._message_state('check_hardware_topics', 'Check Hardware Topics')
         ready = all(self._status.values())
         controls = all(self._is_running(name) for name in ('path_index', 'base_follower', 'arm_follower'))
         states['start_following'] = {
@@ -303,7 +308,7 @@ class OperatorService:
         message = self._last_action_messages.get(action)
         return {
             'label': label,
-            'state': 'success' if message else 'idle',
+            'state': ('success' if self._last_action_success.get(action, True) else 'error') if message else 'idle',
             'detail': message or 'Noch nicht ausgeführt',
         }
 
@@ -451,6 +456,9 @@ class OperatorService:
         if name == 'calculate_path_transform':
             self.calculate_path_transform()
             return
+        if name == 'check_hardware_topics':
+            self.check_hardware_topics()
+            return
         if name == 'pose_adapters':
             self._toggle_pose_adapters()
             return
@@ -476,6 +484,55 @@ class OperatorService:
             self.log('transformations', 'stopped by operator')
             return
         self.start_pose_adapters()
+
+    def check_hardware_topics(self) -> list[str]:
+        """Check the selected hardware input and command graph endpoints."""
+        if bool(self._setting('simulation', False)):
+            message = 'Hardware topic check skipped: disable Simulation first'
+            self.log('hardware_check', message)
+            self._last_action_messages['check_hardware_topics'] = message
+            self._last_action_success['check_hardware_topics'] = False
+            self._hardware_topic_results = [message]
+            return [message]
+        if not self.ensure_ros():
+            message = 'Hardware topic check failed: ROS bridge unavailable'
+            self._last_action_messages['check_hardware_topics'] = message
+            self._last_action_success['check_hardware_topics'] = False
+            self._hardware_topic_results = [message]
+            return [message]
+        profile = self._profile()
+        base_topic = str(self._setting('base_pose_topic', '/vicon/Base_RB/Base_RB'))
+        requirements = [
+            # This is the bridge input.  /vicon/tool_transformed is generated
+            # locally by vicon_ee_static_tf during Launch All, so checking it
+            # before launch would always create a misleading failure.
+            ('/vicon/Tool_Flange/Tool_Flange',
+             'geometry_msgs/msg/PoseStamped', 'publisher'),
+            ('/robot/robot_description', 'std_msgs/msg/String', 'publisher'),
+            ('/robot/joint_states', 'sensor_msgs/msg/JointState', 'publisher'),
+            (str(profile['cmd_vel']),
+             'geometry_msgs/msg/TwistStamped' if bool(profile['stamped']) else 'geometry_msgs/msg/Twist',
+             'subscriber'),
+            ('/robot/arm/forward_velocity_controller/commands',
+             'std_msgs/msg/Float64MultiArray', 'subscriber'),
+        ]
+        if bool(self._setting('use_odometry_robot_pose', False)):
+            requirements.insert(0, (str(profile['odom']), 'nav_msgs/msg/Odometry', 'publisher'))
+        elif not bool(self._setting('use_vicon_tcp_base_pose_fallback', False)):
+            requirements.insert(0, (base_topic, 'geometry_msgs/msg/PoseStamped', 'publisher'))
+        arm_pose_topic = str(self._setting('arm_pose_topic', '/vicon/tool_transformed'))
+        if arm_pose_topic != '/vicon/tool_transformed':
+            requirements.insert(1, (arm_pose_topic, 'geometry_msgs/msg/PoseStamped', 'publisher'))
+        messages = self.ros_bridge.check_topic_contract(requirements)
+        for message in messages:
+            self.log('hardware_check', message)
+        failures = sum(message.startswith('FAIL') for message in messages)
+        summary = f'Hardware topic check: {len(messages) - failures}/{len(messages)} OK'
+        self.log('hardware_check', summary)
+        self._last_action_messages['check_hardware_topics'] = summary
+        self._last_action_success['check_hardware_topics'] = failures == 0
+        self._hardware_topic_results = [*messages, summary]
+        return self._hardware_topic_results
 
     def command_for(self, name: str) -> list[str] | None:
         simulation = bool(self._setting('simulation', False))

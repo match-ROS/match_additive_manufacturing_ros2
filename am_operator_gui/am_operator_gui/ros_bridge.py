@@ -396,6 +396,44 @@ class RosBridge:
             except Exception:
                 pass
 
+    def check_topic_contract(self, requirements: list[tuple[str, str, str]]) -> list[str]:
+        """Return compact pass/fail messages for (topic, type, endpoint) checks.
+
+        ``endpoint`` is ``publisher`` for a hardware/Vicon input and
+        ``subscriber`` for a command endpoint.  This uses the ROS graph only;
+        freshness and controller state remain separate runtime checks.
+        """
+        if self._node is None:
+            return ['ROS bridge is unavailable']
+        messages: list[str] = []
+        for topic, expected_type, endpoint in requirements:
+            try:
+                # get_topic_names_and_types() returns (topic_name, [type, ...]),
+                # so flatten the advertised type list rather than accidentally
+                # displaying the topic name as a type.
+                types = {
+                    topic_type
+                    for topic_name, topic_types in self._node.get_topic_names_and_types()
+                    if topic_name == topic
+                    for topic_type in topic_types
+                }
+                infos = (
+                    self._node.get_publishers_info_by_topic(topic)
+                    if endpoint == 'publisher'
+                    else self._node.get_subscriptions_info_by_topic(topic)
+                )
+            except Exception as exc:
+                messages.append(f'FAIL {topic}: graph query failed ({exc})')
+                continue
+            if expected_type not in types:
+                found = ', '.join(sorted(types)) or 'not advertised'
+                messages.append(f'FAIL {topic}: expected {expected_type}, found {found}')
+            elif not infos:
+                messages.append(f'FAIL {topic}: no {endpoint} found')
+            else:
+                messages.append(f'OK {topic}: {expected_type}, {len(infos)} {endpoint}(s)')
+        return messages
+
     @property
     def has_path(self) -> bool:
         return bool(self._node and self._node.has_path)
