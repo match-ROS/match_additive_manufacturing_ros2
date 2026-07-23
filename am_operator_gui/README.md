@@ -1,5 +1,52 @@
 # AM Operator GUI — Hardware Operation
 
+## Local web GUI (preview, runs alongside the PyQt reference GUI)
+
+The web interface listens only on `127.0.0.1:8000`, opens the browser automatically,
+and uses the same persisted configuration and process manager as the reference GUI.
+It is intentionally local because it can start robot processes and issue motion
+commands.
+
+```bash
+cd ~/wattle_daub_ros2_ws
+colcon build --packages-select am_operator_gui --symlink-install
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+src/match_additive_manufacturing_ros2/am_operator_gui/scripts/start_web_gui.sh
+```
+
+On its first run, the script creates an isolated `.web-venv` next to the package
+and installs FastAPI, Uvicorn, and Jinja2 there; no system-wide `pip` installation
+is needed. (On Ubuntu, install `python3-venv` once if it is not already present.)
+
+For a clean local setup, use
+`config/operator_gui_config.example.json` as the starting point for
+`config/operator_gui_config.json` and select the trajectory directory in either
+interface. The example deliberately contains no workstation-specific absolute path.
+
+### Browser test with Playwright
+
+The browser test starts the actual start script on a free local port, opens
+Chromium, verifies key controls and setting persistence, and checks the mobile
+layout. It uses a temporary configuration and does not command motion.
+
+```bash
+cd ~/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/am_operator_gui
+.web-venv/bin/python -m pip install -r requirements-web-test.txt
+.web-venv/bin/python -m playwright install chromium
+.web-venv/bin/python -m pytest -q test/test_web_e2e.py
+```
+
+For a non-default local port or to suppress automatic browser opening, set
+`AM_OPERATOR_WEB_PORT` and `AM_OPERATOR_WEB_NO_BROWSER=1` before invoking the
+start script.
+
+The existing PyQt GUI remains available through `ros2 launch am_operator_gui
+am_operator_gui.launch.py`. It now uses the same toolkit-neutral configuration,
+process registry, ROS bridge, and command service as the web interface. Do not run
+both interfaces as active controllers at the same time: they share ROS topics and
+can manage the same processes.
+
 This guide describes how to use `am_operator_gui` with a real mobile base, UR arm,
 and Vicon tracking system. The GUI starts and supervises the AM path publisher,
 pose adapters, controller stack, path-index publisher, and base/arm followers. It

@@ -36,6 +36,8 @@ from PyQt5.QtWidgets import (
 
 from am_operator_gui.process_manager import ProcessRegistry
 from am_operator_gui.ros_bridge import RosBridge
+from am_operator_gui.config_store import ConfigStore
+from am_operator_gui.operator_service import OperatorService
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -431,15 +433,21 @@ class OperatorWindow(QMainWindow):
         self._launch_all_active = False
         self._launch_all_timers: list[QTimer] = []
         self._updating_path_indices = False
-        self._config = self._load_config()
-        self._pid_gains_dialog: Optional[PidGainsDialog] = None
-        self._base_smoothing_dialog: Optional[BaseSmoothingDialog] = None
-
-        self.processes = ProcessRegistry(output_callback=self._on_process_output)
-        self.ros_bridge = RosBridge(
+        # The reference GUI and web GUI deliberately share persistence, process
+        # ownership and ROS bridge lifecycle through this toolkit-neutral layer.
+        self.service = OperatorService(
+            output_callback=self._on_process_output,
             status_callback=self._on_ros_status,
             path_index_callback=self._on_path_index,
         )
+        self._config = self.service.config
+        self._pid_gains_dialog: Optional[PidGainsDialog] = None
+        self._base_smoothing_dialog: Optional[BaseSmoothingDialog] = None
+
+        self.processes = self.service.processes
+        if not self.service.ensure_ros():
+            raise RuntimeError(self.service.ros_error or 'failed to start ROS bridge')
+        self.ros_bridge = self.service.ros_bridge
 
         self.ros_status_changed.connect(self._set_ros_status)
         self.path_index_changed.connect(self._set_path_index_from_ros)
@@ -447,7 +455,6 @@ class OperatorWindow(QMainWindow):
 
         self._build_ui()
         self._connect_signals()
-        self.ros_bridge.start()
         # Give the TF listener a moment to receive the static tool transform before
         # checking that the persisted calibration still matches the robot.
         QTimer.singleShot(1000, self._check_configured_tool_offset)
@@ -460,23 +467,11 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _load_config(self) -> dict:
-        for config_path in (CONFIG_PATH, LEGACY_CONFIG_PATH):
-            try:
-                with config_path.open('r', encoding='utf-8') as config_file:
-                    data = json.load(config_file)
-            except FileNotFoundError:
-                continue
-            except (OSError, json.JSONDecodeError):
-                return {}
-            return data if isinstance(data, dict) else {}
-        return {}
+        return self.service.store.load()
 
     def _save_config(self) -> None:
         try:
-            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with CONFIG_PATH.open('w', encoding='utf-8') as config_file:
-                json.dump(self._config, config_file, indent=2, sort_keys=True)
-                config_file.write('\n')
+            self.service.store.save(self._config)
         except OSError as exc:
             self._append_process_output('gui', f'failed to save config: {exc}')
 
@@ -974,28 +969,28 @@ class OperatorWindow(QMainWindow):
         self.vicon_tcp_base_pose_fallback_checkbox.toggled.connect(
             self._set_use_vicon_tcp_base_pose_fallback
         )
-        self.launch_button.clicked.connect(self._toggle_launch_all)
-        self.launch_sim_button.clicked.connect(self._toggle_sim)
+        self.launch_button.clicked.connect(lambda: self._invoke_service_action('launch_all'))
+        self.launch_sim_button.clicked.connect(lambda: self._invoke_service_action('simulation'))
         self.pid_gains_button.clicked.connect(self._open_pid_gains_window)
         self.base_smoothing_button.clicked.connect(self._open_base_smoothing_window)
-        self.calculate_path_transform_button.clicked.connect(self._calculate_path_transform)
-        self.publish_path_button.clicked.connect(self._publish_path)
-        self.base_follower_button.clicked.connect(self._toggle_base_follower)
-        self.arm_follower_button.clicked.connect(self._toggle_arm_follower)
-        self.path_index_button.clicked.connect(self._toggle_path_index)
-        self.current_tcp_pose_button.clicked.connect(self._toggle_current_tcp_pose)
-        self.arm_controllers_button.clicked.connect(self._toggle_arm_controllers)
-        self.switch_arm_velocity_button.clicked.connect(self._switch_arm_velocity_controller)
-        self.capture_tool_offset_button.clicked.connect(self._capture_tool_offset)
-        self.base_accuracy_monitor_button.clicked.connect(self._toggle_base_accuracy_monitor)
-        self.tcp_accuracy_monitor_button.clicked.connect(self._toggle_tcp_accuracy_monitor)
-        self.accuracy_report_button.clicked.connect(self._summarize_accuracy_runs)
-        self.move_base_button.clicked.connect(self._move_base_to_start)
-        self.move_arm_button.clicked.connect(self._move_arm_to_start)
-        self.start_following_button.clicked.connect(self._start_following)
-        self.stop_following_button.clicked.connect(self._stop_following)
-        self.rviz_button.clicked.connect(self._open_rviz)
-        self.sync_workspace_button.clicked.connect(self._sync_workspace)
+        self.calculate_path_transform_button.clicked.connect(lambda: self._invoke_service_action('calculate_path_transform'))
+        self.publish_path_button.clicked.connect(lambda: self._invoke_service_action('publish_path'))
+        self.base_follower_button.clicked.connect(lambda: self._invoke_service_action('base_follower'))
+        self.arm_follower_button.clicked.connect(lambda: self._invoke_service_action('arm_follower'))
+        self.path_index_button.clicked.connect(lambda: self._invoke_service_action('path_index'))
+        self.current_tcp_pose_button.clicked.connect(lambda: self._invoke_service_action('transformations'))
+        self.arm_controllers_button.clicked.connect(lambda: self._invoke_service_action('controllers'))
+        self.switch_arm_velocity_button.clicked.connect(lambda: self._invoke_service_action('switch_arm_velocity'))
+        self.capture_tool_offset_button.clicked.connect(lambda: self._invoke_service_action('capture_tool_offset'))
+        self.base_accuracy_monitor_button.clicked.connect(lambda: self._invoke_service_action('base_accuracy'))
+        self.tcp_accuracy_monitor_button.clicked.connect(lambda: self._invoke_service_action('tcp_accuracy'))
+        self.accuracy_report_button.clicked.connect(lambda: self._invoke_service_action('accuracy_report'))
+        self.move_base_button.clicked.connect(lambda: self._invoke_service_action('move_base'))
+        self.move_arm_button.clicked.connect(lambda: self._invoke_service_action('move_arm'))
+        self.start_following_button.clicked.connect(lambda: self._invoke_service_action('start_following'))
+        self.stop_following_button.clicked.connect(lambda: self._invoke_service_action('stop_following'))
+        self.rviz_button.clicked.connect(lambda: self._invoke_service_action('rviz'))
+        self.sync_workspace_button.clicked.connect(lambda: self._invoke_service_action('sync_workspace'))
         self.index_spin.valueChanged.connect(self._publish_path_index)
         self.index_spin.valueChanged.connect(self._set_original_arm_index_from_tracking)
         self.original_arm_index_spin.valueChanged.connect(self._set_tracking_index_from_original_arm)
@@ -1009,6 +1004,23 @@ class OperatorWindow(QMainWindow):
         self.nozzle_reference.valueChanged.connect(self._set_spray_distance_mm)
         self.nozzle_reference.valueChanged.connect(self._publish_overrides)
         self.nozzle_offset.valueChanged.connect(self._publish_overrides)
+
+    def _invoke_service_action(self, action: str) -> None:
+        """Adapter from the retained Qt view to the shared control layer."""
+        if action in {'base_accuracy', 'tcp_accuracy'}:
+            self._config['accuracy_phase'] = str(self.accuracy_phase_combo.currentData())
+        self._config['path_index'] = int(self.index_spin.value())
+        self._config['original_arm_index'] = int(self._original_arm_path_index())
+        self.service.action(action)
+        self._launch_all_active = self.service._launch_all_active
+        if action == 'calculate_path_transform':
+            transform = self._config.get('path_transform', {})
+            if isinstance(transform, dict):
+                self._set_path_transform_widget_values(**{
+                    key: float(transform.get(key, 0.0))
+                    for key in ('x', 'y', 'z', 'yaw_deg')
+                })
+        self._refresh_process_states()
 
     def _current_platform_key(self) -> str:
         value = self.platform_combo.currentData()
@@ -2262,6 +2274,7 @@ class OperatorWindow(QMainWindow):
         self.processes.start(SYNC_WORKSPACE_NAME, command)
 
     def _publish_path_index(self, value: int) -> None:
+        self._config['path_index'] = int(value)
         self.ros_bridge.publish_path_index(value)
         self._append_process_output('ros', f'published /path_index_command {value}')
 
@@ -2285,6 +2298,9 @@ class OperatorWindow(QMainWindow):
         tracking_index = int(mapper(value)) if mapper is not None else int(value)
         self._updating_path_indices = True
         self.index_spin.setValue(max(0, tracking_index))
+        config = getattr(self, '_config', None)
+        if isinstance(config, dict):
+            config['original_arm_index'] = int(value)
         self._updating_path_indices = False
 
     @staticmethod
@@ -2661,8 +2677,12 @@ class OperatorWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._detach_process_output_callbacks()
-        self.processes.stop_all()
-        self.ros_bridge.stop()
+        service = getattr(self, 'service', None)
+        if service is not None:
+            service.close()
+        else:  # compatibility for lightweight reference tests/adapters
+            self.processes.stop_all()
+            self.ros_bridge.stop()
         event.accept()
 
 

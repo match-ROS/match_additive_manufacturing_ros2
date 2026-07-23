@@ -309,42 +309,80 @@ class RosBridge:
         if not rclpy.ok():
             rclpy.init(args=None)
         self._node = OperatorGuiNode(self._status_callback, self._path_index_callback)
-        self._executor_thread = threading.Thread(target=rclpy.spin, args=(self._node,), daemon=True)
+        self._executor_thread = threading.Thread(
+            target=self._spin_node,
+            args=(self._node,),
+            daemon=True,
+        )
         self._executor_thread.start()
+
+    @staticmethod
+    def _spin_node(node: OperatorGuiNode) -> None:
+        try:
+            rclpy.spin(node)
+        except Exception:
+            # Ctrl-C may shut down rclpy before an ASGI/Qt lifecycle hook has
+            # joined this daemon thread. There is no recovery work to do then.
+            if rclpy.ok():
+                raise
 
     def stop(self) -> None:
         if self._node is not None:
-            self._node.destroy_node()
+            try:
+                self._node.destroy_node()
+            except Exception:
+                pass
             self._node = None
         if rclpy.ok():
-            rclpy.shutdown()
+            try:
+                rclpy.shutdown()
+            except Exception:
+                pass
         if self._executor_thread is not None:
             self._executor_thread.join(timeout=1.0)
             self._executor_thread = None
 
     def publish_path_index(self, value: int) -> None:
         if self._node is not None:
-            self._node.publish_path_index(value)
+            try:
+                self._node.publish_path_index(value)
+            except Exception:
+                pass
 
     def reset_tf_buffer(self) -> None:
         if self._node is not None:
-            self._node.reset_tf_buffer()
+            try:
+                self._node.reset_tf_buffer()
+            except Exception:
+                pass
 
     def publish_start_condition(self, value: bool = True) -> None:
         if self._node is not None:
-            self._node.publish_start_condition(value)
+            try:
+                self._node.publish_start_condition(value)
+            except Exception:
+                pass
 
     def publish_velocity_override(self, value: float) -> None:
         if self._node is not None:
-            self._node.publish_velocity_override(value)
+            try:
+                self._node.publish_velocity_override(value)
+            except Exception:
+                pass
 
     def publish_nozzle_height(self, value: float) -> None:
         if self._node is not None:
-            self._node.publish_nozzle_height(value)
+            try:
+                self._node.publish_nozzle_height(value)
+            except Exception:
+                pass
 
     def publish_spray_distance(self, value: float) -> None:
         if self._node is not None:
-            self._node.publish_spray_distance(value)
+            try:
+                self._node.publish_spray_distance(value)
+            except Exception:
+                pass
 
     def lookup_tool_offset(self, tool_frame: str, controller_frame: str):
         if self._node is None:
@@ -353,7 +391,10 @@ class RosBridge:
 
     def publish_stop_commands(self, arm_frame: str) -> None:
         if self._node is not None:
-            self._node.publish_stop_commands(arm_frame)
+            try:
+                self._node.publish_stop_commands(arm_frame)
+            except Exception:
+                pass
 
     @property
     def has_path(self) -> bool:

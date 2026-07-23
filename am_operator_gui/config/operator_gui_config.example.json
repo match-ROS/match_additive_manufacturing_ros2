@@ -1,0 +1,21 @@
+{
+  "platform": "robotnik",
+  "simulation": true,
+  "simulation_gui": false,
+  "trajectory_directory": "",
+  "control_frame": "map",
+  "base_pose_topic": "/vicon/Base_RB/Base_RB",
+  "arm_pose_topic": "/vicon/tool_transformed",
+  "external_map_frame": "map",
+  "robot_base_frame": "base_link",
+  "robot_tree_root_frame": "odom",
+  "default_velocity_enabled": false,
+  "default_velocity": 0.1,
+  "spray_distance_mm": 100.0,
+  "path_transform": {
+    "x": 0.0,
+    "y": 0.0,
+    "z": 0.0,
+    "yaw_deg": 0.0
+  }
+}

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AM Operator</title><link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="app-header">
+  <div class="brand">
+    <img class="match-logo" src="/img/B04_Icon-2022-png-500px.png" alt="MATCH">
+    <div><p class="eyebrow">MATCH Additive Manufacturing</p><h1>AM Operator</h1></div>
+  </div>
+  <div class="header-meta">
+    <span id="ros-state" class="connection-state">Lokale Web-GUI</span>
+    <div class="amc-brand"><span>Ein Forschungsprojekt von</span><img src="/img/AMC_Logo_2022_AMC-Blau_SVG.svg" alt="Additive Manufacturing Center Aachen"></div>
+  </div>
+</header>
+<main>
+  <section class="card system-card"><h2>System</h2><div class="fields">
+    <label>Plattform <select data-setting="platform"><option value="robotnik">Robotnik</option><option value="bunker">Bunker</option></select></label>
+    <label><input type="checkbox" data-setting="simulation"> Simulation</label>
+    <label>Pfadordner <input data-setting="trajectory_directory"></label>
+    <label>Control frame <input data-setting="control_frame"></label>
+    <label>Path index <input type="number" min="0" data-setting="path_index"></label>
+    <label>Original arm index <input type="number" min="0" data-setting="original_arm_index"></label>
+    <label>Follower <select data-setting="follower_type"><option value="pid">PID</option><option value="pure_pursuit">Pure Pursuit</option></select></label>
+    <label><input type="checkbox" data-setting="diff_drive_mode"> Diff drive mode</label>
+    <label><input type="checkbox" data-setting="use_odometry_robot_pose"> Odometry für Robot pose</label>
+    <label><input type="checkbox" data-setting="use_vicon_tcp_base_pose_fallback"> Fallback: Base Pose</label>
+    <label>Direction <select data-setting="direction_mode"><option value="goal_direction">goal_direction</option><option value="speed_orthogonal">speed_orthogonal</option></select></label>
+  </div><div class="actions"><button data-action="launch_all">Launch All</button><button data-action="stop_all" class="danger">Stop All</button><button data-action="simulation">Launch Sim</button><button data-action="pose_adapters">Pose Adapters</button><button data-action="rviz">Open RViz</button><button data-action="sync_workspace">Sync Workspace</button></div></section>
+  <section class="card components-card"><h2>Komponenten</h2><div class="actions">
+    <button data-action="publish_path">Publish Path</button><button data-action="path_index">Launch Path Index</button><button data-action="base_follower">Launch Base Follower</button><button data-action="arm_follower">Launch Arm Follower</button><button data-action="transformations">Launch Transformations</button><button data-action="controllers">Start Controllers</button><button data-action="switch_arm_velocity">Switch Arm Velocity</button><button data-action="capture_tool_offset">Capture UR TCP Offset</button>
+  </div></section>
+  <section class="card motion-card"><h2>Motion</h2><div class="actions"><button data-action="move_base">Move Base To Start</button><button data-action="move_arm">Move Arm To Start</button><button data-action="start_following" class="success">Start Following</button><button data-action="stop_following" class="danger">Stop Following</button></div></section>
+  <section class="card accuracy-card"><details><summary><strong>Accuracy-Messungen</strong><span>Aufzeichnung und Auswertung</span></summary><p>Wähle die Messphase, zeichne Base- oder TCP-Genauigkeit auf und erstelle anschließend die Zusammenfassung.</p><div class="fields"><label>Accuracy phase <select data-setting="accuracy_phase"><option value="baseline">Baseline</option><option value="tuned">Tuned</option></select></label></div><div class="actions"><button data-action="base_accuracy">Record Base Accuracy</button><button data-action="tcp_accuracy">Record TCP Accuracy</button><button data-action="accuracy_report">Summarize Accuracy</button></div></details></section>
+  <section class="card overrides-card"><h2>Overrides und ROS</h2><div class="fields">
+    <label>Sprühabstand (mm) <input type="number" step="0.1" data-setting="spray_distance_mm"></label>
+    <label><input type="checkbox" data-setting="default_velocity_enabled"> Default velocity</label>
+    <label>Default velocity (m/s) <input type="number" min="0.001" max="10" step="0.001" data-setting="default_velocity"></label>
+    <label>Velocity (%) <input type="number" min="0" max="200" data-setting="velocity_override"></label>
+    <label>Nozzle offset (mm) <input type="number" step="1" data-setting="nozzle_offset_mm"></label>
+    <label>Vicon Base Topic <input data-setting="base_pose_topic"></label><label>EE Pose Topic <input data-setting="arm_pose_topic"></label>
+    <label>External map <input data-setting="external_map_frame"></label><label>Robot base frame <input data-setting="robot_base_frame"></label><label>Robot TF root <input data-setting="robot_tree_root_frame"></label>
+  </div><div class="actions"><button data-action="calculate_path_transform">Calculate Path Transform</button></div><div id="status" class="status"></div></section>
+  <section class="card advanced-card"><details><summary><strong>Erweiterte Einstellungen</strong><span>PID, Smoothing und Pfadtransformation</span></summary><p>PID-Werte, Base smoothing, Pfadtransformationen und weitere Referenz-GUI-Einstellungen können als JSON bearbeitet werden.</p><textarea id="advanced-json" spellcheck="false"></textarea><div class="actions"><button id="save-advanced">Advanced settings speichern</button></div></details></section>
+  <section class="card console">
+    <div class="console-header"><div><h2>Console</h2><p id="log-count" class="console-count">Warte auf Ausgaben</p></div>
+      <div class="console-controls">
+        <label>Quelle <select id="console-source"><option value="all">Alle Prozesse</option></select></label>
+        <fieldset class="console-levels"><legend>Level</legend>
+          <label><input type="checkbox" data-console-level value="error" checked> Error</label>
+          <label><input type="checkbox" data-console-level value="warning" checked> Warning</label>
+          <label><input type="checkbox" data-console-level value="info" checked> Info</label>
+          <label><input type="checkbox" data-console-level value="debug" checked> Debug</label>
+        </fieldset>
+        <label class="console-search">Text <input id="console-search" type="search" placeholder="Ausgabe durchsuchen"></label>
+        <label class="console-autoscroll"><input id="console-autoscroll" type="checkbox" checked> Auto-scroll</label>
+        <button id="console-clear" type="button" class="quiet-button">Anzeige leeren</button>
+      </div>
+    </div>
+    <div class="console-legend" aria-label="Log-Level Legende"><span class="log-dot log-error"></span>Error <span class="log-dot log-warning"></span>Warning <span class="log-dot log-info"></span>Info <span class="log-dot log-debug"></span>Debug</div>
+    <p id="action-feedback" class="action-feedback" role="status" aria-live="polite"></p>
+    <div id="log" class="log-output" role="log" aria-live="polite" aria-label="Konsolenausgabe"></div>
+  </section>
+</main><script src="/static/app.js"></script></body></html>
