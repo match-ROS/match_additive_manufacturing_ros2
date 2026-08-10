@@ -10,10 +10,14 @@
     "method": "moving_average",
     "moving_average_window_size": 5
   },
+  "contour_control_enabled": false,
   "control_frame": "map",
   "default_velocity": 0.05,
   "default_velocity_enabled": true,
   "external_map_frame": "map",
+  "follower_type": "pure_pursuit",
+  "original_arm_index": 0,
+  "path_index": 0,
   "path_transforms_by_directory": {
     "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/bunker_paired_demo": {
       "x": 1.0,
@@ -28,7 +32,25 @@
       "z": 0.0
     }
   },
-  "platform": "robotnik",
+  "path_transforms_by_platform_directory": {
+    "mur620_left_arm_sim": {
+      "/home/rosmatch/workspaces/print2_ws/src/match_additive_manufacturing_ros2/components/david_path_mur": {
+        "x": 46.17903629090401,
+        "y": 43.097670977789775,
+        "yaw_deg": -179.99997727670905,
+        "z": -8.772430397739263e-07
+      }
+    },
+    "mur620_sim": {
+      "/home/rosmatch/workspaces/print2_ws/src/match_additive_manufacturing_ros2/components/david_path_mur": {
+        "x": 46.17903629090401,
+        "y": 43.097670977789775,
+        "yaw_deg": -179.99997727670905,
+        "z": -8.772430397739263e-07
+      }
+    }
+  },
+  "platform": "mur620_left_arm_sim",
   "platform_control_settings": {
     "bunker": {
       "diff_drive_mode": true,
@@ -46,7 +68,7 @@
   "simulation": true,
   "simulation_gui": false,
   "spray_distance_mm": 100.0,
-  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path",
+  "trajectory_directory": "/home/rosmatch/workspaces/print2_ws/src/match_additive_manufacturing_ros2/components/david_path_mur",
   "use_odometry_robot_pose": false,
   "use_vicon_tcp_base_pose_fallback": false
 }

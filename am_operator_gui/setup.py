@@ -35,6 +35,7 @@ setup(
             'am_operator_web = am_operator_gui.web_main:main',
             'controller_switch_guard = am_operator_gui.controller_switch_guard:main',
             'external_base_reference = am_operator_gui.external_base_reference:main',
+            'mur_arm_readiness = am_operator_gui.mur_arm_readiness:main',
             'odometry_robot_pose = am_operator_gui.odometry_robot_pose:main',
             'pose_stamped_adapter = am_operator_gui.pose_stamped_adapter:main',
             'vicon_tcp_robot_pose_backup = am_operator_gui.vicon_tcp_robot_pose_backup:main',

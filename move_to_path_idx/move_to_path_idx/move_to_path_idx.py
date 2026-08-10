@@ -68,6 +68,7 @@ class MoveToPathIdx(Node):
         self.declare_parameter('publish_start_condition', False)
         self.declare_parameter('start_condition_topic', '/start_condition')
         self.declare_parameter('start_condition_publish_count', 5)
+        self.declare_parameter('wait_for_ready_topic', '')
 
         self.path: Optional[Path] = None
         self.robot_pose: Optional[Pose] = None
@@ -77,6 +78,7 @@ class MoveToPathIdx(Node):
         self.target_yaw: Optional[float] = None
         self.has_logged_waiting = False
         self.start_condition_remaining = 0
+        self.ready_for_start = not str(self.get_parameter('wait_for_ready_topic').value).strip()
         self.output_stamped = as_bool(self.get_parameter('output_stamped').value)
         self.command_frame_id = str(self.get_parameter('command_frame_id').value)
         self.diff_drive_mode = as_bool(self.get_parameter('diff_drive_mode').value)
@@ -96,6 +98,9 @@ class MoveToPathIdx(Node):
             str(self.get_parameter('start_condition_topic').value),
             path_qos,
         )
+        ready_topic = str(self.get_parameter('wait_for_ready_topic').value).strip()
+        if ready_topic:
+            self.create_subscription(Bool, ready_topic, self._ready_cb, path_qos)
 
         pose_type = str(self.get_parameter('robot_pose_type').value).strip().lower()
         if pose_type in {'pose', 'geometry_msgs/msg/pose'}:
@@ -131,8 +136,15 @@ class MoveToPathIdx(Node):
         self.robot_pose = msg.pose
         self._maybe_start()
 
+    def _ready_cb(self, msg: Bool) -> None:
+        self.ready_for_start = bool(msg.data)
+        if self.ready_for_start:
+            self._maybe_start()
+
     def _maybe_start(self) -> None:
         if self.state != ControlState.WAITING_FOR_INPUTS:
+            return
+        if not self.ready_for_start:
             return
         if self.path is None or self.robot_pose is None:
             if not self.has_logged_waiting:

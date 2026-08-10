@@ -218,6 +218,7 @@ PLATFORM_PROFILES = {
         'move_max_linear': 0.2,
         'move_max_lateral': 0.2,
         'move_max_angular': 0.5,
+        'arm_control_supported': True,
     },
     'bunker': {
         'label': 'Bunker',
@@ -239,6 +240,71 @@ PLATFORM_PROFILES = {
         'move_max_linear': 0.2,
         'move_max_lateral': 0.0,
         'move_max_angular': 0.5,
+        'arm_control_supported': True,
+    },
+    'mur620_sim': {
+        'label': 'MuR620 (simulation)',
+        'follower_type': 'pure_pursuit',
+        'diff_drive_mode': True,
+        'path_topic': '/base_path',
+        # `mur_launch_sim` publishes this ground-truth PoseStamped endpoint
+        # without requiring hardware localization or a mocap system.
+        'robot_pose_topic': '/mur620a/ground_truth/pose',
+        'odom_topic': '/mur620a/ground_truth/odom',
+        'cmd_vel_topic': '/mur620a/mobile_base_controller/cmd_vel',
+        'output_stamped': True,
+        'command_frame_id': 'mur620a/base_footprint',
+        'path_frame': 'map',
+        'external_map_frame': 'map',
+        'robot_base_frame': 'mur620a/base_footprint',
+        'robot_tree_root_frame': 'mur620a/odom',
+        'max_vx': 0.2,
+        'max_vy': 0.0,
+        'max_wz': 0.5,
+        'move_max_linear': 0.15,
+        'move_max_lateral': 0.0,
+        'move_max_angular': 0.4,
+        # The MuR arm needs its own controller integration.  Do not route it
+        # through the Robotnik UR controller stack while that work is pending.
+        'arm_control_supported': False,
+    },
+    'mur620_left_arm_sim': {
+        # This is intentionally a separate profile from ``mur620_sim``.  The
+        # latter remains the low-risk base-only validation path.
+        'label': 'MuR620 left arm (simulation)',
+        'follower_type': 'pure_pursuit',
+        'diff_drive_mode': True,
+        'path_topic': '/base_path',
+        'robot_pose_topic': '/mur620a/ground_truth/pose',
+        'odom_topic': '/mur620a/ground_truth/odom',
+        'cmd_vel_topic': '/mur620a/mobile_base_controller/cmd_vel',
+        'output_stamped': True,
+        'command_frame_id': 'mur620a/base_footprint',
+        'path_frame': 'map',
+        'external_map_frame': 'map',
+        'robot_base_frame': 'mur620a/base_footprint',
+        'robot_tree_root_frame': 'mur620a/odom',
+        'max_vx': 0.2,
+        'max_vy': 0.0,
+        'max_wz': 0.5,
+        'move_max_linear': 0.15,
+        'move_max_lateral': 0.0,
+        'move_max_angular': 0.4,
+        'arm_control_supported': True,
+        'mur_native_arm': True,
+        'arm_base_link': 'mur620a/UR10_l/base_link',
+        'arm_command_frame': 'UR10_l/base_link',
+        'arm_tip_link': 'mur620a/UR10_l/tool0',
+        'arm_joint_prefix': 'UR10_l/',
+        'robot_description_topic': '/mur620a/robot_description',
+        'joint_states_topic': '/mur620a/joint_states',
+        'arm_velocity_command_topic': '/mur620a/forward_velocity_controller_l/commands',
+        'arm_controller_manager': '/mur620a/controller_manager',
+        'arm_trajectory_topic': '/mur620a/joint_trajectory_controller/joint_trajectory',
+        'arm_world_twist_topic': '/mur620a/arm_following/twist_world',
+        'arm_stop_topic': '/mur620a/jparse_velocity_controller_l/twist_cmd',
+        'arm_stop_frame': 'UR10_l/base_link',
+        'arm_move_to_start_supported': True,
     },
 }
 
@@ -430,6 +496,7 @@ class OperatorWindow(QMainWindow):
         self._has_arm_pose = False
         self._jparse_ready = False
         self._controller_ready = False
+        self._last_safety_gate_ready = False
         self._launch_all_active = False
         self._launch_all_timers: list[QTimer] = []
         self._updating_path_indices = False
@@ -485,6 +552,10 @@ class OperatorWindow(QMainWindow):
     def _configured_default_velocity_enabled(self) -> bool:
         return bool(self._config.get('default_velocity_enabled', False))
 
+    def _configured_contour_control_enabled(self) -> bool:
+        """Return the explicitly persisted, default-off contour correction choice."""
+        return bool(self._config.get('contour_control_enabled', False))
+
     def _configured_path_transform(self) -> dict[str, float]:
         return self._path_transform_for_directory(self._configured_trajectory_directory())
 
@@ -493,10 +564,18 @@ class OperatorWindow(QMainWindow):
         return str(directory.expanduser().resolve())
 
     def _path_transform_for_directory(self, directory: Path) -> dict[str, float]:
+        directory_key = self._path_directory_key(directory)
+        platform_combo = getattr(self, 'platform_combo', None)
+        platform = self._current_platform_key() if platform_combo is not None else ''
+        platform_transforms = self._config.get('path_transforms_by_platform_directory', {})
+        if platform and isinstance(platform_transforms, dict):
+            configured = platform_transforms.get(platform, {})
+            if isinstance(configured, dict) and isinstance(configured.get(directory_key), dict):
+                return configured[directory_key]
         transforms = self._config.get('path_transforms_by_directory', {})
         configured = {}
         if isinstance(transforms, dict):
-            configured = transforms.get(self._path_directory_key(directory), {})
+            configured = transforms.get(directory_key, {})
         # Support older configuration files until the transform is next saved.
         if not isinstance(configured, dict):
             configured = {}
@@ -852,6 +931,12 @@ class OperatorWindow(QMainWindow):
         self.accuracy_report_button = QPushButton('Summarize Accuracy Runs')
         self.default_velocity_checkbox = QCheckBox('Default velocity')
         self.default_velocity_checkbox.setChecked(self._configured_default_velocity_enabled())
+        self.contour_control_checkbox = QCheckBox('Enable bounded contour correction')
+        self.contour_control_checkbox.setToolTip(
+            'Off by default. Enables only the bounded Y/Z correction input; '
+            'it still requires fresh Keyence errors and /start_condition.'
+        )
+        self.contour_control_checkbox.setChecked(self._configured_contour_control_enabled())
         self.default_velocity_spin = QDoubleSpinBox()
         self.default_velocity_spin.setRange(0.001, 10.0)
         self.default_velocity_spin.setDecimals(3)
@@ -875,6 +960,7 @@ class OperatorWindow(QMainWindow):
         component_layout.addWidget(self.accuracy_report_button, 6, 2)
         component_layout.addWidget(self.default_velocity_checkbox, 4, 0)
         component_layout.addWidget(self.default_velocity_spin, 4, 1)
+        component_layout.addWidget(self.contour_control_checkbox, 4, 2, 1, 2)
 
         motion_group = QGroupBox('Motion')
         motion_layout = QGridLayout(motion_group)
@@ -996,6 +1082,7 @@ class OperatorWindow(QMainWindow):
         self.original_arm_index_spin.valueChanged.connect(self._set_tracking_index_from_original_arm)
         self.velocity_slider.valueChanged.connect(self._publish_overrides)
         self.default_velocity_checkbox.toggled.connect(self._set_default_velocity_enabled)
+        self.contour_control_checkbox.toggled.connect(self._set_contour_control_enabled)
         self.default_velocity_spin.valueChanged.connect(self._set_default_velocity)
         self.path_transform_x_spin.valueChanged.connect(self._set_path_transform)
         self.path_transform_y_spin.valueChanged.connect(self._set_path_transform)
@@ -1014,7 +1101,9 @@ class OperatorWindow(QMainWindow):
         self.service.action(action)
         self._launch_all_active = self.service._launch_all_active
         if action == 'calculate_path_transform':
-            transform = self._config.get('path_transform', {})
+            transform = self._path_transform_for_directory(
+                Path(self.path_folder.text().strip()).expanduser()
+            )
             if isinstance(transform, dict):
                 self._set_path_transform_widget_values(**{
                     key: float(transform.get(key, 0.0))
@@ -1025,10 +1114,35 @@ class OperatorWindow(QMainWindow):
     def _current_platform_key(self) -> str:
         value = self.platform_combo.currentData()
         key = str(value).strip().lower()
-        return key if key in PLATFORM_PROFILES else 'robotnik'
+        # Do not silently reinterpret a malformed selection as Robotnik: that
+        # could start a substantially different simulator than the operator
+        # selected.  Callers that only need display defaults handle the empty
+        # value safely; launch paths reject it explicitly.
+        return key if key in PLATFORM_PROFILES else ''
 
     def _current_platform_profile(self) -> dict:
-        return PLATFORM_PROFILES[self._current_platform_key()]
+        return PLATFORM_PROFILES.get(self._current_platform_key(), PLATFORM_PROFILES['robotnik'])
+
+    def _arm_platform_profile(self) -> dict:
+        """Return a profile without making lightweight command tests build widgets."""
+        profile_getter = getattr(self, '_current_platform_profile', None)
+        return profile_getter() if profile_getter is not None else PLATFORM_PROFILES['robotnik']
+
+    def _arm_control_supported(self) -> bool:
+        """Whether this platform has a verified arm-control integration."""
+        # Keeping a default here also makes the individual command helpers
+        # usable in headless/unit-test contexts that do not construct widgets.
+        platform_combo = getattr(self, 'platform_combo', None)
+        if platform_combo is None:
+            return True
+        return bool(self._current_platform_profile().get('arm_control_supported', False))
+
+    def _report_unsupported_arm_control(self, action: str) -> None:
+        self._append_process_output(
+            'safety',
+            f'{action} is unavailable for {self._current_platform_profile()["label"]}: '
+            'no verified arm controller integration is configured',
+        )
 
     def _current_follower_type(self) -> str:
         value = self.follower_type_combo.currentData()
@@ -1036,7 +1150,7 @@ class OperatorWindow(QMainWindow):
         return follower_type if follower_type in {'pid', 'pure_pursuit'} else 'pid'
 
     def _diff_drive_mode(self) -> bool:
-        return self._current_platform_key() == 'bunker' or self.diff_drive_checkbox.isChecked()
+        return bool(OperatorWindow._arm_platform_profile(self).get('diff_drive_mode', False)) or self.diff_drive_checkbox.isChecked()
 
     def _sync_diff_drive_checkbox(self) -> None:
         is_bunker = self._current_platform_key() == 'bunker'
@@ -1082,7 +1196,7 @@ class OperatorWindow(QMainWindow):
         self._sync_platform_control_widgets()
         self._sync_platform_frame_widgets()
         self._save_config()
-        profile = self._current_platform_profile()
+        profile = OperatorWindow._arm_platform_profile(self)
         self.path_status.setText(f"{profile['path_topic']}: ready" if self._has_path else f"{profile['path_topic']}: waiting")
 
     def _set_follower_type(self, *_args) -> None:
@@ -1107,16 +1221,31 @@ class OperatorWindow(QMainWindow):
 
     def _set_path_transform(self, *_args) -> None:
         directory = Path(self.path_folder.text().strip()).expanduser()
-        transforms = self._config.setdefault('path_transforms_by_directory', {})
-        if not isinstance(transforms, dict):
-            transforms = {}
-            self._config['path_transforms_by_directory'] = transforms
-        transforms[self._path_directory_key(directory)] = {
+        transform = {
             'x': float(self.path_transform_x_spin.value()),
             'y': float(self.path_transform_y_spin.value()),
             'z': float(self.path_transform_z_spin.value()),
             'yaw_deg': float(self.path_transform_yaw_spin.value()),
         }
+        platform_combo = getattr(self, 'platform_combo', None)
+        platform = self._current_platform_key() if platform_combo is not None else ''
+        if platform:
+            platform_transforms = self._config.setdefault('path_transforms_by_platform_directory', {})
+            if not isinstance(platform_transforms, dict):
+                platform_transforms = {}
+                self._config['path_transforms_by_platform_directory'] = platform_transforms
+            per_platform = platform_transforms.setdefault(platform, {})
+            if not isinstance(per_platform, dict):
+                per_platform = {}
+                platform_transforms[platform] = per_platform
+            per_platform[self._path_directory_key(directory)] = transform
+            self._save_config()
+            return
+        transforms = self._config.setdefault('path_transforms_by_directory', {})
+        if not isinstance(transforms, dict):
+            transforms = {}
+            self._config['path_transforms_by_directory'] = transforms
+        transforms[self._path_directory_key(directory)] = transform
         self._save_config()
 
     def _set_path_transform_values(self, x: float, y: float, z: float, yaw_deg: float) -> None:
@@ -1456,7 +1585,7 @@ class OperatorWindow(QMainWindow):
         return parameters
 
     def _path_transform_launch_arguments(self) -> list[str]:
-        return [
+        arguments = [
             (
                 'path_transform_xyz:='
                 f'[{self._ros_float_literal(self.path_transform_x_spin.value())}, '
@@ -1468,11 +1597,23 @@ class OperatorWindow(QMainWindow):
                 f'{self._ros_float_literal(self.path_transform_yaw_spin.value())}'
             ),
         ]
+        return arguments
 
     def _simulation_mode_changed(self, _enabled: bool) -> None:
         self._config['simulation'] = bool(_enabled)
         self._save_config()
         self._refresh_process_states()
+
+    def _set_contour_control_enabled(self, enabled: bool) -> None:
+        """Persist an explicit operator choice for the bounded correction path."""
+        self._config['contour_control_enabled'] = bool(enabled)
+        self._save_config()
+
+    def _contour_control_enabled(self) -> bool:
+        checkbox = getattr(self, 'contour_control_checkbox', None)
+        if checkbox is not None:
+            return bool(checkbox.isChecked())
+        return bool(getattr(self, '_config', {}).get('contour_control_enabled', False))
 
     def _use_sim_time(self) -> str:
         return 'true' if self.simulation_checkbox.isChecked() else 'false'
@@ -1489,7 +1630,7 @@ class OperatorWindow(QMainWindow):
         self._launch_all_active = True
         self._append_process_output(LAUNCH_ALL_NAME, 'starting managed component set')
         self.ros_bridge.publish_start_condition(False)
-        self.ros_bridge.publish_stop_commands(self.control_frame.text().strip())
+        OperatorWindow._publish_stop_commands(self)
         if self.simulation_checkbox.isChecked():
             self._start_sim()
         else:
@@ -1502,14 +1643,17 @@ class OperatorWindow(QMainWindow):
         self._start_base_follower()
         self._start_arm_follower(move_to_start_pose=False)
         if self.simulation_checkbox.isChecked():
-            self._start_move_arm_to_start(wait_for_start_condition=True)
-            self._schedule_launch_all_action(13000, lambda: self._start_move_base_to_start(
-                publish_start_condition=True,
-            ))
+            arm_ready_topic = '/am/move_arm_ready'
+            self._start_move_arm_to_start(
+                wait_for_start_condition=True, ready_topic=arm_ready_topic)
+            # Each mover waits for its own path and pose inputs.  The arm is
+            # still gated by /start_pose_reached, without an arbitrary delay.
+            self._start_move_base_to_start(
+                publish_start_condition=True, wait_for_ready_topic=arm_ready_topic)
 
     def _stop_launch_all_components(self) -> None:
         self.ros_bridge.publish_start_condition(False)
-        self.ros_bridge.publish_stop_commands(self.control_frame.text().strip())
+        OperatorWindow._publish_stop_commands(self)
         for timer in self._launch_all_timers:
             timer.stop()
             timer.deleteLater()
@@ -1582,7 +1726,8 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_sim(self) -> None:
-        if self._current_platform_key() == 'bunker':
+        platform = self._current_platform_key()
+        if platform == 'bunker':
             headless_value = 'false' if self._simulation_gui_enabled() else 'true'
             command = [
                 'ros2',
@@ -1593,7 +1738,34 @@ class OperatorWindow(QMainWindow):
                 'launch_rviz:=false',
                 f'publish_robot_pose:={self._sim_publish_robot_pose()}',
             ]
-        else:
+        elif platform in {'mur620_sim', 'mur620_left_arm_sim'}:
+            gui_value = 'true' if self._simulation_gui_enabled() else 'false'
+            command = [
+                'ros2',
+                'launch',
+                'mur_launch_sim',
+                'mur620.launch.py',
+                'robot_name:=mur620a',
+                'world:=empty',
+                'x:=44.0',
+                'y:=44.0',
+                'z:=0.07',
+                'Y:=0.0',
+                'include_gz:=true',
+                f'gazebo_gui:={gui_value}',
+                f'use_camera:={gui_value}',
+                f'enable_sensors:={gui_value}',
+                f'use_simple_collisions:={str(not self._simulation_gui_enabled()).lower()}',
+                'ground_truth:=true',
+                'fake_localization:=true',
+                'navigation:=false',
+                f'load_arm_controllers:={str(platform == "mur620_left_arm_sim").lower()}',
+                'load_lift_controllers:=false',
+                'launch_moveit:=false',
+                f'launch_jparse_idk:={str(platform == "mur620_left_arm_sim").lower()}',
+                'auto_switch_arm_controllers:=false',
+            ]
+        elif platform == 'robotnik':
             gui_value = 'true' if OperatorWindow._simulation_gui_enabled(self) else 'false'
             command = [
                 'ros2',
@@ -1605,6 +1777,12 @@ class OperatorWindow(QMainWindow):
                 'arm_type:=ur20',
                 f'publish_robot_pose:={self._sim_publish_robot_pose()}',
             ]
+        else:
+            self._append_process_output(
+                SIM_NAME,
+                'refusing to launch simulation: select a valid platform explicitly',
+            )
+            return
         self._append_process_output(SIM_NAME, ' '.join(command))
         self.processes.start(SIM_NAME, command)
 
@@ -1661,7 +1839,7 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_base_follower(self) -> None:
-        profile = self._current_platform_profile()
+        profile = OperatorWindow._arm_platform_profile(self)
         diff_drive = self._diff_drive_mode()
         command = [
             'ros2',
@@ -1714,29 +1892,34 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_arm_follower(self, move_to_start_pose: bool = False) -> None:
+        if not OperatorWindow._arm_control_supported(self):
+            OperatorWindow._report_unsupported_arm_control(self, 'Arm follower')
+            return
         simulation_checkbox = getattr(self, 'simulation_checkbox', None)
         nozzle_pose_topic = (
             '/current_tcp_pose' if simulation_checkbox is not None and simulation_checkbox.isChecked()
             else '/current_nozzle_tip_pose'
         )
+        profile = OperatorWindow._arm_platform_profile(self)
+        mur_native_arm = bool(profile.get('mur_native_arm', False))
         command = [
             'ros2',
             'launch',
             'ur_trajectory_follower',
             'sideways_arm_control.launch.py',
             f'use_sim_time:={self._use_sim_time()}',
-            'robot_name:=robot',
-            'arm:=arm',
-            'joint_prefix:=robot_arm_',
-            'base_link:=robot_arm_base_link',
-            'tip_link:=robot_arm_tool0',
+            f'robot_name:={"mur620a" if mur_native_arm else "robot"}',
+            f'arm:={"l" if mur_native_arm else "arm"}',
+            f'joint_prefix:={profile.get("arm_joint_prefix", "robot_arm_")}',
+            f'base_link:={profile.get("arm_base_link", "robot_arm_base_link")}',
+            f'tip_link:={profile.get("arm_tip_link", "robot_arm_tool0")}',
             f'path_frame:={self.control_frame.text().strip()}',
-            'robot_description_topic:=/robot/robot_description',
-            'joint_states_topic:=/robot/joint_states',
+            f'robot_description_topic:={profile.get("robot_description_topic", "/robot/robot_description")}',
+            f'joint_states_topic:={profile.get("joint_states_topic", "/robot/joint_states")}',
             f"velocity_command_topic:={self._arm_velocity_command_topic()}",
             'start_jparse_controller:=false',
             'start_command_transform:=false',
-            'publish_current_pose_from_tf:=false',
+            f'publish_current_pose_from_tf:={str(mur_native_arm).lower()}',
             'publish_path:=false',
             'publish_path_index:=false',
             f'move_to_start_pose:={str(move_to_start_pose).lower()}',
@@ -1760,7 +1943,10 @@ class OperatorWindow(QMainWindow):
             'arm_reference_topic:=/arm_trajectory_reference',
             'desired_speed_topic:=/desired_arm_speed',
             f'default_velocity:={self._ros_float_literal(self._default_velocity_param())}',
+            'contour_control_enabled:=' + str(OperatorWindow._contour_control_enabled(self)).lower(),
         ]
+        if mur_native_arm:
+            command.append(f'combined_twist_source_topic:={profile["arm_world_twist_topic"]}')
         command.extend(OperatorWindow._tool_offset_launch_arguments(self))
         command.extend(self._pid_launch_arguments(
             'arm_direction',
@@ -2076,7 +2262,25 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_arm_controllers(self) -> None:
+        if not OperatorWindow._arm_control_supported(self):
+            OperatorWindow._report_unsupported_arm_control(self, 'Arm controller stack')
+            return
         simulation = self.simulation_checkbox.isChecked()
+        profile = OperatorWindow._arm_platform_profile(self)
+        if profile.get('mur_native_arm', False):
+            command = [
+                'ros2', 'launch', 'am_operator_gui', 'mur_arm_velocity_stack.launch.py',
+                f'use_sim_time:={self._use_sim_time()}', 'robot_name:=mur620a', 'arm:=l',
+                f'path_frame:={self.control_frame.text().strip()}',
+                f'arm_base_link:={profile["arm_base_link"]}',
+                f'controller_frame:={profile.get("arm_command_frame", profile["arm_base_link"])}',
+                f'source_twist_topic:={profile["arm_world_twist_topic"]}',
+                'controller_twist_topic:=/mur620a/jparse_velocity_controller_l/twist_cmd',
+                f'velocity_command_topic:={profile["arm_velocity_command_topic"]}',
+            ]
+            self._append_process_output(ARM_CONTROLLERS_NAME, ' '.join(command))
+            self.processes.start(ARM_CONTROLLERS_NAME, command)
+            return
         command = [
             'ros2',
             'launch',
@@ -2117,7 +2321,11 @@ class OperatorWindow(QMainWindow):
         self._start_move_base_to_start(publish_start_condition=False)
         self._refresh_process_states()
 
-    def _start_move_base_to_start(self, publish_start_condition: bool = False) -> None:
+    def _start_move_base_to_start(
+        self,
+        publish_start_condition: bool = False,
+        wait_for_ready_topic: str = '',
+    ) -> None:
         profile = self._current_platform_profile()
         diff_drive = self._diff_drive_mode()
         command = [
@@ -2134,7 +2342,9 @@ class OperatorWindow(QMainWindow):
             '-p', f"output_stamped:={str(bool(profile['output_stamped'])).lower()}",
             '-p', f"command_frame_id:={profile['command_frame_id']}",
             '-p', f'diff_drive_mode:={str(diff_drive).lower()}',
+            '-p', f"target_yaw_mode:={profile.get('start_target_yaw_mode', 'auto')}",
             '-p', f'path_index:={self.index_spin.value()}',
+            *( ['-p', f'wait_for_ready_topic:={wait_for_ready_topic}'] if wait_for_ready_topic else [] ),
             '-p', f'publish_start_condition:={str(publish_start_condition).lower()}',
             '-p', 'start_condition_topic:=/start_pose_reached',
             '-p', 'distance_tolerance:=0.06',
@@ -2161,7 +2371,15 @@ class OperatorWindow(QMainWindow):
         self._start_move_arm_to_start(wait_for_start_condition=False)
         self._refresh_process_states()
 
-    def _start_move_arm_to_start(self, wait_for_start_condition: bool = False) -> None:
+    def _start_move_arm_to_start(
+        self,
+        wait_for_start_condition: bool = False,
+        ready_topic: str = '',
+    ) -> None:
+        if not OperatorWindow._arm_control_supported(self):
+            OperatorWindow._report_unsupported_arm_control(self, 'Move arm to start')
+            return
+        profile = OperatorWindow._arm_platform_profile(self)
         command = [
             'ros2',
             'launch',
@@ -2173,7 +2391,8 @@ class OperatorWindow(QMainWindow):
             f'path_index:={OperatorWindow._original_arm_path_index(self)}',
             f'wait_for_start_condition:={str(wait_for_start_condition).lower()}',
             'start_condition_topic:=/start_pose_reached',
-            'cmd_vel_topic:=/jparse_velocity_controller_ur/twist_cmd_world',
+            *( [f'ready_topic:={ready_topic}'] if ready_topic else [] ),
+            f"cmd_vel_topic:={profile.get('arm_world_twist_topic', '/jparse_velocity_controller_ur/twist_cmd_world')}",
             f'path_frame:={self.control_frame.text().strip()}',
         ]
         command.extend(self._pid_launch_arguments(
@@ -2188,6 +2407,9 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_switch_arm_velocity_controller(self) -> None:
+        if not OperatorWindow._arm_control_supported(self):
+            OperatorWindow._report_unsupported_arm_control(self, 'Switch arm velocity controller')
+            return
         command = [
             'ros2',
             'control',
@@ -2205,13 +2427,15 @@ class OperatorWindow(QMainWindow):
     def _start_following(self) -> None:
         if not self._motion_ready():
             self._append_process_output('safety', self._motion_not_ready_reason())
+            return
         missing_processes = self._missing_control_process_names()
         if missing_processes:
             self._append_process_output(
                 'safety',
-                'starting following with missing control process(es): '
+                'following blocked; missing control process(es): '
                 + ', '.join(missing_processes),
             )
+            return
         self.ros_bridge.publish_path_index(self.index_spin.value())
         self._append_process_output(
             'ros',
@@ -2227,7 +2451,7 @@ class OperatorWindow(QMainWindow):
         for delay_ms in range(0, 1000, 100):
             QTimer.singleShot(
                 delay_ms,
-                lambda: self.ros_bridge.publish_stop_commands(self.control_frame.text().strip()),
+                lambda: OperatorWindow._publish_stop_commands(self),
             )
         self._style_button(self.stop_following_button, 'red')
 
@@ -2377,12 +2601,15 @@ class OperatorWindow(QMainWindow):
         jparse_ready: bool,
         controller_ready: bool,
     ) -> None:
+        was_safety_ready = getattr(self, '_last_safety_gate_ready', False)
+        safety_ready = all((has_path, has_robot_pose, has_arm_pose, jparse_ready, controller_ready))
+        self._last_safety_gate_ready = safety_ready
         self._has_path = has_path
         self._has_robot_pose = has_robot_pose
         self._has_arm_pose = has_arm_pose
         self._jparse_ready = jparse_ready
         self._controller_ready = controller_ready
-        profile = self._current_platform_profile()
+        profile = OperatorWindow._arm_platform_profile(self)
         path_topic = str(profile['path_topic'])
         pose_topic = str(profile['robot_pose_topic'])
         self.path_status.setText(f'{path_topic}: ready' if has_path else f'{path_topic}: waiting')
@@ -2394,7 +2621,29 @@ class OperatorWindow(QMainWindow):
         self.arm_control_status.setText(
             'arm control: ready' if arm_ready else 'arm control: waiting'
         )
+        if was_safety_ready and not safety_ready:
+            self._append_process_output('safety', 'readiness lost; publishing stop commands')
+            self.ros_bridge.publish_start_condition(False)
+            OperatorWindow._publish_stop_commands(self)
         self._refresh_process_states()
+
+    def _publish_stop_commands(self) -> None:
+        """Stop the selected platform directly, even if controller bridges died."""
+        profile = OperatorWindow._arm_platform_profile(self)
+        arm_topic = str(profile.get('arm_stop_topic', '/jparse_velocity_controller_ur/twist_cmd_world'))
+        arm_frame = str(profile.get('arm_stop_frame', self.control_frame.text().strip()))
+        try:
+            self.ros_bridge.publish_stop_commands(
+                arm_frame,
+                base_topic=str(profile['cmd_vel_topic']),
+                base_stamped=bool(profile['output_stamped']),
+                base_frame=str(profile['command_frame_id']),
+                arm_topic=arm_topic,
+            )
+        except TypeError:
+            # Lightweight test doubles and third-party bridge integrations may
+            # still implement the historic one-argument method.
+            self.ros_bridge.publish_stop_commands(arm_frame)
 
     def _set_path_index_from_ros(self, value: int) -> None:
         self.index_spin.blockSignals(True)
@@ -2612,14 +2861,23 @@ class OperatorWindow(QMainWindow):
         ]
 
     def _arm_controller_manager(self) -> str:
+        profile = OperatorWindow._arm_platform_profile(self)
+        if profile.get('mur_native_arm', False):
+            return str(profile['arm_controller_manager'])
         return '/robot/controller_manager' if self.simulation_checkbox.isChecked() else '/robot/arm/controller_manager'
 
     def _arm_velocity_command_topic(self) -> str:
+        profile = OperatorWindow._arm_platform_profile(self)
+        if profile.get('mur_native_arm', False):
+            return str(profile['arm_velocity_command_topic'])
         if self.simulation_checkbox.isChecked():
             return '/robot/arm_forward_velocity_controller/commands'
         return '/robot/arm/forward_velocity_controller/commands'
 
     def _arm_trajectory_topic(self) -> str:
+        profile = self._current_platform_profile()
+        if profile.get('mur_native_arm', False):
+            return str(profile['arm_trajectory_topic'])
         if self.simulation_checkbox.isChecked():
             return '/robot/joint_trajectory_controller/joint_trajectory'
         return '/robot/arm/joint_trajectory_controller/joint_trajectory'

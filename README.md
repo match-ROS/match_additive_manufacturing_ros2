@@ -46,6 +46,42 @@ ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py launch_sim:=true
 See [am_bringup/README.md](am_bringup/README.md) for topic checks, the start-pose
 handoff, and the current Robotnik UR velocity-controller caveat.
 
+## Reproducible Development Setup
+
+Use [dependencies/print_system.jazzy.repos](dependencies/print_system.jazzy.repos)
+to create the pinned ROS 2 print-system foundation.  The manifest deliberately
+excludes ROS 1 reference repositories; keep those outside the colcon source tree.
+The QTM and Keyence ROS 2 packages currently await publication from their mixed
+source repositories, [match_mocap](https://github.com/match-ROS/match_mocap)
+and [match_hardware_utilities](https://github.com/match-ROS/match_hardware_utilities).
+They must be committed to named Jazzy branches and pinned in the manifest before
+claiming a complete reproducible sensor-enabled workspace.
+
+When the mixed sensor repositories are present locally, build only their ROS 2
+package roots; an unqualified `colcon build` also discovers their legacy catkin
+packages:
+
+```bash
+cd ~/workspaces/print2_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install --base-paths \
+  src/match_additive_manufacturing_ros2 \
+  src/match_mocap/mocap_toolbox_ros2 \
+  src/match_hardware_utilities/keyence_profile_ros2
+```
+
+The system-wide topic, frame, safety, and operating-profile rules are defined in
+[docs/print_system_contract.md](docs/print_system_contract.md).  New platform,
+mocap, scanner, or process-control work must conform to that contract before it
+is exposed through the operator GUI.
+
+The current hardware-free build and test baseline is recorded in
+[docs/offline_verification.md](docs/offline_verification.md).
+The ordered development and hardware-commissioning stages are in
+[docs/implementation_plan.md](docs/implementation_plan.md).
+For a MuR620 with MiR base and two UR10 arms, without Robotnik, use the staged
+[MuR620 installation manual](docs/mur620_install.md).
+
 ## Development Direction
 
 The near-term simulation target is Robotnik RB-VOGUI + UR because omnidirectional

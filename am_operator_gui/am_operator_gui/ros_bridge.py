@@ -21,6 +21,7 @@ class OperatorGuiNode(Node):
         self,
         status_callback: Optional[StatusCallback] = None,
         path_index_callback: Optional[PathIndexCallback] = None,
+        robot_pose_topic: str = '/robot_pose',
     ) -> None:
         super().__init__('am_operator_gui')
         self._status_callback = status_callback
@@ -65,7 +66,9 @@ class OperatorGuiNode(Node):
         self.create_subscription(Path, '/base_path', self._base_path_cb, 10)
         self.create_subscription(Path, '/ur_path_transformed', self._ur_path_cb, path_index_qos)
         self.create_subscription(Path, '/ur_path_tracking', self._tracking_arm_path_cb, path_index_qos)
-        self.create_subscription(PoseStamped, '/robot_pose', self._robot_pose_cb, 10)
+        self._robot_pose_subscription = None
+        self._robot_pose_topic = ''
+        self.set_robot_pose_topic(robot_pose_topic)
         self.create_subscription(PoseStamped, '/current_deposition_pose', self._arm_pose_cb, 10)
         self.create_subscription(Bool, '/am/jparse_ready', self._jparse_ready_cb, path_index_qos)
         self.create_subscription(
@@ -84,7 +87,24 @@ class OperatorGuiNode(Node):
             '/jparse_velocity_controller_ur/twist_cmd_world',
             10,
         )
+        self._profiled_stop_publishers = {}
         self.create_timer(0.1, self._freshness_tick)
+
+    def set_robot_pose_topic(self, topic: str) -> None:
+        """Subscribe status/calibration tracking to the selected platform pose."""
+        selected = str(topic).strip() or '/robot_pose'
+        if selected == self._robot_pose_topic:
+            return
+        if self._robot_pose_subscription is not None:
+            self.destroy_subscription(self._robot_pose_subscription)
+        self._robot_pose_topic = selected
+        self._robot_pose_subscription = self.create_subscription(
+            PoseStamped, selected, self._robot_pose_cb, 10)
+        self._has_robot_pose = False
+        self._last_robot_pose_time = None
+        with self._latest_pose_lock:
+            self._latest_robot_pose = None
+        self._emit_status()
 
     def publish_path_index(self, value: int) -> None:
         self._path_index_pub.publish(Int32(data=int(value)))
@@ -114,12 +134,42 @@ class OperatorGuiNode(Node):
         """Discard transforms from a previous simulation clock epoch."""
         self._tf_buffer.clear()
 
-    def publish_stop_commands(self, arm_frame: str) -> None:
-        self._base_stop_pub.publish(Twist())
+    def publish_stop_commands(
+        self,
+        arm_frame: str,
+        *,
+        base_topic: str = '/robot/robotnik_base_control/cmd_vel_unstamped',
+        base_stamped: bool = False,
+        base_frame: str = '',
+        arm_topic: str = '/jparse_velocity_controller_ur/twist_cmd_world',
+    ) -> None:
+        """Publish direct zero commands to the active platform command inputs.
+
+        A stop must not rely on the normal follower/transform bridge still
+        running.  Platform-specific topics are created lazily so this one GUI
+        bridge can fail closed for Robotnik, Bunker, and native MuR profiles.
+        """
+        base_key = ('base', base_topic, base_stamped)
+        base_pub = self._profiled_stop_publishers.get(base_key)
+        if base_pub is None:
+            base_pub = self.create_publisher(TwistStamped if base_stamped else Twist, base_topic, 10)
+            self._profiled_stop_publishers[base_key] = base_pub
+        if base_stamped:
+            base_stop = TwistStamped()
+            base_stop.header.stamp = self.get_clock().now().to_msg()
+            base_stop.header.frame_id = base_frame
+            base_pub.publish(base_stop)
+        else:
+            base_pub.publish(Twist())
+        arm_key = ('arm', arm_topic)
+        arm_pub = self._profiled_stop_publishers.get(arm_key)
+        if arm_pub is None:
+            arm_pub = self.create_publisher(TwistStamped, arm_topic, 10)
+            self._profiled_stop_publishers[arm_key] = arm_pub
         arm_stop = TwistStamped()
         arm_stop.header.stamp = self.get_clock().now().to_msg()
         arm_stop.header.frame_id = arm_frame
-        self._arm_stop_pub.publish(arm_stop)
+        arm_pub.publish(arm_stop)
 
     @property
     def has_path(self) -> bool:
@@ -299,16 +349,22 @@ class RosBridge:
         self,
         status_callback: Optional[StatusCallback] = None,
         path_index_callback: Optional[PathIndexCallback] = None,
+        robot_pose_topic: str = '/robot_pose',
     ) -> None:
         self._status_callback = status_callback
         self._path_index_callback = path_index_callback
         self._node: Optional[OperatorGuiNode] = None
         self._executor_thread: Optional[threading.Thread] = None
+        self._robot_pose_topic = robot_pose_topic
 
     def start(self) -> None:
         if not rclpy.ok():
             rclpy.init(args=None)
-        self._node = OperatorGuiNode(self._status_callback, self._path_index_callback)
+        self._node = OperatorGuiNode(
+            self._status_callback,
+            self._path_index_callback,
+            self._robot_pose_topic,
+        )
         self._executor_thread = threading.Thread(
             target=self._spin_node,
             args=(self._node,),
@@ -356,6 +412,14 @@ class RosBridge:
             except Exception:
                 pass
 
+    def set_robot_pose_topic(self, topic: str) -> None:
+        self._robot_pose_topic = str(topic).strip() or '/robot_pose'
+        if self._node is not None:
+            try:
+                self._node.set_robot_pose_topic(self._robot_pose_topic)
+            except Exception:
+                pass
+
     def publish_start_condition(self, value: bool = True) -> None:
         if self._node is not None:
             try:
@@ -389,10 +453,10 @@ class RosBridge:
             return None
         return self._node.lookup_tool_offset(tool_frame, controller_frame)
 
-    def publish_stop_commands(self, arm_frame: str) -> None:
+    def publish_stop_commands(self, arm_frame: str, **kwargs) -> None:
         if self._node is not None:
             try:
-                self._node.publish_stop_commands(arm_frame)
+                self._node.publish_stop_commands(arm_frame, **kwargs)
             except Exception:
                 pass
 

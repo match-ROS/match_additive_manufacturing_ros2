@@ -1,0 +1,43 @@
+# Reproducible source manifest for the offline ROS 2 print-system foundation.
+#
+# Import this file into an empty Jazzy workspace.  It intentionally contains
+# only ROS 2 sources.  Keep the ROS 1 reference repositories outside `src/`,
+# because colcon must not discover their catkin packages.
+#
+# The pinned revisions below were verified together on 2026-07-23.  Update
+# them together after a successful integration build, rather than advancing a
+# single platform repository independently.
+#
+# The ROS 2 sensor packages are deliberately not listed as importable entries
+# yet. `mocap_toolbox_ros2` and `keyence_profile_ros2` are local additions in
+# mixed ROS 1/ROS 2 repositories until their changes are committed and pushed
+# to named Jazzy branches. Pinning the current upstream revisions here would
+# silently omit those packages. Publish them first, then add their exact commits
+# below using these authoritative repository URLs:
+#
+#   https://github.com/match-ROS/match_mocap.git
+#   https://github.com/match-ROS/match_hardware_utilities.git
+repositories:
+  match_additive_manufacturing_ros2:
+    type: git
+    url: https://github.com/match-ROS/match_additive_manufacturing_ros2.git
+    version: a15ce88378675961cf8272b77096570a63514714
+  match_mobile_robotics_jazzy:
+    type: git
+    url: https://github.com/match-ROS/match_mobile_robotics_jazzy.git
+    version: 1136e12d34c9bc4869125402d792b19b8a36c36b
+  bunker_manipulator:
+    type: git
+    url: https://github.com/match-ROS/bunker_manipulator.git
+    version: 32ff63db2363d4d31ea7246706530dc68e052746
+  robotnik/robotnik_rbvogui_tum:
+    type: git
+    url: https://github.com/match-ROS/robotnik_rbvogui_tum.git
+    version: e8ac82bcb96dbc0902f238c4eecbfbdbf61b2087
+
+# After importing, also import the Robotnik vendor dependencies:
+#
+#   vcs import src < src/match_additive_manufacturing_ros2/dependencies/robotnik_rbvogui_tum.jazzy.repos
+#
+# Initialise the Bunker and Universal Robots submodules from their checked-out
+# parent repositories.  They remain the authoritative pins for those sources.

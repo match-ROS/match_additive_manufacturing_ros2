@@ -173,6 +173,76 @@ def frames_to_path(
     return {'frame_id': frame_id, 'poses': poses}
 
 
+def translate_path_positions(
+    path: dict[str, Any],
+    offset: tuple[float, float, float],
+) -> None:
+    """Translate waypoint positions while retaining the tool orientations."""
+    for pose in path['poses']:
+        position = pose['position']
+        position['x'] = float(position['x']) + offset[0]
+        position['y'] = float(position['y']) + offset[1]
+        position['z'] = float(position['z']) + offset[2]
+
+
+def scale_arm_path_relative_to_base(
+    arm_path: dict[str, Any],
+    base_path: dict[str, Any],
+    scale: float,
+) -> None:
+    """Scale each arm waypoint about its paired mobile-base waypoint."""
+    arm_poses = arm_path['poses']
+    base_poses = base_path['poses']
+    if len(arm_poses) != len(base_poses):
+        raise ValueError('Arm and base paths must have the same number of poses')
+    for arm_pose, base_pose in zip(arm_poses, base_poses):
+        arm_position = arm_pose['position']
+        base_position = base_pose['position']
+        for axis in ('x', 'y', 'z'):
+            arm_position[axis] = float(base_position[axis]) + scale * (
+                float(arm_position[axis]) - float(base_position[axis])
+            )
+
+
+def align_path_orientations_to_xy_tangent(path: dict[str, Any]) -> None:
+    """Set each pose yaw to the forward XY tangent of an exported path.
+
+    David's base-frame exports carry a fixed orientation.  That is fine for a
+    holonomic base, but a differential-drive base must face its direction of
+    travel.  For repeated points, use the next non-zero segment; the final
+    pose reuses the last non-zero segment.
+    """
+    poses = path.get('poses', [])
+    if not isinstance(poses, list) or len(poses) < 2:
+        return
+
+    positions = [pose['position'] for pose in poses]
+    for index, pose in enumerate(poses):
+        heading = None
+        origin = positions[index]
+        for candidate in positions[index + 1:]:
+            dx = float(candidate['x']) - float(origin['x'])
+            dy = float(candidate['y']) - float(origin['y'])
+            if math.hypot(dx, dy) > 1e-9:
+                heading = math.atan2(dy, dx)
+                break
+        if heading is None:
+            for previous_index in range(index - 1, -1, -1):
+                previous = positions[previous_index]
+                dx = float(origin['x']) - float(previous['x'])
+                dy = float(origin['y']) - float(previous['y'])
+                if math.hypot(dx, dy) > 1e-9:
+                    heading = math.atan2(dy, dx)
+                    break
+        if heading is not None:
+            pose['orientation'] = {
+                'x': 0.0,
+                'y': 0.0,
+                'z': math.sin(heading / 2.0),
+                'w': math.cos(heading / 2.0),
+            }
+
+
 def path_stats(frames: list[dict[str, Any]], timestamps: list[dict[str, int]]) -> tuple[float, float, float]:
     distance = sum(
         math.dist(vector3(previous_frame, 'origin'), vector3(frame, 'origin'))
@@ -195,6 +265,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--output-dir', type=Path, default=script_dir)
     parser.add_argument('--target-speed', type=float, default=TARGET_SPEED_MPS)
     parser.add_argument('--frame-id', default=FRAME_ID)
+    parser.add_argument(
+        '--arm-offset-xyz',
+        type=lambda value: tuple(float(part.strip()) for part in value.split(',')),
+        default=(0.0, 0.0, 0.0),
+        help='Translate arm waypoint positions by x,y,z without changing tool orientations.',
+    )
+    parser.add_argument(
+        '--arm-relative-scale',
+        type=float,
+        default=1.0,
+        help='Scale arm positions about their paired base positions without changing tool orientations.',
+    )
+    parser.add_argument(
+        '--base-yaw-from-path',
+        action='store_true',
+        help='Set base-path orientations to the forward XY path tangent.',
+    )
     return parser.parse_args()
 
 
@@ -210,7 +297,15 @@ def main() -> None:
 
     timestamps = target_timestamps(target_frames, args.target_speed)
     arm_path = frames_to_path(target_frames, timestamps, args.frame_id)
+    if len(args.arm_offset_xyz) != 3:
+        raise ValueError('--arm-offset-xyz must contain exactly three comma-separated numbers')
+    translate_path_positions(arm_path, args.arm_offset_xyz)
     base_path = frames_to_path(base_frames, timestamps, args.frame_id)
+    if args.arm_relative_scale <= 0.0:
+        raise ValueError('--arm-relative-scale must be positive')
+    scale_arm_path_relative_to_base(arm_path, base_path, args.arm_relative_scale)
+    if args.base_yaw_from_path:
+        align_path_orientations_to_xy_tangent(base_path)
     normal_vector = normalize(vector3(target_frames[0], NORMAL_AXIS_FIELD))
 
     args.output_dir.mkdir(parents=True, exist_ok=True)

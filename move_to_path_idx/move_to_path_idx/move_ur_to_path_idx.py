@@ -99,6 +99,7 @@ class MoveUrToPathIdx(Node):
         self.declare_parameter('publish_stop_count', 3)
         self.declare_parameter('wait_for_start_condition', True)
         self.declare_parameter('start_condition_topic', '/start_pose_reached')
+        self.declare_parameter('ready_topic', '')
         self.declare_parameter('completion_topic', '')
         self.declare_parameter('cmd_vel_topic', '/jparse_velocity_controller_ur/twist_cmd_world')
         self.declare_parameter('path_frame', 'map')
@@ -135,6 +136,21 @@ class MoveUrToPathIdx(Node):
             self._start_cb,
             10,
         )
+        # The simulated base mover publishes /start_pose_reached with
+        # transient-local QoS.  Subscribe with that QoS too, so an arm mover
+        # that starts just after a base already at its start pose still gets
+        # the completion signal.  The volatile subscription above preserves
+        # compatibility with manual/default-QoS publishers.
+        self.create_subscription(
+            Bool,
+            str(self.get_parameter('start_condition_topic').value),
+            self._start_cb,
+            path_qos,
+        )
+        ready_topic = str(self.get_parameter('ready_topic').value).strip()
+        self.ready_pub = (
+            self.create_publisher(Bool, ready_topic, path_qos) if ready_topic else None
+        )
         self.cmd_vel_pub = self.create_publisher(TwistStamped, cmd_vel_topic, 10)
         completion_topic = str(self.get_parameter('completion_topic').value).strip()
         self.completion_pub = (
@@ -149,6 +165,9 @@ class MoveUrToPathIdx(Node):
             f"Waiting for path={path_topic} and current_pose={current_pose_topic}; "
             f"will move to path_index={self.path_index} and publish on {cmd_vel_topic}."
         )
+        if self.ready_pub is not None:
+            # Publish only after the start-condition subscriptions exist.
+            self.ready_pub.publish(Bool(data=True))
 
     def _path_cb(self, msg: Path) -> None:
         if not msg.poses:
@@ -306,7 +325,12 @@ def main(args=None) -> None:
         pass
     finally:
         if node is not None:
-            node._publish_stop()
+            # The controller transitions itself to DONE by publishing a zero
+            # command.  Do not try to publish again after its normal
+            # rclpy.shutdown(), which turns an otherwise successful
+            # move-to-start into an invalid-context traceback.
+            if rclpy.ok():
+                node._publish_stop()
             node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

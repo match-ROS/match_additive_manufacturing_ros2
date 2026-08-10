@@ -1,0 +1,45 @@
+name: offline-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ros-tooling/setup-ros@v0.7
+        with:
+          required-ros-distributions: jazzy
+      - name: Install declared dependencies
+        run: |
+          rosdep update
+          rosdep install --from-paths . --ignore-src -r -y \
+            --skip-keys 'controllers_ros2 robotnik_rbvogui_tum'
+      - name: Static Python lint
+        run: |
+          python3 -m pip install ruff
+          ruff check --select=E9,F63,F7,F82 \
+            base_trajectory_follower parse_paths move_to_path_idx \
+            ur_trajectory_follower print_path_monitoring am_process_control am_operator_gui
+      - name: Build all AM packages without platform hardware dependencies
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          colcon build --event-handlers console_direct+ --symlink-install
+      - name: Validate AM launch interfaces
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          export ROS_LOG_DIR="$RUNNER_TEMP/ros_logs"
+          ros2 launch ur_trajectory_follower sideways_arm_control.launch.py --show-args >/dev/null
+          ros2 launch am_operator_gui mur_arm_velocity_stack.launch.py --show-args >/dev/null
+      - name: Run offline package tests and collect results
+        shell: bash
+        run: |
+          source /opt/ros/jazzy/setup.bash
+          source install/setup.bash
+          colcon test --event-handlers console_direct+
+          colcon test-result --all --verbose

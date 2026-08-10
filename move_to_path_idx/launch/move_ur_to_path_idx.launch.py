@@ -20,6 +20,7 @@ def generate_launch_description():
         DeclareLaunchArgument('publish_stop_count', default_value='3'),
         DeclareLaunchArgument('wait_for_start_condition', default_value='true'),
         DeclareLaunchArgument('start_condition_topic', default_value='/start_pose_reached'),
+        DeclareLaunchArgument('ready_topic', default_value=''),
         DeclareLaunchArgument('cmd_vel_topic', default_value='/jparse_velocity_controller_ur/twist_cmd_world'),
         DeclareLaunchArgument('path_frame', default_value='map'),
         Node(
@@ -42,6 +43,7 @@ def generate_launch_description():
                 'publish_stop_count': LaunchConfiguration('publish_stop_count'),
                 'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
                 'start_condition_topic': LaunchConfiguration('start_condition_topic'),
+                'ready_topic': LaunchConfiguration('ready_topic'),
                 'cmd_vel_topic': LaunchConfiguration('cmd_vel_topic'),
                 'path_frame': LaunchConfiguration('path_frame'),
             }],

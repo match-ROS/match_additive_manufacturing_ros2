@@ -14,9 +14,14 @@ class TransformTwistStamped(Node):
         self.declare_parameter('input_topic', '/twist_in')
         self.declare_parameter('output_topic', '/twist_out')
         self.declare_parameter('target_frame', 'base_link')
+        self.declare_parameter('output_frame', '')
         self.declare_parameter('fallback_source_frame', 'map')
 
         self.target_frame = str(self.get_parameter('target_frame').value)
+        # Some vendor controllers use a frame label that differs from the TF
+        # frame name. Transform in the real TF frame, then label the command
+        # with the controller's expected name.
+        self.output_frame = str(self.get_parameter('output_frame').value) or self.target_frame
         self.fallback_source_frame = str(self.get_parameter('fallback_source_frame').value)
         self.buffer = Buffer()
         self.listener = TransformListener(self.buffer, self)
@@ -37,7 +42,7 @@ class TransformTwistStamped(Node):
         if source_frame == self.target_frame:
             out = TwistStamped()
             out.header = msg.header
-            out.header.frame_id = self.target_frame
+            out.header.frame_id = self.output_frame
             out.twist = msg.twist
             self.pub.publish(out)
             return
@@ -68,7 +73,7 @@ class TransformTwistStamped(Node):
 
         out = TwistStamped()
         out.header.stamp = msg.header.stamp
-        out.header.frame_id = self.target_frame
+        out.header.frame_id = self.output_frame
         out.twist.linear.x = float(linear[0])
         out.twist.linear.y = float(linear[1])
         out.twist.linear.z = float(linear[2])

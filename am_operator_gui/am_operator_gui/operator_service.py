@@ -41,6 +41,28 @@ PROFILES = {
                  'robot_pose': '/robot_pose', 'path': '/base_path'},
     'bunker': {'cmd_vel': '/diff_drive_controller/cmd_vel', 'stamped': True,
                'frame': 'base_footprint', 'odom': '/odom', 'robot_pose': '/robot_pose', 'path': '/base_path'},
+    # Keep the browser/operator-service path in sync with the Qt GUI.  These
+    # are simulation profiles, not aliases for the older Robotnik platform.
+    'mur620_sim': {'cmd_vel': '/mur620a/mobile_base_controller/cmd_vel', 'stamped': True,
+                   'frame': 'mur620a/base_footprint', 'odom': '/mur620a/ground_truth/odom',
+                   'robot_pose': '/mur620a/ground_truth/pose', 'path': '/base_path',
+                   'follower_type': 'pure_pursuit', 'diff_drive_mode': True},
+    'mur620_left_arm_sim': {'cmd_vel': '/mur620a/mobile_base_controller/cmd_vel', 'stamped': True,
+                            'frame': 'mur620a/base_footprint', 'odom': '/mur620a/ground_truth/odom',
+                            'robot_pose': '/mur620a/ground_truth/pose', 'path': '/base_path',
+                            'mur_native_arm': True,
+                            'follower_type': 'pure_pursuit', 'diff_drive_mode': True,
+                            'arm_base_link': 'mur620a/UR10_l/base_link',
+                            'arm_command_frame': 'UR10_l/base_link',
+                            'arm_tip_link': 'mur620a/UR10_l/tool0',
+                            'arm_joint_prefix': 'UR10_l/',
+                            'robot_description_topic': '/mur620a/robot_description',
+                            'joint_states_topic': '/mur620a/joint_states',
+                            'arm_velocity_command_topic': '/mur620a/forward_velocity_controller_l/commands',
+                            'arm_controller_manager': '/mur620a/controller_manager',
+                            'arm_trajectory_topic': '/mur620a/joint_trajectory_controller/joint_trajectory',
+                            'arm_world_twist_topic': '/mur620a/arm_following/twist_world',
+                            'arm_stop_topic': '/mur620a/jparse_velocity_controller_l/twist_cmd'},
 }
 
 POSE_ADAPTER_PROCESSES = (
@@ -143,6 +165,7 @@ class OperatorService:
             self.ros_bridge = RosBridge(
                 status_callback=self._on_ros_status,
                 path_index_callback=self._on_path_index,
+                robot_pose_topic=str(self._profile()['robot_pose']),
             )
             self.ros_bridge.start()
             return True
@@ -178,10 +201,15 @@ class OperatorService:
                    'use_vicon_tcp_base_pose_fallback', 'default_velocity',
                    'default_velocity_enabled', 'spray_distance_mm', 'path_transform',
                    'path_transforms_by_directory', 'platform_control_settings', 'pid_gains',
+                   'path_transforms_by_platform_directory',
                    'base_smoothing', 'fixed_tool_offset', 'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
                    'direction_mode', 'accuracy_phase'}
         self.config.update({key: value for key, value in values.items() if key in allowed})
+        if 'platform' in values and self.ros_bridge is not None:
+            configure_pose = getattr(self.ros_bridge, 'set_robot_pose_topic', None)
+            if configure_pose is not None:
+                configure_pose(str(self._profile()['robot_pose']))
         if 'path_index' in values:
             self._live_path_index = max(0, int(values['path_index']))
         if 'original_arm_index' in values:
@@ -232,6 +260,7 @@ class OperatorService:
         config.setdefault('direction_mode', 'goal_direction')
         config.setdefault('accuracy_phase', 'baseline')
         config.setdefault('velocity_override', 100)
+        config.setdefault('contour_control_enabled', False)
         config.setdefault('nozzle_offset_mm', 0)
         return {'config': config, 'status': self._status, 'processes': processes,
                 'actions': self._action_states(),
@@ -321,11 +350,12 @@ class OperatorService:
         # values per platform. Honour both representations during migration.
         if name in self.config:
             return self.config[name]
+        profile_default = self._profile().get(name, default)
         settings = self._setting('platform_control_settings', {})
         platform = str(self._setting('platform', 'robotnik')).lower()
         if isinstance(settings, dict) and isinstance(settings.get(platform), dict):
-            return settings[platform].get(name, self._setting(name, default))
-        return self._setting(name, default)
+            return settings[platform].get(name, profile_default)
+        return profile_default
 
     def _pid(self, name: str, default: float) -> float:
         gains = self._setting('pid_gains', {})
@@ -356,15 +386,30 @@ class OperatorService:
             return []
         return [f'fixed_tool_offset_xyz:=[{xyz}]', f'fixed_tool_offset_quaternion_xyzw:=[{quat}]']
 
-    def _path_transform_arguments(self, trajectory: str) -> list[str]:
+    def _path_transform_for_trajectory(self, trajectory: str) -> dict[str, Any]:
         transform = self._setting('path_transform', {})
+        try:
+            trajectory_key = str(Path(trajectory).expanduser().resolve())
+        except OSError:
+            trajectory_key = trajectory
+        platform_transforms = self._setting('path_transforms_by_platform_directory', {})
+        platform = str(self._setting('platform', 'robotnik')).lower()
+        has_platform_transform = False
+        if isinstance(platform_transforms, dict):
+            configured = platform_transforms.get(platform, {})
+            if isinstance(configured, dict) and isinstance(configured.get(trajectory_key), dict):
+                transform = configured.get(trajectory_key, transform)
+                has_platform_transform = True
         by_directory = self._setting('path_transforms_by_directory', {})
-        if isinstance(by_directory, dict):
+        if not has_platform_transform and isinstance(by_directory, dict):
             try:
-                transform = by_directory.get(str(Path(trajectory).expanduser().resolve()), transform)
+                transform = by_directory.get(trajectory_key, transform)
             except OSError:
                 pass
-        transform = transform if isinstance(transform, dict) else {}
+        return transform if isinstance(transform, dict) else {}
+
+    def _path_transform_arguments(self, trajectory: str) -> list[str]:
+        transform = self._path_transform_for_trajectory(trajectory)
         x = float(transform.get('x', 0.0))
         y = float(transform.get('y', 0.0))
         z = float(transform.get('z', 0.0))
@@ -380,8 +425,8 @@ class OperatorService:
             self.log(name, ' '.join(command))
             self.processes.start(name, command)
 
-    def _start(self, name: str) -> None:
-        command = self.command_for(name)
+    def _start(self, name: str, command: list[str] | None = None) -> None:
+        command = command if command is not None else self.command_for(name)
         if command is None:
             raise ValueError(f'unknown action: {name}')
         self.log(name, ' '.join(command))
@@ -418,8 +463,16 @@ class OperatorService:
             for item in ('publish_path', 'controllers', 'path_index', 'base_follower', 'arm_follower'):
                 self._start(item)
             if bool(self._setting('simulation', False)):
-                self._start('move_arm')
-                self._schedule(13.0, lambda: self._start('move_base'))
+                # The arm waits for the base's completion signal, preventing a
+                # world-frame target from being pursued before the mobile base
+                # has reached its selected path index.  Both one-shot movers
+                # wait for their own ROS inputs, so no fixed startup sleep is
+                # needed to synchronize them.
+                arm_ready_topic = '/am/move_arm_ready'
+                self._start('move_arm', self.command_for(
+                    'move_arm', wait_for_start_condition=True, ready_topic=arm_ready_topic))
+                self._start('move_base', self.command_for(
+                    'move_base', publish_start_condition=True, wait_for_ready_topic=arm_ready_topic))
             return
         if name == 'start_following':
             if self.ensure_ros():
@@ -462,8 +515,13 @@ class OperatorService:
             if self.ensure_ros():
                 self._publish_start_condition_repeatedly(False)
                 for delay in range(0, 1000, 100):
-                    self._schedule(delay / 1000.0, lambda: self.ros_bridge.publish_stop_commands(str(self._setting('control_frame', 'map'))))
+                    self._schedule(delay / 1000.0, self._publish_stop_commands)
             return
+        if name == 'move_base' and not self._is_running('publish_path'):
+            # A one-shot move is useful on its own, not only after Launch All.
+            # Start its path dependency first; the mover waits until it has
+            # received both that path and the selected platform pose.
+            self._start('publish_path')
         command = self.command_for(name)
         if command is None:
             raise ValueError(f'unknown action: {name}')
@@ -477,16 +535,44 @@ class OperatorService:
             return
         self.start_pose_adapters()
 
-    def command_for(self, name: str) -> list[str] | None:
+    def command_for(
+        self,
+        name: str,
+        *,
+        wait_for_start_condition: bool = False,
+        publish_start_condition: bool = False,
+        ready_topic: str = '',
+        wait_for_ready_topic: str = '',
+    ) -> list[str] | None:
         simulation = bool(self._setting('simulation', False))
         profile = self._profile()
         frame = str(self._setting('control_frame', 'map'))
         trajectory = str(self._setting('trajectory_directory', REPO_ROOT / 'components' / 'robotnik_paired_demo'))
         index = int(self._setting('path_index', 0))
+        mur_native_arm = bool(profile.get('mur_native_arm', False))
         if name == 'simulation':
-            if str(self._setting('platform', 'robotnik')) == 'bunker':
+            platform = str(self._setting('platform', 'robotnik')).strip().lower()
+            if platform == 'bunker':
                 return ['ros2', 'launch', 'bunker_description', 'spawn_with_controllers.launch.py', 'headless:=true', 'launch_rviz:=false']
-            return ['ros2', 'launch', 'robotnik_rbvogui_tum', 'rbvogui_ur_standard_control.launch.py', 'gui:=false', 'robot_id:=robot', 'arm_type:=ur20']
+            if platform in {'mur620_sim', 'mur620_left_arm_sim'}:
+                return [
+                    'ros2', 'launch', 'mur_launch_sim', 'mur620.launch.py',
+                    'robot_name:=mur620a', 'world:=empty', 'x:=44.0', 'y:=44.0',
+                    'z:=0.07', 'Y:=0.0', 'include_gz:=true',
+                    f"gazebo_gui:={str(bool(self._setting('simulation_gui', False))).lower()}",
+                    f"use_camera:={str(bool(self._setting('simulation_gui', False))).lower()}",
+                    f"enable_sensors:={str(bool(self._setting('simulation_gui', False))).lower()}",
+                    f"use_simple_collisions:={str(not bool(self._setting('simulation_gui', False))).lower()}",
+                    'ground_truth:=true', 'fake_localization:=true', 'navigation:=false',
+                    f'load_arm_controllers:={str(platform == "mur620_left_arm_sim").lower()}',
+                    'load_lift_controllers:=false', 'launch_moveit:=false',
+                    f'launch_jparse_idk:={str(platform == "mur620_left_arm_sim").lower()}',
+                    'auto_switch_arm_controllers:=false',
+                ]
+            if platform == 'robotnik':
+                return ['ros2', 'launch', 'robotnik_rbvogui_tum', 'rbvogui_ur_standard_control.launch.py', 'gui:=false', 'robot_id:=robot', 'arm_type:=ur20']
+            self.log('simulation', f'refusing to launch simulation: unknown platform {platform!r}')
+            return None
         if name == 'publish_path':
             return ['ros2', 'launch', 'parse_paths', 'robotnik_base_arm_paths.launch.py',
                     f'use_sim_time:={self._use_sim_time()}', f'frame_id:={frame}',
@@ -507,7 +593,7 @@ class OperatorService:
                     '-p', 'wait_for_start_condition:=true']
         if name == 'base_follower':
             follower = str(self._control_setting('follower_type', 'pid'))
-            diff_drive = bool(self._control_setting('diff_drive_mode', False)) or str(self._setting('platform', 'robotnik')) == 'bunker'
+            diff_drive = bool(self._control_setting('diff_drive_mode', False)) or bool(profile.get('diff_drive_mode', False))
             return ['ros2', 'run', 'base_trajectory_follower', 'simple_base_follower', '--ros-args',
                     '-p', f'use_sim_time:={self._use_sim_time()}', '-p', 'path_topic:=/base_path_tracking',
                     '-p', f"robot_pose_topic:={profile['robot_pose']}", '-p', 'robot_pose_type:=pose_stamped',
@@ -541,12 +627,17 @@ class OperatorService:
             ]
             return ['ros2', 'launch', 'ur_trajectory_follower', 'sideways_arm_control.launch.py',
                     f'use_sim_time:={self._use_sim_time()}', f'path_frame:={frame}',
-                    'robot_name:=robot', 'arm:=arm', 'joint_prefix:=robot_arm_', 'base_link:=robot_arm_base_link', 'tip_link:=robot_arm_tool0',
-                    'robot_description_topic:=/robot/robot_description', 'joint_states_topic:=/robot/joint_states',
-                    f"velocity_command_topic:={'/robot/arm_forward_velocity_controller/commands' if simulation else '/robot/arm/forward_velocity_controller/commands'}",
-                    'start_jparse_controller:=false', 'start_command_transform:=false', 'publish_current_pose_from_tf:=false',
+                    f'robot_name:={"mur620a" if mur_native_arm else "robot"}', f'arm:={"l" if mur_native_arm else "arm"}',
+                    f'joint_prefix:={profile.get("arm_joint_prefix", "robot_arm_")}',
+                    f'base_link:={profile.get("arm_base_link", "robot_arm_base_link")}',
+                    f'tip_link:={profile.get("arm_tip_link", "robot_arm_tool0")}',
+                    f'robot_description_topic:={profile.get("robot_description_topic", "/robot/robot_description")}',
+                    f'joint_states_topic:={profile.get("joint_states_topic", "/robot/joint_states")}',
+                    f"velocity_command_topic:={profile.get('arm_velocity_command_topic', '/robot/arm_forward_velocity_controller/commands' if simulation else '/robot/arm/forward_velocity_controller/commands')}",
+                    'start_jparse_controller:=false', 'start_command_transform:=false',
+                    f'publish_current_pose_from_tf:={str(mur_native_arm).lower()}',
                     'publish_path:=false', 'publish_path_index:=false', 'move_to_start_pose:=false',
-                    f"start_pose_trajectory_topic:={'/robot/joint_trajectory_controller/joint_trajectory' if simulation else '/robot/arm/joint_trajectory_controller/joint_trajectory'}",
+                    f"start_pose_trajectory_topic:={profile.get('arm_trajectory_topic', '/robot/joint_trajectory_controller/joint_trajectory' if simulation else '/robot/arm/joint_trajectory_controller/joint_trajectory')}",
                     'start_pose_publish_delay:=8.0', f'nozzle_pose_topic:={nozzle_pose}', 'current_pose_topic:=/current_deposition_pose',
                     'spray_distance_topic:=/spray_distance', 'smoothed_spray_distance_topic:=/spray_distance_smoothed',
                     f"spray_distance_initial:={(float(self._setting('spray_distance_mm', 100.0)) + float(self._setting('nozzle_offset_mm', 0.0))) / 1000.0:.6f}",
@@ -555,8 +646,19 @@ class OperatorService:
                     'wait_for_start_condition:=true', 'start_condition_topic:=/start_condition', f'initial_path_index:={index}',
                     f"progress_mode:={'desired_speed' if bool(self._setting('default_velocity_enabled', False)) else 'timestamp'}",
                     'arm_reference_topic:=/arm_trajectory_reference', 'desired_speed_topic:=/desired_arm_speed',
-                    f'default_velocity:={self._default_velocity_parameter():.6f}', *self._fixed_tool_arguments(), *direction_gains, *orientation_gains]
+                    f'default_velocity:={self._default_velocity_parameter():.6f}',
+                    *( [f'combined_twist_source_topic:={profile["arm_world_twist_topic"]}'] if mur_native_arm else [] ),
+                    *self._fixed_tool_arguments(), *direction_gains, *orientation_gains]
         if name == 'controllers':
+            if mur_native_arm:
+                return ['ros2', 'launch', 'am_operator_gui', 'mur_arm_velocity_stack.launch.py',
+                        f'use_sim_time:={self._use_sim_time()}', 'robot_name:=mur620a', 'arm:=l',
+                        f'path_frame:={frame}',
+                        f'arm_base_link:={profile["arm_base_link"]}',
+                        f'controller_frame:={profile.get("arm_command_frame", profile["arm_base_link"])}',
+                        f'source_twist_topic:={profile["arm_world_twist_topic"]}',
+                        'controller_twist_topic:=/mur620a/jparse_velocity_controller_l/twist_cmd',
+                        f'velocity_command_topic:={profile["arm_velocity_command_topic"]}']
             controller_manager = '/robot/controller_manager' if simulation else '/robot/arm/controller_manager'
             velocity_topic = '/robot/arm_forward_velocity_controller/commands' if simulation else '/robot/arm/forward_velocity_controller/commands'
             active_controller = 'arm_forward_velocity_controller' if simulation else 'forward_velocity_controller'
@@ -592,13 +694,17 @@ class OperatorService:
                     '--input-directory', '/tmp/am_trajectory_runs', '--trajectory-directory', trajectory,
                     '--arm-base-offset', '0.26,0,1.046']
         if name == 'move_base':
-            diff_drive = bool(self._control_setting('diff_drive_mode', False)) or str(self._setting('platform', 'robotnik')) == 'bunker'
+            diff_drive = bool(self._control_setting('diff_drive_mode', False)) or bool(profile.get('diff_drive_mode', False))
+            start_target_yaw_mode = str(profile.get('start_target_yaw_mode', 'auto'))
             return ['ros2', 'run', 'move_to_path_idx', 'move_to_path_idx', '--ros-args',
                     '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"path_topic:={profile['path']}",
                     '-p', f"robot_pose_topic:={profile['robot_pose']}", '-p', 'robot_pose_type:=pose_stamped',
                     '-p', f"cmd_vel_topic:={profile['cmd_vel']}", '-p', f"output_stamped:={str(profile['stamped']).lower()}",
                     '-p', f"command_frame_id:={profile['frame']}", '-p', f'diff_drive_mode:={str(diff_drive).lower()}',
-                    '-p', f'path_index:={index}', '-p', 'publish_start_condition:=false', '-p', 'start_condition_topic:=/start_pose_reached',
+                    '-p', f'target_yaw_mode:={start_target_yaw_mode}', '-p', f'path_index:={index}',
+                    *( ['-p', f'wait_for_ready_topic:={wait_for_ready_topic}'] if wait_for_ready_topic else [] ),
+                    '-p', f'publish_start_condition:={str(publish_start_condition).lower()}',
+                    '-p', 'start_condition_topic:=/start_pose_reached',
                     '-p', 'distance_tolerance:=0.06', '-p', 'yaw_tolerance:=0.08',
                     '-p', f'kp_linear:={self._pid("base_move.kp_linear", 0.6):.6f}', '-p', f'kp_lateral:={self._pid("base_move.kp_lateral", 0.6):.6f}',
                     '-p', f'kp_angular_to_point:={self._pid("base_move.kp_angular_to_point", 1.5):.6f}', '-p', f'kp_angular_reorient:={self._pid("base_move.kp_angular_reorient", 1.2):.6f}',
@@ -606,14 +712,20 @@ class OperatorService:
                     '-p', f'max_angular_velocity:={self._pid("base_move.max_angular_velocity", 0.5):.6f}']
         if name == 'move_arm':
             original_index = int(self._setting('original_arm_index', index))
+            command_topic = profile.get('arm_world_twist_topic', '/jparse_velocity_controller_ur/twist_cmd_world')
             return ['ros2', 'launch', 'move_to_path_idx', 'move_ur_to_path_idx.launch.py',
                     f'use_sim_time:={self._use_sim_time()}', 'path_topic:=/ur_path_transformed',
                     'current_pose_topic:=/current_deposition_pose', f'path_index:={original_index}',
-                    'wait_for_start_condition:=false', 'start_condition_topic:=/start_pose_reached',
-                    'cmd_vel_topic:=/jparse_velocity_controller_ur/twist_cmd_world', f'path_frame:={frame}',
+                    f'wait_for_start_condition:={str(wait_for_start_condition).lower()}',
+                    'start_condition_topic:=/start_pose_reached',
+                    *( [f'ready_topic:={ready_topic}'] if ready_topic else [] ),
+                    f'cmd_vel_topic:={command_topic}', f'path_frame:={frame}',
                     f'kp_linear:={self._pid("arm_move.kp_linear", 0.8):.6f}', f'kp_angular:={self._pid("arm_move.kp_angular", 1.0):.6f}',
                     f'max_linear_velocity:={self._pid("arm_move.max_linear_velocity", 0.12):.6f}', f'max_angular_velocity:={self._pid("arm_move.max_angular_velocity", 0.5):.6f}']
         if name == 'switch_arm_velocity':
+            if mur_native_arm:
+                return ['ros2', 'control', 'switch_controllers', '--controller-manager', profile['arm_controller_manager'],
+                        '--deactivate', 'joint_trajectory_controller_l', '--activate', 'forward_velocity_controller_l']
             manager = '/robot/controller_manager' if simulation else '/robot/arm/controller_manager'
             controller = 'arm_forward_velocity_controller' if simulation else 'forward_velocity_controller'
             return ['ros2', 'control', 'switch_controllers', '--controller-manager', manager, '--deactivate', 'joint_trajectory_controller', '--activate', controller]
@@ -677,9 +789,8 @@ class OperatorService:
         if path_pose is None or robot_pose is None:
             self.log('calibration', 'path transform requires /base_path at the selected index and a fresh /robot_pose')
             return
-        current = self._setting('path_transform', {})
-        if not isinstance(current, dict):
-            current = {}
+        trajectory = str(self._setting('trajectory_directory', ''))
+        current = self._path_transform_for_trajectory(trajectory)
         path, robot = path_pose.pose, robot_pose.pose
         delta_yaw = self._yaw(robot.orientation) - self._yaw(path.orientation)
         cos_yaw, sin_yaw = math.cos(delta_yaw), math.sin(delta_yaw)
@@ -692,13 +803,21 @@ class OperatorService:
             'z': float(current.get('z', 0.0)) + robot.position.z - path.position.z,
             'yaw_deg': math.degrees(math.atan2(math.sin(math.radians(float(current.get('yaw_deg', 0.0))) + delta_yaw), math.cos(math.radians(float(current.get('yaw_deg', 0.0))) + delta_yaw))),
         }
-        self.config['path_transform'] = transform
-        trajectory = str(self._setting('trajectory_directory', ''))
         if trajectory:
-            transforms = self.config.setdefault('path_transforms_by_directory', {})
-            if isinstance(transforms, dict):
-                transforms[str(Path(trajectory).expanduser().resolve())] = transform
+            trajectory_key = str(Path(trajectory).expanduser().resolve())
+            platform = str(self._setting('platform', 'robotnik')).lower()
+            platform_transforms = self.config.setdefault('path_transforms_by_platform_directory', {})
+            if isinstance(platform_transforms, dict):
+                per_platform = platform_transforms.setdefault(platform, {})
+                if isinstance(per_platform, dict):
+                    per_platform[trajectory_key] = transform
         self.store.save(self.config)
+        if self._is_running('publish_path'):
+            # The publisher applies its registration only at launch.  Replace
+            # it immediately so Calculate Path Transform changes the live path
+            # that Move Base/Arm To Start will use.
+            self.processes.stop('publish_path')
+            self._start('publish_path')
         self._last_action_messages['calculate_path_transform'] = (
             f'Path transform calculated at index {index}'
         )
@@ -709,7 +828,7 @@ class OperatorService:
         # connected to ROS (for example in a configuration-only web session).
         if self.ros_bridge is not None:
             self.ros_bridge.publish_start_condition(False)
-            self.ros_bridge.publish_stop_commands(str(self._setting('control_frame', 'map')))
+            self._publish_stop_commands()
         self.processes.stop_all()
         for timer in self._timers:
             timer.cancel()
@@ -717,6 +836,24 @@ class OperatorService:
         self._launch_all_active = False
         self._following_active = False
         self.log('system', 'all managed processes stopped')
+
+    def _publish_stop_commands(self) -> None:
+        """Stop the active platform's base and arm without its follower stack."""
+        if self.ros_bridge is None:
+            return
+        profile = self._profile()
+        arm_frame = str(profile.get('arm_command_frame', self._setting('control_frame', 'map')))
+        try:
+            self.ros_bridge.publish_stop_commands(
+                arm_frame,
+                base_topic=str(profile['cmd_vel']),
+                base_stamped=bool(profile['stamped']),
+                base_frame=str(profile['frame']),
+                arm_topic=str(profile.get('arm_stop_topic', '/jparse_velocity_controller_ur/twist_cmd_world')),
+            )
+        except TypeError:
+            # Retain compatibility with minimal bridges used by integrations.
+            self.ros_bridge.publish_stop_commands(arm_frame)
 
     def close(self) -> None:
         self.stop_all()

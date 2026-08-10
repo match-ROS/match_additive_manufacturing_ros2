@@ -31,10 +31,29 @@ def _launch_setup(context, *args, **kwargs):
         + LaunchConfiguration('ur_twist_world_topic').perform(context)
         + ', '
         + LaunchConfiguration('orientation_twist_topic').perform(context)
+        + ', '
+        + LaunchConfiguration('contour_twist_topic').perform(context)
         + ']'
     )
 
     nodes = [
+        Node(
+            package='print_path_monitoring',
+            executable='contour_correction',
+            name='contour_correction',
+            output='screen',
+            parameters=[{
+                'enabled': LaunchConfiguration('contour_control_enabled'),
+                'lateral_error_topic': LaunchConfiguration('contour_lateral_error_topic'),
+                'height_error_topic': LaunchConfiguration('contour_height_error_topic'),
+                'output_topic': LaunchConfiguration('contour_twist_topic'),
+                'start_condition_topic': start_condition_topic,
+                'lateral_gain': LaunchConfiguration('contour_lateral_gain'),
+                'height_gain': LaunchConfiguration('contour_height_gain'),
+                'max_lateral_velocity': LaunchConfiguration('contour_max_lateral_velocity'),
+                'max_height_velocity': LaunchConfiguration('contour_max_height_velocity'),
+            }],
+        ),
         Node(
             package='ur_trajectory_follower',
             executable='deposition_pose',
@@ -333,6 +352,14 @@ def generate_launch_description():
         DeclareLaunchArgument('ur_error_topic', default_value='/ur_error_world'),
         DeclareLaunchArgument('ur_twist_world_topic', default_value='/ur_twist_world'),
         DeclareLaunchArgument('orientation_twist_topic', default_value='/ur_orientation_twist'),
+        DeclareLaunchArgument('contour_control_enabled', default_value='false'),
+        DeclareLaunchArgument('contour_lateral_error_topic', default_value='/contour/lateral_error'),
+        DeclareLaunchArgument('contour_height_error_topic', default_value='/contour/height_error'),
+        DeclareLaunchArgument('contour_twist_topic', default_value='/contour/twist_world'),
+        DeclareLaunchArgument('contour_lateral_gain', default_value='1.0'),
+        DeclareLaunchArgument('contour_height_gain', default_value='1.0'),
+        DeclareLaunchArgument('contour_max_lateral_velocity', default_value='0.01'),
+        DeclareLaunchArgument('contour_max_height_velocity', default_value='0.01'),
         DeclareLaunchArgument('combined_twist_source_topic', default_value='/jparse_velocity_controller_ur/twist_cmd_world'),
         DeclareLaunchArgument('combined_twist_topic', default_value='/jparse_velocity_controller_ur/twist_cmd'),
         DeclareLaunchArgument('combined_twist_rate', default_value='100.0'),
