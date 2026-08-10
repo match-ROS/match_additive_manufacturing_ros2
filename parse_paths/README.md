@@ -55,6 +55,33 @@ Shape-specific parameters:
 
 ## Existing Specialized Publishers
 
+### Legacy component print paths
+
+The ROS 1 component files under `components/<name>/print_path/` are function
+series, not ROS path messages. Use the ROS 2 adapter to convert them into the
+same JSON trajectory format used by the other ROS 2 components:
+
+```bash
+ros2 launch parse_paths component_paths.launch.py \
+  component_name:=doubleCurvedTElement
+```
+
+By default it writes `arm_path.json`, `base_path.json`, and
+`normal_vector.json` directly into `components/<name>/`. Use
+`output_directory:=/path/to/output` to select another directory. It preserves
+the legacy default trimming (`start_index:=10`, `end_trim:=1`), uses `t()` for
+matching pose timestamps, computes arm tangent orientations, and uses the
+component MiR orientation vectors for base yaw. Set `start_index:=0`
+`end_trim:=0` to retain the complete series.
+
+The component files do not contain a frame registration transform. Both
+`arm_transform_xyz/rpy` and `base_transform_xyz/rpy` therefore default to the
+identity transform. Set them only after calibrating the component coordinates
+against the selected `frame_id`. The values `[-51.615323, -39.752500, 0.0]`
+were defaults in the old ROS 1 MiR launch for one simulation scene; they are
+not a universal transform for these components and are not applied here by
+default.
+
 - `publish_sideways_arm_test_path`: arm-only sideways path used by the current UR
   sideways test launch.
 - `publish_front_side_arm_base_paths`: paired arm/base path publisher that preserves
