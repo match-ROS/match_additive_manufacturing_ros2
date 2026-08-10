@@ -26,6 +26,8 @@ setup(
         'console_scripts': [
             'ur_direction_controller = ur_trajectory_follower.ur_path_direction_controller:main',
             'combine_twists = ur_trajectory_follower.combine_twists:main',
+            'ur_vel_induced_by_base = ur_trajectory_follower.base_motion_compensation:main',
+            'ur_vel_induced_by_mir = ur_trajectory_follower.base_motion_compensation:main',
             'current_pose_from_tf = ur_trajectory_follower.current_pose_from_tf:main',
             'deposition_pose = ur_trajectory_follower.deposition_pose:main',
             'increment_path_index = ur_trajectory_follower.increment_path_index:main',

@@ -33,6 +33,8 @@ def _launch_setup(context, *args, **kwargs):
         + LaunchConfiguration('orientation_twist_topic').perform(context)
         + ', '
         + LaunchConfiguration('contour_twist_topic').perform(context)
+        + ', '
+        + LaunchConfiguration('base_compensation_topic').perform(context)
         + ']'
     )
 
@@ -208,6 +210,25 @@ def _launch_setup(context, *args, **kwargs):
         ),
         Node(
             package='ur_trajectory_follower',
+            executable='ur_vel_induced_by_base',
+            name='ur_vel_induced_by_base',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('start_base_motion_compensation')),
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'base_velocity_topic': LaunchConfiguration('base_velocity_topic'),
+                'base_velocity_type': LaunchConfiguration('base_velocity_type'),
+                'base_frame': LaunchConfiguration('base_link'),
+                'tcp_frame': LaunchConfiguration('tip_link'),
+                'world_frame': LaunchConfiguration('path_frame'),
+                'output_topic': LaunchConfiguration('base_compensation_topic'),
+                'publish_rate': LaunchConfiguration('base_compensation_rate'),
+                'stale_timeout': LaunchConfiguration('base_compensation_stale_timeout'),
+                'output_smoothing_coeff': LaunchConfiguration('base_compensation_smoothing_coeff'),
+            }],
+        ),
+        Node(
+            package='ur_trajectory_follower',
             executable='combine_twists',
             name='twist_combiner',
             output='screen',
@@ -360,6 +381,17 @@ def generate_launch_description():
         DeclareLaunchArgument('contour_height_gain', default_value='1.0'),
         DeclareLaunchArgument('contour_max_lateral_velocity', default_value='0.01'),
         DeclareLaunchArgument('contour_max_height_velocity', default_value='0.01'),
+        DeclareLaunchArgument(
+            'start_base_motion_compensation',
+            default_value='false',
+            description='Subtract the TCP velocity induced by mobile-base motion from the arm command.',
+        ),
+        DeclareLaunchArgument('base_velocity_topic', default_value='/odom'),
+        DeclareLaunchArgument('base_velocity_type', default_value='odometry'),
+        DeclareLaunchArgument('base_compensation_topic', default_value='/ur_twist_base_compensation_world'),
+        DeclareLaunchArgument('base_compensation_rate', default_value='100.0'),
+        DeclareLaunchArgument('base_compensation_stale_timeout', default_value='0.5'),
+        DeclareLaunchArgument('base_compensation_smoothing_coeff', default_value='0.0'),
         DeclareLaunchArgument('combined_twist_source_topic', default_value='/jparse_velocity_controller_ur/twist_cmd_world'),
         DeclareLaunchArgument('combined_twist_topic', default_value='/jparse_velocity_controller_ur/twist_cmd'),
         DeclareLaunchArgument('combined_twist_rate', default_value='100.0'),

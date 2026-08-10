@@ -57,3 +57,18 @@ than a measured Cartesian tracking error.
 
 J-PARSE remains responsible only for mapping the Cartesian twist to bounded
 joint velocities.
+
+## Moving-base compensation
+
+When the arm and base follow a paired print trajectory, start
+`sideways_arm_control.launch.py` with `start_base_motion_compensation:=true`.
+`ur_vel_induced_by_base` reads the base velocity, resolves the current
+base-to-tool TF offset, and publishes the negative TCP velocity induced by
+base translation and angular velocity. The correction is combined with the
+world-frame arm command before it is transformed into the arm controller
+frame. Missing or stale velocity/TF input produces zero compensation.
+
+The paired RB-VOGUI demo enables this by default. Its base velocity source is
+`/robot/robotnik_base_control/odom`; override `base_velocity_topic` and
+`base_velocity_type` (`odometry`, `twist_stamped`, or `twist`) for another
+platform.
