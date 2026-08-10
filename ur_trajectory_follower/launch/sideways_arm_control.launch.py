@@ -22,6 +22,11 @@ def _launch_setup(context, *args, **kwargs):
     use_sim_time = ParameterValue(LaunchConfiguration('use_sim_time'), value_type=bool)
     path_topic = LaunchConfiguration('path_topic')
     current_pose_topic = LaunchConfiguration('current_pose_topic')
+    derive_nozzle_pose_from_tcp = (
+        LaunchConfiguration('derive_nozzle_pose_from_tcp').perform(context).strip().lower()
+        in {'1', 'true', 'yes', 'on'}
+    )
+    tcp_pose_topic = LaunchConfiguration('tcp_pose_topic')
     path_index_topic = LaunchConfiguration('path_index_topic')
     normal_topic = LaunchConfiguration('normal_topic')
     start_condition_topic = LaunchConfiguration('start_condition_topic')
@@ -73,6 +78,20 @@ def _launch_setup(context, *args, **kwargs):
         ),
         Node(
             package='ur_trajectory_follower',
+            executable='fixed_tool_pose',
+            name='fixed_tool_pose',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('derive_nozzle_pose_from_tcp')),
+            parameters=[{
+                'input_pose_topic': tcp_pose_topic,
+                'output_pose_topic': LaunchConfiguration('nozzle_pose_topic'),
+                'fixed_tool_offset_xyz': LaunchConfiguration('fixed_tool_offset_xyz'),
+                'fixed_tool_offset_quaternion_xyzw':
+                    LaunchConfiguration('fixed_tool_offset_quaternion_xyzw'),
+            }],
+        ),
+        Node(
+            package='ur_trajectory_follower',
             executable='current_pose_from_tf',
             name='current_pose_from_tf',
             output='screen',
@@ -81,7 +100,13 @@ def _launch_setup(context, *args, **kwargs):
                 'use_sim_time': use_sim_time,
                 'target_frame': LaunchConfiguration('path_frame'),
                 'source_frame': LaunchConfiguration('tip_link'),
-                'pose_topic': LaunchConfiguration('nozzle_pose_topic'),
+                # MuR publishes its raw tool0/TCP pose from TF. When an offset
+                # is configured, publish that raw pose separately so
+                # fixed_tool_pose is the sole nozzle-pose publisher.
+                'pose_topic': (
+                    tcp_pose_topic if derive_nozzle_pose_from_tcp
+                    else LaunchConfiguration('nozzle_pose_topic')
+                ),
                 'publish_rate': LaunchConfiguration('pose_publish_rate'),
             }],
         ),
@@ -264,13 +289,13 @@ def _launch_setup(context, *args, **kwargs):
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution([
-                        FindPackageShare('controllers_ros2'),
+                        FindPackageShare('am_jparse_controller'),
                         'launch',
-                        'bunkur_ur_velocity_controller.launch.py',
+                        'am_jparse_velocity_controller.launch.py',
                     ])
                 ),
                 launch_arguments={
-                    'sim': LaunchConfiguration('use_sim_time'),
+                    'use_sim_time': LaunchConfiguration('use_sim_time'),
                     'robot_name': LaunchConfiguration('robot_name'),
                     'arm': LaunchConfiguration('arm'),
                     'base_link': LaunchConfiguration('base_link'),
@@ -313,6 +338,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('start_command_transform', default_value='true'),
         DeclareLaunchArgument('publish_current_pose_from_tf', default_value='true'),
+        DeclareLaunchArgument('derive_nozzle_pose_from_tcp', default_value='false'),
+        DeclareLaunchArgument('tcp_pose_topic', default_value='/current_tcp_pose'),
         DeclareLaunchArgument('nozzle_pose_topic', default_value='/current_nozzle_tip_pose'),
         DeclareLaunchArgument('current_pose_topic', default_value='/current_deposition_pose'),
         DeclareLaunchArgument('spray_distance_topic', default_value='/spray_distance'),

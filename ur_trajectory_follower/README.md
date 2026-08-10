@@ -58,6 +58,17 @@ than a measured Cartesian tracking error.
 J-PARSE remains responsible only for mapping the Cartesian twist to bounded
 joint velocities.
 
+## TCP and nozzle poses in simulation
+
+With derive_nozzle_pose_from_tcp:=true, the arm stack treats
+/current_tcp_pose as the raw tool0/TCP pose and publishes
+/current_nozzle_tip_pose = current_tcp_pose * fixed_tool_offset. The
+deposition-pose node uses this derived pose, so its stand-off is measured from
+the configured nozzle rather than from tool0. This is used by Robotnik
+simulation and by either selected MuR arm. The shared AM J-PARSE controller
+uses the same offset and dynamic spray distance in its Jacobian, so Cartesian
+velocity is solved at the deposition point as well.
+
 ## Moving-base compensation
 
 When the arm and base follow a paired print trajectory, start

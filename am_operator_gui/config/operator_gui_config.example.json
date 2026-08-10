@@ -1,5 +1,11 @@
 {
   "platform": "robotnik",
+  "mur_arm": "none",
+  "fixed_tool_offset_input_mode": "quaternion",
+  "fixed_tool_offset": {
+    "xyz": [-0.25, 0.0, 0.015],
+    "quaternion_xyzw": [0.0, -0.7071067812, 0.0, 0.7071067812]
+  },
   "simulation": true,
   "simulation_gui": false,
   "trajectory_directory": "",

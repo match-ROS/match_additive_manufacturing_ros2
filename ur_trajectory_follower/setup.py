@@ -30,6 +30,7 @@ setup(
             'ur_vel_induced_by_mir = ur_trajectory_follower.base_motion_compensation:main',
             'current_pose_from_tf = ur_trajectory_follower.current_pose_from_tf:main',
             'deposition_pose = ur_trajectory_follower.deposition_pose:main',
+            'fixed_tool_pose = ur_trajectory_follower.fixed_tool_pose:main',
             'increment_path_index = ur_trajectory_follower.increment_path_index:main',
             'pid_twist_controller = ur_trajectory_follower.pid_twist_controller:main',
             'publish_joint_pose_once = ur_trajectory_follower.publish_joint_pose_once:main',

@@ -15,7 +15,22 @@
   "default_velocity": 0.05,
   "default_velocity_enabled": true,
   "external_map_frame": "map",
+  "fixed_tool_offset": {
+    "quaternion_xyzw": [
+      0,
+      1,
+      0,
+      0
+    ],
+    "xyz": [
+      -0.25,
+      0,
+      0.015
+    ]
+  },
+  "fixed_tool_offset_input_mode": "quaternion",
   "follower_type": "pure_pursuit",
+  "mur_arm": "r",
   "original_arm_index": 0,
   "path_index": 0,
   "path_transforms_by_directory": {
@@ -68,7 +83,7 @@
   "simulation": true,
   "simulation_gui": false,
   "spray_distance_mm": 100.0,
-  "trajectory_directory": "/home/rosmatch/workspaces/print2_ws/src/match_additive_manufacturing_ros2/components/david_path_mur",
+  "trajectory_directory": "/home/rosmatch/workspaces/print2_ws/src/match_additive_manufacturing_ros2/components/rectangleRoundedCorners",
   "use_odometry_robot_pose": false,
   "use_vicon_tcp_base_pose_fallback": false
 }

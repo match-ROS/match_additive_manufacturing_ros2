@@ -57,6 +57,35 @@ DEFAULT_FIXED_TOOL_OFFSET = {
     'xyz': [-0.25, 0.0, 0.015],
     'quaternion_xyzw': [0.0, -0.7071067812, 0.0, 0.7071067812],
 }
+
+
+def _normalize_quaternion(quaternion: list[float] | tuple[float, ...]) -> list[float]:
+    norm = math.sqrt(sum(float(value) ** 2 for value in quaternion))
+    if norm < 1e-12:
+        raise ValueError('quaternion norm must be greater than zero')
+    return [float(value) / norm for value in quaternion]
+
+
+def _rpy_degrees_to_quaternion(roll: float, pitch: float, yaw: float) -> list[float]:
+    roll, pitch, yaw = (math.radians(value) for value in (roll, pitch, yaw))
+    cr, sr = math.cos(roll / 2.0), math.sin(roll / 2.0)
+    cp, sp = math.cos(pitch / 2.0), math.sin(pitch / 2.0)
+    cy, sy = math.cos(yaw / 2.0), math.sin(yaw / 2.0)
+    return _normalize_quaternion([
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+        cr * cp * cy + sr * sp * sy,
+    ])
+
+
+def _quaternion_to_rpy_degrees(quaternion: list[float] | tuple[float, ...]) -> list[float]:
+    x, y, z, w = _normalize_quaternion(quaternion)
+    roll = math.atan2(2.0 * (w * x + y * z), 1.0 - 2.0 * (x * x + y * y))
+    pitch_value = 2.0 * (w * y - z * x)
+    pitch = math.asin(max(-1.0, min(1.0, pitch_value)))
+    yaw = math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+    return [math.degrees(value) for value in (roll, pitch, yaw)]
 TOOL_OFFSET_COMPARISON_TOLERANCE = 1e-6
 DEFAULT_SPRAY_DISTANCE_MAX_RATE = 0.02
 DEFAULT_SPRAY_DISTANCE_MM = 100.0
@@ -307,6 +336,10 @@ PLATFORM_PROFILES = {
         'arm_move_to_start_supported': True,
     },
 }
+
+MUR_ARMS = {'none': 'None', 'l': 'Left', 'r': 'Right'}
+MUR_NATIVE_ARMS = {'l', 'r'}
+LEGACY_MUR_PLATFORM = 'mur620_left_arm_sim'
 
 
 class PidGainsDialog(QDialog):
@@ -593,7 +626,14 @@ class OperatorWindow(QMainWindow):
 
     def _configured_platform(self) -> str:
         value = str(self._config.get('platform', 'robotnik')).strip().lower()
+        if value == LEGACY_MUR_PLATFORM:
+            return 'mur620_sim'
         return value if value in PLATFORM_PROFILES else 'robotnik'
+
+    def _configured_mur_arm(self) -> str:
+        default = 'l' if str(self._config.get('platform', '')).strip().lower() == LEGACY_MUR_PLATFORM else 'none'
+        value = str(self._config.get('mur_arm', default)).strip().lower()
+        return value if value in MUR_ARMS else default
 
     def _configured_follower_type(self) -> str:
         # Keep platform-specific drive settings separate.  Old configurations
@@ -692,6 +732,70 @@ class OperatorWindow(QMainWindow):
             }
         except (TypeError, ValueError):
             return dict(DEFAULT_FIXED_TOOL_OFFSET)
+
+    def _configured_fixed_tool_offset_input_mode(self) -> str:
+        mode = str(self._config.get('fixed_tool_offset_input_mode', 'quaternion')).strip().lower()
+        return mode if mode in {'rpy', 'quaternion'} else 'quaternion'
+
+    def _sync_fixed_tool_offset_widgets(self) -> None:
+        offset = self._configured_fixed_tool_offset()
+        quaternion = _normalize_quaternion(offset['quaternion_xyzw'])
+        rpy = _quaternion_to_rpy_degrees(quaternion)
+        widgets = [*self.fixed_tool_offset_xyz, *self.fixed_tool_offset_rotation]
+        for widget in widgets:
+            widget.blockSignals(True)
+        for widget, value in zip(self.fixed_tool_offset_xyz, offset['xyz']):
+            widget.setValue(value)
+        mode = self._configured_fixed_tool_offset_input_mode()
+        rotation = [*rpy, quaternion[3]] if mode == 'rpy' else quaternion
+        labels = ['Roll', 'Pitch', 'Yaw', 'Qw'] if mode == 'rpy' else ['Qx', 'Qy', 'Qz', 'Qw']
+        for index, (label, widget, value) in enumerate(zip(
+            self.fixed_tool_offset_rotation_labels, self.fixed_tool_offset_rotation, rotation
+        )):
+            label.setText(f'{labels[index]}{" (deg)" if mode == "rpy" and index < 3 else ""}')
+            widget.setSuffix(' deg' if mode == 'rpy' and index < 3 else '')
+            widget.setDecimals(3 if mode == 'rpy' and index < 3 else 8)
+            widget.setSingleStep(0.1 if mode == 'rpy' and index < 3 else 0.01)
+            widget.setEnabled(not (mode == 'rpy' and index == 3))
+            widget.setValue(value)
+        self.fixed_tool_offset_mode.blockSignals(True)
+        self.fixed_tool_offset_mode.setCurrentIndex(self.fixed_tool_offset_mode.findData(mode))
+        self.fixed_tool_offset_mode.blockSignals(False)
+        for widget in widgets:
+            widget.blockSignals(False)
+
+    def _set_fixed_tool_offset_input_mode(self, *_args) -> None:
+        self._config['fixed_tool_offset_input_mode'] = str(
+            self.fixed_tool_offset_mode.currentData()
+        )
+        self._save_config()
+        self._sync_fixed_tool_offset_widgets()
+
+    def _save_fixed_tool_offset(self) -> None:
+        try:
+            xyz = [float(widget.value()) for widget in self.fixed_tool_offset_xyz]
+            if self.fixed_tool_offset_mode.currentData() == 'rpy':
+                quaternion = _rpy_degrees_to_quaternion(*(
+                    float(widget.value()) for widget in self.fixed_tool_offset_rotation[:3]
+                ))
+            else:
+                quaternion = _normalize_quaternion([
+                    float(widget.value()) for widget in self.fixed_tool_offset_rotation
+                ])
+        except (TypeError, ValueError) as exc:
+            self._append_process_output('gui', f'cannot save flange-to-nozzle transform: {exc}')
+            return
+        self._config['fixed_tool_offset'] = {
+            'xyz': xyz,
+            'quaternion_xyzw': quaternion,
+        }
+        self._config['fixed_tool_offset_input_mode'] = str(self.fixed_tool_offset_mode.currentData())
+        self._save_config()
+        self._sync_fixed_tool_offset_widgets()
+        self._append_process_output(
+            'gui',
+            'saved flange-to-nozzle transform; restart the arm follower and controller stack to apply',
+        )
 
     def _configured_spray_distance_max_rate(self) -> float:
         try:
@@ -801,8 +905,15 @@ class OperatorWindow(QMainWindow):
         self.simulation_checkbox.setChecked(self._configured_simulation())
         self.platform_combo = QComboBox()
         for key, profile in PLATFORM_PROFILES.items():
+            if key == LEGACY_MUR_PLATFORM:
+                continue
             self.platform_combo.addItem(str(profile['label']), key)
         self.platform_combo.setCurrentIndex(self.platform_combo.findData(self._configured_platform()))
+        self.mur_arm_combo = QComboBox()
+        for arm, label in MUR_ARMS.items():
+            self.mur_arm_combo.addItem(label, arm)
+        self.mur_arm_combo.setCurrentIndex(self.mur_arm_combo.findData(self._configured_mur_arm()))
+        self.mur_arm_combo.setEnabled(self._configured_platform() == 'mur620_sim')
         self.follower_type_combo = QComboBox()
         self.follower_type_combo.addItem('PID', 'pid')
         self.follower_type_combo.addItem('Pure Pursuit', 'pure_pursuit')
@@ -814,7 +925,10 @@ class OperatorWindow(QMainWindow):
         self._sync_diff_drive_checkbox()
         self.odometry_pose_checkbox = QCheckBox('Use odometry for /robot_pose')
         self.odometry_pose_checkbox.setChecked(self._configured_use_odometry_robot_pose())
-        self.vicon_tcp_base_pose_fallback_checkbox = QCheckBox('Fallback: Base Pose')
+        self.vicon_tcp_base_pose_fallback_checkbox = QCheckBox('Base pose via tool TF')
+        self.vicon_tcp_base_pose_fallback_checkbox.setToolTip(
+            'Estimate the base pose from the Vicon tool pose and robot TF when the base marker is unavailable.'
+        )
         self.vicon_tcp_base_pose_fallback_checkbox.setChecked(
             self._configured_use_vicon_tcp_base_pose_fallback()
             and not self.odometry_pose_checkbox.isChecked()
@@ -865,9 +979,11 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.simulation_checkbox, 0, 0)
         launch_layout.addWidget(QLabel('Platform'), 0, 1)
         launch_layout.addWidget(self.platform_combo, 0, 2)
-        launch_layout.addWidget(QLabel('Follower'), 0, 3)
-        launch_layout.addWidget(self.follower_type_combo, 0, 4)
-        launch_layout.addWidget(self.diff_drive_checkbox, 0, 5)
+        launch_layout.addWidget(QLabel('MuR arm'), 0, 3)
+        launch_layout.addWidget(self.mur_arm_combo, 0, 4)
+        launch_layout.addWidget(QLabel('Follower'), 0, 5)
+        launch_layout.addWidget(self.follower_type_combo, 0, 6)
+        launch_layout.addWidget(self.diff_drive_checkbox, 0, 7)
         launch_layout.addWidget(QLabel('Direction'), 1, 0)
         launch_layout.addWidget(self.direction_mode, 1, 1)
         launch_layout.addWidget(QLabel('Interpolated index'), 1, 2)
@@ -992,6 +1108,31 @@ class OperatorWindow(QMainWindow):
         self.nozzle_offset_value = QLabel('+0 mm')
         self.nozzle_effective_value = QLabel('0.0 mm effective')
 
+        fixed_offset = self._configured_fixed_tool_offset()
+        self.fixed_tool_offset_xyz = []
+        for value in fixed_offset['xyz']:
+            spin = QDoubleSpinBox()
+            spin.setRange(-1000.0, 1000.0)
+            spin.setDecimals(6)
+            spin.setSingleStep(0.001)
+            spin.setSuffix(' m')
+            spin.setValue(value)
+            self.fixed_tool_offset_xyz.append(spin)
+        self.fixed_tool_offset_mode = QComboBox()
+        self.fixed_tool_offset_mode.addItem('RPY (degrees)', 'rpy')
+        self.fixed_tool_offset_mode.addItem('Quaternion (x, y, z, w)', 'quaternion')
+        self.fixed_tool_offset_mode.setCurrentIndex(
+            self.fixed_tool_offset_mode.findData(self._configured_fixed_tool_offset_input_mode())
+        )
+        self.fixed_tool_offset_rotation = []
+        for _ in range(4):
+            spin = QDoubleSpinBox()
+            spin.setRange(-10000.0, 10000.0)
+            spin.setDecimals(8)
+            spin.setSingleStep(0.01)
+            self.fixed_tool_offset_rotation.append(spin)
+        self.fixed_tool_offset_save_button = QPushButton('Save flange-to-nozzle transform')
+
         override_layout.addWidget(QLabel('Velocity override'), 0, 0)
         override_layout.addWidget(self.velocity_slider, 0, 1)
         override_layout.addWidget(self.velocity_value, 0, 2)
@@ -1001,6 +1142,22 @@ class OperatorWindow(QMainWindow):
         override_layout.addWidget(QLabel('Spray distance offset'), 2, 0)
         override_layout.addWidget(self.nozzle_offset, 2, 1)
         override_layout.addWidget(self.nozzle_offset_value, 2, 2)
+        offset_group = QGroupBox('Flange-to-nozzle transform')
+        offset_layout = QGridLayout(offset_group)
+        offset_layout.addWidget(QLabel('XYZ'), 0, 0)
+        for column, spin in enumerate(self.fixed_tool_offset_xyz, start=1):
+            offset_layout.addWidget(spin, 0, column)
+        offset_layout.addWidget(QLabel('Rotation input'), 1, 0)
+        offset_layout.addWidget(self.fixed_tool_offset_mode, 1, 1, 1, 3)
+        self.fixed_tool_offset_rotation_labels = [QLabel() for _ in range(4)]
+        for column, (label, spin) in enumerate(zip(
+            self.fixed_tool_offset_rotation_labels, self.fixed_tool_offset_rotation
+        ), start=1):
+            offset_layout.addWidget(label, 2, column)
+            offset_layout.addWidget(spin, 3, column)
+        self._sync_fixed_tool_offset_widgets()
+        offset_layout.addWidget(self.fixed_tool_offset_save_button, 4, 0, 1, 4)
+        override_layout.addWidget(offset_group, 3, 0, 1, 3)
 
         status_group = QGroupBox('Status')
         status_layout = QHBoxLayout(status_group)
@@ -1049,6 +1206,7 @@ class OperatorWindow(QMainWindow):
         self.robot_tree_root_frame.editingFinished.connect(self._save_hardware_topics)
         self.simulation_checkbox.toggled.connect(self._simulation_mode_changed)
         self.platform_combo.currentIndexChanged.connect(self._set_platform)
+        self.mur_arm_combo.currentIndexChanged.connect(self._set_mur_arm)
         self.follower_type_combo.currentIndexChanged.connect(self._set_follower_type)
         self.diff_drive_checkbox.toggled.connect(self._set_diff_drive_mode)
         self.odometry_pose_checkbox.toggled.connect(self._set_use_odometry_robot_pose)
@@ -1091,6 +1249,8 @@ class OperatorWindow(QMainWindow):
         self.nozzle_reference.valueChanged.connect(self._set_spray_distance_mm)
         self.nozzle_reference.valueChanged.connect(self._publish_overrides)
         self.nozzle_offset.valueChanged.connect(self._publish_overrides)
+        self.fixed_tool_offset_mode.currentIndexChanged.connect(self._set_fixed_tool_offset_input_mode)
+        self.fixed_tool_offset_save_button.clicked.connect(self._save_fixed_tool_offset)
 
     def _invoke_service_action(self, action: str) -> None:
         """Adapter from the retained Qt view to the shared control layer."""
@@ -1121,7 +1281,43 @@ class OperatorWindow(QMainWindow):
         return key if key in PLATFORM_PROFILES else ''
 
     def _current_platform_profile(self) -> dict:
-        return PLATFORM_PROFILES.get(self._current_platform_key(), PLATFORM_PROFILES['robotnik'])
+        platform = self._current_platform_key()
+        profile = dict(PLATFORM_PROFILES.get(platform, PLATFORM_PROFILES['robotnik']))
+        if platform == 'mur620_sim':
+            arm = self._current_mur_arm()
+            if arm not in MUR_NATIVE_ARMS:
+                return profile
+            arm_profile = PLATFORM_PROFILES[LEGACY_MUR_PLATFORM]
+            profile.update({
+                key: arm_profile[key]
+                for key in (
+                    'arm_control_supported', 'mur_native_arm', 'arm_joint_prefix',
+                    'robot_description_topic', 'joint_states_topic',
+                    'arm_velocity_command_topic', 'arm_controller_manager',
+                    'arm_trajectory_topic', 'arm_world_twist_topic',
+                    'arm_stop_topic', 'arm_stop_frame', 'arm_move_to_start_supported',
+                )
+            })
+            prefix = f'UR10_{arm}'
+            suffix = f'_{arm}'
+            profile.update({
+                'arm_base_link': f'mur620a/{prefix}/base_link',
+                'arm_command_frame': f'{prefix}/base_link',
+                'arm_tip_link': f'mur620a/{prefix}/tool0',
+                'arm_joint_prefix': f'{prefix}/',
+                'arm_velocity_command_topic': f'/mur620a/forward_velocity_controller{suffix}/commands',
+                'arm_trajectory_topic': f'/mur620a/joint_trajectory_controller{suffix}/joint_trajectory',
+                'arm_stop_topic': f'/mur620a/jparse_velocity_controller{suffix}/twist_cmd',
+                'arm_stop_frame': f'{prefix}/base_link',
+                'arm_selected': arm,
+            })
+        return profile
+
+    def _current_mur_arm(self) -> str:
+        combo = getattr(self, 'mur_arm_combo', None)
+        value = combo.currentData() if combo is not None else self._configured_mur_arm()
+        value = str(value).strip().lower()
+        return value if value in MUR_ARMS else self._configured_mur_arm()
 
     def _arm_platform_profile(self) -> dict:
         """Return a profile without making lightweight command tests build widgets."""
@@ -1168,6 +1364,10 @@ class OperatorWindow(QMainWindow):
         self.follower_type_combo.setEnabled(self._current_platform_key() != 'bunker')
         self.follower_type_combo.blockSignals(False)
         self._sync_diff_drive_checkbox()
+        self.mur_arm_combo.blockSignals(True)
+        self.mur_arm_combo.setCurrentIndex(self.mur_arm_combo.findData(self._configured_mur_arm()))
+        self.mur_arm_combo.setEnabled(self._current_platform_key() == 'mur620_sim')
+        self.mur_arm_combo.blockSignals(False)
 
     def _sync_platform_frame_widgets(self) -> None:
         for widget, value in (
@@ -1192,12 +1392,24 @@ class OperatorWindow(QMainWindow):
 
     def _set_platform(self, *_args) -> None:
         platform = self._current_platform_key()
+        previous_platform = str(self._config.get('platform', '')).strip().lower()
         self._config['platform'] = platform
+        if platform == 'mur620_sim' and previous_platform == LEGACY_MUR_PLATFORM and 'mur_arm' not in self._config:
+            self._config['mur_arm'] = 'l'
         self._sync_platform_control_widgets()
         self._sync_platform_frame_widgets()
         self._save_config()
         profile = OperatorWindow._arm_platform_profile(self)
         self.path_status.setText(f"{profile['path_topic']}: ready" if self._has_path else f"{profile['path_topic']}: waiting")
+
+    def _set_mur_arm(self, *_args) -> None:
+        self._config['mur_arm'] = self._current_mur_arm()
+        self._save_config()
+        profile = OperatorWindow._arm_platform_profile(self)
+        self.arm_pose_status.setText(
+            f"{profile.get('arm_tip_link', '/current_deposition_pose')}: ready"
+            if self._has_arm_pose else 'Deposition pose: waiting'
+        )
 
     def _set_follower_type(self, *_args) -> None:
         self._save_platform_control_setting('follower_type', self._current_follower_type())
@@ -1280,6 +1492,7 @@ class OperatorWindow(QMainWindow):
             'quaternion_xyzw': [float(rotation.x), float(rotation.y), float(rotation.z), float(rotation.w)],
         }
         self._save_config()
+        self._sync_fixed_tool_offset_widgets()
         # The captured transform has just been saved, so it is now the configured value.
         self._set_tool_offset_capture_button_state(matches=True)
         self._append_process_output(
@@ -1638,18 +1851,24 @@ class OperatorWindow(QMainWindow):
         self._start_publish_path()
         if self.simulation_checkbox.isChecked() and self.odometry_pose_checkbox.isChecked():
             self._start_odometry_pose_adapter()
-        self._start_arm_controllers()
+        arm_supported = OperatorWindow._arm_control_supported(self)
+        if arm_supported:
+            self._start_arm_controllers()
         self._start_path_index()
         self._start_base_follower()
-        self._start_arm_follower(move_to_start_pose=False)
+        if arm_supported:
+            self._start_arm_follower(move_to_start_pose=False)
         if self.simulation_checkbox.isChecked():
-            arm_ready_topic = '/am/move_arm_ready'
-            self._start_move_arm_to_start(
-                wait_for_start_condition=True, ready_topic=arm_ready_topic)
-            # Each mover waits for its own path and pose inputs.  The arm is
-            # still gated by /start_pose_reached, without an arbitrary delay.
-            self._start_move_base_to_start(
-                publish_start_condition=True, wait_for_ready_topic=arm_ready_topic)
+            if arm_supported:
+                arm_ready_topic = '/am/move_arm_ready'
+                self._start_move_arm_to_start(
+                    wait_for_start_condition=True, ready_topic=arm_ready_topic)
+                # Each mover waits for its own path and pose inputs.  The arm is
+                # still gated by /start_pose_reached, without an arbitrary delay.
+                self._start_move_base_to_start(
+                    publish_start_condition=True, wait_for_ready_topic=arm_ready_topic)
+            else:
+                self._start_move_base_to_start(publish_start_condition=True)
 
     def _stop_launch_all_components(self) -> None:
         self.ros_bridge.publish_start_condition(False)
@@ -1739,6 +1958,7 @@ class OperatorWindow(QMainWindow):
                 f'publish_robot_pose:={self._sim_publish_robot_pose()}',
             ]
         elif platform in {'mur620_sim', 'mur620_left_arm_sim'}:
+            mur_native_arm = bool(self._current_platform_profile().get('mur_native_arm', False))
             gui_value = 'true' if self._simulation_gui_enabled() else 'false'
             command = [
                 'ros2',
@@ -1759,10 +1979,12 @@ class OperatorWindow(QMainWindow):
                 'ground_truth:=true',
                 'fake_localization:=true',
                 'navigation:=false',
-                f'load_arm_controllers:={str(platform == "mur620_left_arm_sim").lower()}',
+                f'load_arm_controllers:={str(mur_native_arm).lower()}',
                 'load_lift_controllers:=false',
                 'launch_moveit:=false',
-                f'launch_jparse_idk:={str(platform == "mur620_left_arm_sim").lower()}',
+                # AM launches its shared controller stack below. Keep MuR's
+                # native J-PARSE enabled by default for standalone use only.
+                'launch_jparse_idk:=false',
                 'auto_switch_arm_controllers:=false',
             ]
         elif platform == 'robotnik':
@@ -1896,10 +2118,7 @@ class OperatorWindow(QMainWindow):
             OperatorWindow._report_unsupported_arm_control(self, 'Arm follower')
             return
         simulation_checkbox = getattr(self, 'simulation_checkbox', None)
-        nozzle_pose_topic = (
-            '/current_tcp_pose' if simulation_checkbox is not None and simulation_checkbox.isChecked()
-            else '/current_nozzle_tip_pose'
-        )
+        simulation = simulation_checkbox is not None and simulation_checkbox.isChecked()
         profile = OperatorWindow._arm_platform_profile(self)
         mur_native_arm = bool(profile.get('mur_native_arm', False))
         command = [
@@ -1909,7 +2128,7 @@ class OperatorWindow(QMainWindow):
             'sideways_arm_control.launch.py',
             f'use_sim_time:={self._use_sim_time()}',
             f'robot_name:={"mur620a" if mur_native_arm else "robot"}',
-            f'arm:={"l" if mur_native_arm else "arm"}',
+            f'arm:={profile.get("arm_selected", "arm") if mur_native_arm else "arm"}',
             f'joint_prefix:={profile.get("arm_joint_prefix", "robot_arm_")}',
             f'base_link:={profile.get("arm_base_link", "robot_arm_base_link")}',
             f'tip_link:={profile.get("arm_tip_link", "robot_arm_tool0")}',
@@ -1925,7 +2144,9 @@ class OperatorWindow(QMainWindow):
             f'move_to_start_pose:={str(move_to_start_pose).lower()}',
             f"start_pose_trajectory_topic:={self._arm_trajectory_topic()}",
             'start_pose_publish_delay:=8.0',
-            f'nozzle_pose_topic:={nozzle_pose_topic}',
+            f'derive_nozzle_pose_from_tcp:={str(simulation).lower()}',
+            'tcp_pose_topic:=/current_tcp_pose',
+            'nozzle_pose_topic:=/current_nozzle_tip_pose',
             'current_pose_topic:=/current_deposition_pose',
             'spray_distance_topic:=/spray_distance',
             'smoothed_spray_distance_topic:=/spray_distance_smoothed',
@@ -2270,13 +2491,19 @@ class OperatorWindow(QMainWindow):
         if profile.get('mur_native_arm', False):
             command = [
                 'ros2', 'launch', 'am_operator_gui', 'mur_arm_velocity_stack.launch.py',
-                f'use_sim_time:={self._use_sim_time()}', 'robot_name:=mur620a', 'arm:=l',
+                f'use_sim_time:={self._use_sim_time()}', 'robot_name:=mur620a', f'arm:={profile["arm_selected"]}',
                 f'path_frame:={self.control_frame.text().strip()}',
                 f'arm_base_link:={profile["arm_base_link"]}',
                 f'controller_frame:={profile.get("arm_command_frame", profile["arm_base_link"])}',
                 f'source_twist_topic:={profile["arm_world_twist_topic"]}',
-                'controller_twist_topic:=/mur620a/jparse_velocity_controller_l/twist_cmd',
+                f'controller_twist_topic:={profile["arm_stop_topic"]}',
                 f'velocity_command_topic:={profile["arm_velocity_command_topic"]}',
+                f'tip_link:={profile["arm_tip_link"]}',
+                f'robot_description_topic:={profile["robot_description_topic"]}',
+                f'joint_states_topic:={profile["joint_states_topic"]}',
+                'spray_distance_topic:=/spray_distance_smoothed',
+                'jparse_readiness_topic:=/am/jparse_ready',
+                *self._tool_offset_launch_arguments(),
             ]
             self._append_process_output(ARM_CONTROLLERS_NAME, ' '.join(command))
             self.processes.start(ARM_CONTROLLERS_NAME, command)
@@ -2417,9 +2644,16 @@ class OperatorWindow(QMainWindow):
             '--controller-manager',
             self._arm_controller_manager(),
             '--deactivate',
-            'joint_trajectory_controller',
+            f'joint_trajectory_controller_{self._current_mur_arm()}'
+            if OperatorWindow._arm_platform_profile(self).get('mur_native_arm', False)
+            else 'joint_trajectory_controller',
             '--activate',
-            'arm_forward_velocity_controller' if self.simulation_checkbox.isChecked() else 'forward_velocity_controller',
+            (
+                f'forward_velocity_controller_{self._current_mur_arm()}'
+                if OperatorWindow._arm_platform_profile(self).get('mur_native_arm', False)
+                else 'arm_forward_velocity_controller' if self.simulation_checkbox.isChecked()
+                else 'forward_velocity_controller'
+            ),
         ]
         self._append_process_output(SWITCH_ARM_VELOCITY_NAME, ' '.join(command))
         self.processes.start(SWITCH_ARM_VELOCITY_NAME, command)

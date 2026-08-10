@@ -46,7 +46,8 @@ PROFILES = {
     'mur620_sim': {'cmd_vel': '/mur620a/mobile_base_controller/cmd_vel', 'stamped': True,
                    'frame': 'mur620a/base_footprint', 'odom': '/mur620a/ground_truth/odom',
                    'robot_pose': '/mur620a/ground_truth/pose', 'path': '/base_path',
-                   'follower_type': 'pure_pursuit', 'diff_drive_mode': True},
+                   'follower_type': 'pure_pursuit', 'diff_drive_mode': True,
+                   'arm_control_supported': False},
     'mur620_left_arm_sim': {'cmd_vel': '/mur620a/mobile_base_controller/cmd_vel', 'stamped': True,
                             'frame': 'mur620a/base_footprint', 'odom': '/mur620a/ground_truth/odom',
                             'robot_pose': '/mur620a/ground_truth/pose', 'path': '/base_path',
@@ -64,6 +65,10 @@ PROFILES = {
                             'arm_world_twist_topic': '/mur620a/arm_following/twist_world',
                             'arm_stop_topic': '/mur620a/jparse_velocity_controller_l/twist_cmd'},
 }
+
+MUR_ARMS = {'none': 'None', 'l': 'Left', 'r': 'Right'}
+MUR_NATIVE_ARMS = {'l', 'r'}
+LEGACY_MUR_PLATFORM = 'mur620_left_arm_sim'
 
 POSE_ADAPTER_PROCESSES = (
     'vicon_base_static_tf', 'vicon_ee_static_tf', 'base_pose_adapter',
@@ -204,7 +209,15 @@ class OperatorService:
                    'path_transforms_by_platform_directory',
                    'base_smoothing', 'fixed_tool_offset', 'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
-                   'direction_mode', 'accuracy_phase'}
+                   'direction_mode', 'accuracy_phase', 'mur_arm', 'fixed_tool_offset_input_mode'}
+        if 'mur_arm' in values:
+            arm = str(values['mur_arm']).strip().lower()
+            if arm not in MUR_ARMS:
+                values = dict(values)
+                values.pop('mur_arm')
+            else:
+                values = dict(values)
+                values['mur_arm'] = arm
         self.config.update({key: value for key, value in values.items() if key in allowed})
         if 'platform' in values and self.ros_bridge is not None:
             configure_pose = getattr(self.ros_bridge, 'set_robot_pose_topic', None)
@@ -233,6 +246,11 @@ class OperatorService:
         for name, managed in self.processes._processes.items():
             processes[name] = {'running': managed.is_running(), 'return_code': managed.poll()}
         config = dict(self.config)
+        # Present the former left-arm-only profile as the unified MUR profile
+        # without rewriting an existing operator configuration on read.
+        if config.get('platform') == LEGACY_MUR_PLATFORM:
+            config['platform'] = 'mur620_sim'
+            config.setdefault('mur_arm', 'l')
         defaults = {
             'platform': 'robotnik',
             'simulation': False,
@@ -248,6 +266,7 @@ class OperatorService:
             'default_velocity_enabled': False,
             'default_velocity': 0.1,
             'spray_distance_mm': 100.0,
+            'mur_arm': 'none',
         }
         for key, value in defaults.items():
             config.setdefault(key, value)
@@ -262,6 +281,7 @@ class OperatorService:
         config.setdefault('velocity_override', 100)
         config.setdefault('contour_control_enabled', False)
         config.setdefault('nozzle_offset_mm', 0)
+        config.setdefault('fixed_tool_offset_input_mode', 'quaternion')
         return {'config': config, 'status': self._status, 'processes': processes,
                 'actions': self._action_states(),
                 'logs': list(self.logs), 'ros_error': self.ros_error}
@@ -343,7 +363,35 @@ class OperatorService:
         return str(bool(self._setting('simulation', False))).lower()
 
     def _profile(self) -> dict[str, Any]:
-        return PROFILES.get(str(self._setting('platform', 'robotnik')).lower(), PROFILES['robotnik'])
+        platform = str(self._setting('platform', 'robotnik')).lower()
+        profile = dict(PROFILES.get(platform, PROFILES['robotnik']))
+        if platform in {'mur620_sim', LEGACY_MUR_PLATFORM}:
+            default_arm = 'l' if platform == LEGACY_MUR_PLATFORM else 'none'
+            arm = str(self._setting('mur_arm', default_arm)).strip().lower()
+            if arm not in MUR_ARMS:
+                arm = default_arm
+            if arm not in MUR_NATIVE_ARMS:
+                return profile
+            prefix = f'UR10_{arm}'
+            suffix = f'_{arm}'
+            profile.update({
+                'mur_native_arm': True,
+                'arm_control_supported': True,
+                'arm_base_link': f'mur620a/{prefix}/base_link',
+                'arm_command_frame': f'{prefix}/base_link',
+                'arm_tip_link': f'mur620a/{prefix}/tool0',
+                'arm_joint_prefix': f'{prefix}/',
+                'robot_description_topic': '/mur620a/robot_description',
+                'joint_states_topic': '/mur620a/joint_states',
+                'arm_velocity_command_topic': f'/mur620a/forward_velocity_controller{suffix}/commands',
+                'arm_controller_manager': '/mur620a/controller_manager',
+                'arm_trajectory_topic': f'/mur620a/joint_trajectory_controller{suffix}/joint_trajectory',
+                'arm_world_twist_topic': '/mur620a/arm_following/twist_world',
+                'arm_stop_topic': f'/mur620a/jparse_velocity_controller{suffix}/twist_cmd',
+                'arm_stop_frame': f'{prefix}/base_link',
+                'arm_selected': arm,
+            })
+        return profile
 
     def _control_setting(self, name: str, default: Any) -> Any:
         # The web form stores an explicit current value; the older Qt GUI stores
@@ -460,7 +508,12 @@ class OperatorService:
                 self._start('simulation')
             else:
                 self.start_pose_adapters()
-            for item in ('publish_path', 'controllers', 'path_index', 'base_follower', 'arm_follower'):
+            arm_supported = bool(self._profile().get('arm_control_supported', True))
+            components = ['publish_path', 'path_index', 'base_follower']
+            if arm_supported:
+                components[1:1] = ['controllers']
+                components.append('arm_follower')
+            for item in components:
                 self._start(item)
             if bool(self._setting('simulation', False)):
                 # The arm waits for the base's completion signal, preventing a
@@ -468,11 +521,14 @@ class OperatorService:
                 # has reached its selected path index.  Both one-shot movers
                 # wait for their own ROS inputs, so no fixed startup sleep is
                 # needed to synchronize them.
-                arm_ready_topic = '/am/move_arm_ready'
-                self._start('move_arm', self.command_for(
-                    'move_arm', wait_for_start_condition=True, ready_topic=arm_ready_topic))
-                self._start('move_base', self.command_for(
-                    'move_base', publish_start_condition=True, wait_for_ready_topic=arm_ready_topic))
+                if arm_supported:
+                    arm_ready_topic = '/am/move_arm_ready'
+                    self._start('move_arm', self.command_for(
+                        'move_arm', wait_for_start_condition=True, ready_topic=arm_ready_topic))
+                    self._start('move_base', self.command_for(
+                        'move_base', publish_start_condition=True, wait_for_ready_topic=arm_ready_topic))
+                else:
+                    self._start('move_base', self.command_for('move_base', publish_start_condition=True))
             return
         if name == 'start_following':
             if self.ensure_ros():
@@ -522,6 +578,10 @@ class OperatorService:
             # Start its path dependency first; the mover waits until it has
             # received both that path and the selected platform pose.
             self._start('publish_path')
+        if name in {'controllers', 'arm_follower', 'move_arm', 'switch_arm_velocity'}:
+            if not bool(self._profile().get('arm_control_supported', True)):
+                self.log('safety', f'{name} is unavailable: no MuR arm is selected')
+                return
         command = self.command_for(name)
         if command is None:
             raise ValueError(f'unknown action: {name}')
@@ -554,7 +614,8 @@ class OperatorService:
             platform = str(self._setting('platform', 'robotnik')).strip().lower()
             if platform == 'bunker':
                 return ['ros2', 'launch', 'bunker_description', 'spawn_with_controllers.launch.py', 'headless:=true', 'launch_rviz:=false']
-            if platform in {'mur620_sim', 'mur620_left_arm_sim'}:
+            if platform in {'mur620_sim', LEGACY_MUR_PLATFORM}:
+                mur_native_arm = bool(self._profile().get('mur_native_arm', False))
                 return [
                     'ros2', 'launch', 'mur_launch_sim', 'mur620.launch.py',
                     'robot_name:=mur620a', 'world:=empty', 'x:=44.0', 'y:=44.0',
@@ -564,9 +625,11 @@ class OperatorService:
                     f"enable_sensors:={str(bool(self._setting('simulation_gui', False))).lower()}",
                     f"use_simple_collisions:={str(not bool(self._setting('simulation_gui', False))).lower()}",
                     'ground_truth:=true', 'fake_localization:=true', 'navigation:=false',
-                    f'load_arm_controllers:={str(platform == "mur620_left_arm_sim").lower()}',
+                    f'load_arm_controllers:={str(mur_native_arm).lower()}',
                     'load_lift_controllers:=false', 'launch_moveit:=false',
-                    f'launch_jparse_idk:={str(platform == "mur620_left_arm_sim").lower()}',
+                    # The AM stack starts am_jparse_controller. The native
+                    # MuR controller remains the default outside this stack.
+                    'launch_jparse_idk:=false',
                     'auto_switch_arm_controllers:=false',
                 ]
             if platform == 'robotnik':
@@ -612,7 +675,6 @@ class OperatorService:
                     '-p', f"max_accel_x:={float(self._smoothing('max_accel_x', 0.25)):.6f}", '-p', f"max_accel_y:={float(self._smoothing('max_accel_y', 0.25)):.6f}",
                     '-p', f"max_accel_wz:={float(self._smoothing('max_accel_wz', 0.5)):.6f}", '-p', f"moving_average_window_size:={int(self._smoothing('moving_average_window_size', 5))}"]
         if name == 'arm_follower':
-            nozzle_pose = '/current_tcp_pose' if simulation else '/current_nozzle_tip_pose'
             direction_gains = [
                 f'{key}:={self._pid(f"arm_direction.{key}", default):.6f}'
                 for key, default in (
@@ -627,7 +689,7 @@ class OperatorService:
             ]
             return ['ros2', 'launch', 'ur_trajectory_follower', 'sideways_arm_control.launch.py',
                     f'use_sim_time:={self._use_sim_time()}', f'path_frame:={frame}',
-                    f'robot_name:={"mur620a" if mur_native_arm else "robot"}', f'arm:={"l" if mur_native_arm else "arm"}',
+                    f'robot_name:={"mur620a" if mur_native_arm else "robot"}', f'arm:={profile.get("arm_selected", "arm") if mur_native_arm else "arm"}',
                     f'joint_prefix:={profile.get("arm_joint_prefix", "robot_arm_")}',
                     f'base_link:={profile.get("arm_base_link", "robot_arm_base_link")}',
                     f'tip_link:={profile.get("arm_tip_link", "robot_arm_tool0")}',
@@ -638,7 +700,11 @@ class OperatorService:
                     f'publish_current_pose_from_tf:={str(mur_native_arm).lower()}',
                     'publish_path:=false', 'publish_path_index:=false', 'move_to_start_pose:=false',
                     f"start_pose_trajectory_topic:={profile.get('arm_trajectory_topic', '/robot/joint_trajectory_controller/joint_trajectory' if simulation else '/robot/arm/joint_trajectory_controller/joint_trajectory')}",
-                    'start_pose_publish_delay:=8.0', f'nozzle_pose_topic:={nozzle_pose}', 'current_pose_topic:=/current_deposition_pose',
+                    'start_pose_publish_delay:=8.0',
+                    f'derive_nozzle_pose_from_tcp:={str(simulation).lower()}',
+                    'tcp_pose_topic:=/current_tcp_pose',
+                    'nozzle_pose_topic:=/current_nozzle_tip_pose',
+                    'current_pose_topic:=/current_deposition_pose',
                     'spray_distance_topic:=/spray_distance', 'smoothed_spray_distance_topic:=/spray_distance_smoothed',
                     f"spray_distance_initial:={(float(self._setting('spray_distance_mm', 100.0)) + float(self._setting('nozzle_offset_mm', 0.0))) / 1000.0:.6f}",
                     'spray_distance_max_rate:=0.020000', 'path_topic:=/ur_path_transformed', 'original_path_topic:=/ur_path_original',
@@ -652,13 +718,19 @@ class OperatorService:
         if name == 'controllers':
             if mur_native_arm:
                 return ['ros2', 'launch', 'am_operator_gui', 'mur_arm_velocity_stack.launch.py',
-                        f'use_sim_time:={self._use_sim_time()}', 'robot_name:=mur620a', 'arm:=l',
+                        f'use_sim_time:={self._use_sim_time()}', 'robot_name:=mur620a', f'arm:={profile["arm_selected"]}',
                         f'path_frame:={frame}',
                         f'arm_base_link:={profile["arm_base_link"]}',
                         f'controller_frame:={profile.get("arm_command_frame", profile["arm_base_link"])}',
                         f'source_twist_topic:={profile["arm_world_twist_topic"]}',
-                        'controller_twist_topic:=/mur620a/jparse_velocity_controller_l/twist_cmd',
-                        f'velocity_command_topic:={profile["arm_velocity_command_topic"]}']
+                        f'controller_twist_topic:={profile["arm_stop_topic"]}',
+                        f'velocity_command_topic:={profile["arm_velocity_command_topic"]}',
+                        f'tip_link:={profile["arm_tip_link"]}',
+                        f'robot_description_topic:={profile["robot_description_topic"]}',
+                        f'joint_states_topic:={profile["joint_states_topic"]}',
+                        'spray_distance_topic:=/spray_distance_smoothed',
+                        'jparse_readiness_topic:=/am/jparse_ready',
+                        *self._fixed_tool_arguments()]
             controller_manager = '/robot/controller_manager' if simulation else '/robot/arm/controller_manager'
             velocity_topic = '/robot/arm_forward_velocity_controller/commands' if simulation else '/robot/arm/forward_velocity_controller/commands'
             active_controller = 'arm_forward_velocity_controller' if simulation else 'forward_velocity_controller'
@@ -724,8 +796,9 @@ class OperatorService:
                     f'max_linear_velocity:={self._pid("arm_move.max_linear_velocity", 0.12):.6f}', f'max_angular_velocity:={self._pid("arm_move.max_angular_velocity", 0.5):.6f}']
         if name == 'switch_arm_velocity':
             if mur_native_arm:
+                arm = profile['arm_selected']
                 return ['ros2', 'control', 'switch_controllers', '--controller-manager', profile['arm_controller_manager'],
-                        '--deactivate', 'joint_trajectory_controller_l', '--activate', 'forward_velocity_controller_l']
+                        '--deactivate', f'joint_trajectory_controller_{arm}', '--activate', f'forward_velocity_controller_{arm}']
             manager = '/robot/controller_manager' if simulation else '/robot/arm/controller_manager'
             controller = 'arm_forward_velocity_controller' if simulation else 'forward_velocity_controller'
             return ['ros2', 'control', 'switch_controllers', '--controller-manager', manager, '--deactivate', 'joint_trajectory_controller', '--activate', controller]

@@ -92,13 +92,12 @@ source /opt/ros/jazzy/setup.bash
 sudo rosdep init  # only if /etc/ros/rosdep/sources.list.d/20-default.list is absent
 rosdep update
 rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy \
-  --skip-keys 'controllers_ros2 robotnik_rbvogui_tum'
+  --skip-keys 'robotnik_rbvogui_tum'
 ```
 
-`controllers_ros2` belongs to the legacy generic AM/Robotnik path. The native
-MuR launch uses `mur_control` for its J-PARSE controllers, so it is not needed
-for the hardware bringup in this manual. It remains a declared AM dependency
-until the generic and native controller paths are separated cleanly.
+The AM-owned J-PARSE package is used when the additive manufacturing stack is
+launched. The standalone MuR launch still defaults to its native mur_control
+J-PARSE controller.
 
 ## 3. Build the MuR and AM packages
 

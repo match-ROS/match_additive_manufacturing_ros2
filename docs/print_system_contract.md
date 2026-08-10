@@ -14,10 +14,9 @@ robot descriptions, or safety hardware.
 `match_mobile_robotics_jazzy` owns MiR/MuR platform descriptions, base-driver
 integration, platform transforms, and platform controller configuration.
 
-`bunker_manipulator` owns Bunker-specific simulation and controller wiring.
-Generic Cartesian-to-joint controller logic currently supplied by
-`controllers_ros2` should be extracted to a dedicated ROS 2 controller package
-before it is used by more than one physical platform.
+Bunker-specific simulation and controller wiring stays in bunker_manipulator.
+The AM repository owns the shared am_jparse_controller Cartesian-to-joint
+logic used by the additive-manufacturing stacks.
 
 Future ROS 2 `match_mocap` packages own the Qualisys/QTM transport and generic
 mocap-to-map calibration.  Future ROS 2 `match_hardware_utilities` packages own

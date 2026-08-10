@@ -88,7 +88,7 @@ The hardware-specific packages are site dependent and must also be present:
 - vendor base driver and its velocity-command interface;
 - UR ROS 2 driver/robot description and the configured `ros2_control` hardware
   interface;
-- the `controllers_ros2` package providing the J-PARSE chain used here;
+- the `am_jparse_controller` package providing the AM J-PARSE chain used here;
 - a Vicon ROS bridge publishing the required `PoseStamped` streams; and
 - `python3-pyqt5`, `tf2_ros`, `tf2_geometry_msgs`, `tf_transformations`, and
   NumPy/SciPy (normally installed by `rosdep`).
@@ -161,7 +161,7 @@ Choose exactly one source for `/robot_pose`:
 - **Use odometry for `/robot_pose`:** anchors the current odometry pose to
   `/base_path[Interpolated index]` once, then follows odometry. It avoids a missing
   base marker but will drift and must be started at the intended path index.
-- **Fallback: Base Pose:** uses the Vicon tool pose and the live TF
+- **Base pose via tool TF:** uses the Vicon tool pose and the live TF
   `robot_base_frame -> robot_arm_nozzle_tip` to calculate the base pose. It is for a
   missing Base_RB marker, not for a missing tool marker. The tool-marker-to-TCP
   calibration and robot kinematics must be correct.
@@ -182,9 +182,11 @@ At GUI startup, the same transform is checked against the configured offset when
 is available. A mismatch produces a warning and makes the capture button red; a
 matching offset makes it green.
 
-No values are typed into the GUI. Before pressing the button, provide a valid,
-calibrated TF transform with exactly those frame names, keep the robot stationary and
-safe, and verify it first, for example:
+The web and Qt GUIs also expose numeric XYZ and rotation inputs under the
+**Flange-to-nozzle transform** section. RPY values are entered in degrees and are
+stored as a normalized quaternion. Alternatively, before pressing the capture button,
+provide a valid calibrated TF transform with exactly those frame names, keep the robot
+stationary and safe, and verify it first, for example:
 
 ```bash
 ros2 run tf2_ros tf2_echo robot_arm_tool0 robot_arm_tool0_controller
@@ -193,8 +195,13 @@ ros2 run tf2_ros tf2_echo robot_arm_tool0 robot_arm_tool0_controller
 Use it after a physical tool/TCP change or when deploying a corrected robot
 description. Do **not** use it to calibrate the Vicon marker-to-tool transform or to
 compensate an unknown path/Vicon registration error; those are separate calibrations.
-After capture, restart the arm controllers and arm follower (or stop and run
-**Launch All** again) so the saved offset is applied.
+In simulation, the arm follower composes /current_tcp_pose with this saved
+offset and publishes the result to /current_nozzle_tip_pose; the existing
+deposition-pose node then uses that nozzle pose. Robotnik supplies the raw TCP
+pose directly, while a selected MuR arm derives it from that arm's tool0 TF.
+The hardware Vicon pose pipeline is unchanged. After changing the offset,
+restart the arm follower and controller stack so the AM J-PARSE controller
+receives the updated nozzle-point Jacobian offset.
 
 ## 4. Add and select a new trajectory
 
