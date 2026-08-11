@@ -20,6 +20,9 @@ def generate_launch_description():
         DeclareLaunchArgument('controller_twist_topic', default_value='/mur620a/jparse_velocity_controller_l/twist_cmd'),
         DeclareLaunchArgument('velocity_command_topic', default_value='/mur620a/forward_velocity_controller_l/commands'),
         DeclareLaunchArgument('tip_link', default_value='mur620a/UR10_l/tool0'),
+        # TF frames include the robot namespace, while the link names in the
+        # robot description supplied to J-PARSE do not.
+        DeclareLaunchArgument('controller_tip_link', default_value='UR10_l/tool0'),
         DeclareLaunchArgument('robot_description_topic', default_value='/mur620a/robot_description'),
         DeclareLaunchArgument('joint_states_topic', default_value='/mur620a/joint_states'),
         DeclareLaunchArgument('fixed_tool_offset_xyz', default_value='[0.0, 0.0, 0.0]'),
@@ -51,8 +54,8 @@ def generate_launch_description():
                 'use_sim_time': LaunchConfiguration('use_sim_time'),
                 'robot_name': LaunchConfiguration('robot_name'),
                 'arm': LaunchConfiguration('arm'),
-                'base_link': LaunchConfiguration('arm_base_link'),
-                'tip_link': LaunchConfiguration('tip_link'),
+                'base_link': LaunchConfiguration('controller_frame'),
+                'tip_link': LaunchConfiguration('controller_tip_link'),
                 'fixed_tool_offset_xyz': LaunchConfiguration('fixed_tool_offset_xyz'),
                 'fixed_tool_offset_quaternion_xyzw':
                     LaunchConfiguration('fixed_tool_offset_quaternion_xyzw'),

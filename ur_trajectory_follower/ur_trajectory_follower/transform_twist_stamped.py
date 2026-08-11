@@ -28,7 +28,10 @@ class TransformTwistStamped(Node):
         self.pub = self.create_publisher(
             TwistStamped,
             str(self.get_parameter('output_topic').value),
-            QoSProfile(depth=10, reliability=QoSReliabilityPolicy.BEST_EFFORT),
+            # The AM J-PARSE controller uses the default reliable QoS. A
+            # best-effort publisher is incompatible with that subscription,
+            # which silently drops every move-to-start command in simulation.
+            QoSProfile(depth=10, reliability=QoSReliabilityPolicy.RELIABLE),
         )
         self.create_subscription(
             TwistStamped,

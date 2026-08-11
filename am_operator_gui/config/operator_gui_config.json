@@ -93,7 +93,7 @@
       }
     }
   },
-  "platform": "mur620_left_arm_sim",
+  "platform": "mur620_sim",
   "platform_control_settings": {
     "bunker": {
       "diff_drive_mode": true,
