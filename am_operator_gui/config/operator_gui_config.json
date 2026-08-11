@@ -23,12 +23,40 @@
       0
     ],
     "xyz": [
-      -0.25,
+      0,
       0,
       0.015
     ]
   },
   "fixed_tool_offset_input_mode": "quaternion",
+  "fixed_tool_offsets_by_platform": {
+    "mur620_left_arm_sim": {
+      "quaternion_xyzw": [
+        0,
+        1,
+        0,
+        0
+      ],
+      "xyz": [
+        0,
+        0,
+        0.015
+      ]
+    },
+    "mur620_sim": {
+      "quaternion_xyzw": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "xyz": [
+        0,
+        0,
+        0.015
+      ]
+    }
+  },
   "follower_type": "pure_pursuit",
   "mur_arm": "r",
   "original_arm_index": 0,

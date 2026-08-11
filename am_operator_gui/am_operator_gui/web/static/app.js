@@ -82,7 +82,8 @@ function convertToolOffsetMode() {
   }
 }
 function renderToolOffset(config) {
-  const offset = config.fixed_tool_offset || defaultFixedToolOffset;
+  const platformOffsets = config.fixed_tool_offsets_by_platform || {};
+  const offset = platformOffsets[config.platform] || config.fixed_tool_offset || defaultFixedToolOffset;
   let quaternion;
   try { quaternion = normalizeQuaternion((offset.quaternion_xyzw || defaultFixedToolOffset.quaternion_xyzw).map(Number)); }
   catch (_) { quaternion = defaultFixedToolOffset.quaternion_xyzw; }
@@ -221,8 +222,12 @@ document.querySelector('#save-tool-offset').addEventListener('click', async () =
       ? rpyDegreesToQuaternion(toolOffsetElements.rotation.slice(0, 3).map(input => Number(input.value)))
       : normalizeQuaternion(toolOffsetElements.rotation.map(input => Number(input.value)));
     if (![...xyz, ...values].every(Number.isFinite)) throw new Error('All transform values must be numbers');
+    const config = latestState?.config || {};
+    const platformOffsets = {...(config.fixed_tool_offsets_by_platform || {})};
+    platformOffsets[config.platform || 'robotnik'] = {xyz, quaternion_xyzw: values};
     await fetch('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({values: {
-      fixed_tool_offset: {xyz, quaternion_xyzw: values}, fixed_tool_offset_input_mode: toolOffsetElements.mode.value,
+      fixed_tool_offsets_by_platform: platformOffsets,
+      fixed_tool_offset_input_mode: toolOffsetElements.mode.value,
     }})}).then(jsonResponse);
     showFeedback('Flange-to-nozzle transform saved; restart arm controllers and follower to apply.');
     await refresh();

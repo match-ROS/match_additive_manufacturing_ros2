@@ -718,7 +718,18 @@ class OperatorWindow(QMainWindow):
         return Path(configured).expanduser() if configured else DEFAULT_TRAJECTORY_DIR
 
     def _configured_fixed_tool_offset(self) -> dict[str, list[float]]:
-        configured = self._config.get('fixed_tool_offset', {})
+        platform_combo = getattr(self, 'platform_combo', None)
+        platform = self._current_platform_key() if platform_combo is not None else self._configured_platform()
+        platform_offsets = self._config.get('fixed_tool_offsets_by_platform', {})
+        configured = {}
+        if platform and isinstance(platform_offsets, dict):
+            candidate = platform_offsets.get(platform, {})
+            if isinstance(candidate, dict):
+                configured = candidate
+        # Support the original global setting for existing configurations and
+        # platforms that have not been calibrated yet.
+        if not configured:
+            configured = self._config.get('fixed_tool_offset', {})
         if not isinstance(configured, dict):
             return dict(DEFAULT_FIXED_TOOL_OFFSET)
         xyz = configured.get('xyz', DEFAULT_FIXED_TOOL_OFFSET['xyz'])
@@ -785,10 +796,16 @@ class OperatorWindow(QMainWindow):
         except (TypeError, ValueError) as exc:
             self._append_process_output('gui', f'cannot save flange-to-nozzle transform: {exc}')
             return
-        self._config['fixed_tool_offset'] = {
+        offset = {
             'xyz': xyz,
             'quaternion_xyzw': quaternion,
         }
+        platform = self._current_platform_key() or self._configured_platform()
+        platform_offsets = self._config.setdefault('fixed_tool_offsets_by_platform', {})
+        if not isinstance(platform_offsets, dict):
+            platform_offsets = {}
+            self._config['fixed_tool_offsets_by_platform'] = platform_offsets
+        platform_offsets[platform] = offset
         self._config['fixed_tool_offset_input_mode'] = str(self.fixed_tool_offset_mode.currentData())
         self._save_config()
         self._sync_fixed_tool_offset_widgets()
@@ -1398,6 +1415,7 @@ class OperatorWindow(QMainWindow):
             self._config['mur_arm'] = 'l'
         self._sync_platform_control_widgets()
         self._sync_platform_frame_widgets()
+        self._sync_fixed_tool_offset_widgets()
         self._save_config()
         profile = OperatorWindow._arm_platform_profile(self)
         self.path_status.setText(f"{profile['path_topic']}: ready" if self._has_path else f"{profile['path_topic']}: waiting")
@@ -1487,10 +1505,16 @@ class OperatorWindow(QMainWindow):
             return
         translation = transform.transform.translation
         rotation = transform.transform.rotation
-        self._config['fixed_tool_offset'] = {
+        offset = {
             'xyz': [float(translation.x), float(translation.y), float(translation.z)],
             'quaternion_xyzw': [float(rotation.x), float(rotation.y), float(rotation.z), float(rotation.w)],
         }
+        platform = self._current_platform_key() or self._configured_platform()
+        platform_offsets = self._config.setdefault('fixed_tool_offsets_by_platform', {})
+        if not isinstance(platform_offsets, dict):
+            platform_offsets = {}
+            self._config['fixed_tool_offsets_by_platform'] = platform_offsets
+        platform_offsets[platform] = offset
         self._save_config()
         self._sync_fixed_tool_offset_widgets()
         # The captured transform has just been saved, so it is now the configured value.

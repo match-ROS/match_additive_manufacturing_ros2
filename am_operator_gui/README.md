@@ -175,8 +175,10 @@ Use **Capture UR TCP Offset** when the real tool flange/controller TCP differs f
 the modeled `robot_arm_tool0` frame and the robot TF tree already contains the
 calibrated transform `robot_arm_tool0 -> robot_arm_tool0_controller`. This is a
 hardware-only convenience action: it reads that TF transform, stores its translation
-and XYZW quaternion as `fixed_tool_offset`, and passes the values to the arm
-controller/follower when they are next launched.
+and XYZW quaternion as the selected platform's entry in
+`fixed_tool_offsets_by_platform`, and passes the values to the arm
+controller/follower when they are next launched. Older configurations may still
+use the global `fixed_tool_offset` as a fallback until each platform is saved.
 
 At GUI startup, the same transform is checked against the configured offset when it
 is available. A mismatch produces a warning and makes the capture button red; a

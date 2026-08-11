@@ -207,7 +207,8 @@ class OperatorService:
                    'default_velocity_enabled', 'spray_distance_mm', 'path_transform',
                    'path_transforms_by_directory', 'platform_control_settings', 'pid_gains',
                    'path_transforms_by_platform_directory',
-                   'base_smoothing', 'fixed_tool_offset', 'path_index', 'original_arm_index',
+                   'base_smoothing', 'fixed_tool_offset', 'fixed_tool_offsets_by_platform',
+                   'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
                    'direction_mode', 'accuracy_phase', 'mur_arm', 'fixed_tool_offset_input_mode'}
         if 'mur_arm' in values:
@@ -359,6 +360,11 @@ class OperatorService:
     def _setting(self, name: str, default: Any) -> Any:
         return self.config.get(name, default)
 
+    def _platform_key(self) -> str:
+        """Return the canonical key used for platform-scoped settings."""
+        platform = str(self._setting('platform', 'robotnik')).strip().lower()
+        return 'mur620_sim' if platform == LEGACY_MUR_PLATFORM else platform
+
     def _use_sim_time(self) -> str:
         return str(bool(self._setting('simulation', False))).lower()
 
@@ -425,7 +431,19 @@ class OperatorService:
             return 0.1
 
     def _fixed_tool_arguments(self) -> list[str]:
-        offset = self._setting('fixed_tool_offset', {})
+        platform = self._platform_key()
+        platform_offsets = self._setting('fixed_tool_offsets_by_platform', {})
+        offset = platform_offsets.get(platform, {}) if isinstance(platform_offsets, dict) else {}
+        # A pre-unification MuR configuration used the legacy platform key.
+        # Read it while migrating, but write all new values under mur620_sim.
+        if not offset and isinstance(platform_offsets, dict):
+            legacy_offset = platform_offsets.get(LEGACY_MUR_PLATFORM, {})
+            if platform == 'mur620_sim' and isinstance(legacy_offset, dict):
+                offset = legacy_offset
+        # Keep the old global value as a fallback for configurations that have
+        # not yet stored an offset for the selected platform.
+        if not isinstance(offset, dict) or not offset:
+            offset = self._setting('fixed_tool_offset', {})
         offset = offset if isinstance(offset, dict) else {}
         try:
             xyz = ', '.join(f'{float(value):.6f}' for value in offset.get('xyz', [-0.25, 0.0, 0.015]))
@@ -549,10 +567,16 @@ class OperatorService:
                 return
             translation = transform.transform.translation
             rotation = transform.transform.rotation
-            self.config['fixed_tool_offset'] = {
+            offset = {
                 'xyz': [translation.x, translation.y, translation.z],
                 'quaternion_xyzw': [rotation.x, rotation.y, rotation.z, rotation.w],
             }
+            platform = self._platform_key()
+            platform_offsets = self.config.setdefault('fixed_tool_offsets_by_platform', {})
+            if not isinstance(platform_offsets, dict):
+                platform_offsets = {}
+                self.config['fixed_tool_offsets_by_platform'] = platform_offsets
+            platform_offsets[platform] = offset
             self.store.save(self.config)
             self.log('calibration', 'captured UR TCP offset')
             self._last_action_messages['capture_tool_offset'] = 'UR TCP offset captured'

@@ -114,6 +114,31 @@ def _transform_path(path: Path, xyz: Iterable[float], rpy: Iterable[float]) -> P
     return transformed
 
 
+def _rotate_pose_orientations_local(path: Path, rpy: Iterable[float]) -> Path:
+    """Rotate each pose orientation around its own local axes."""
+
+    rotation = quaternion_from_euler(*list(rpy))
+    rotated = Path()
+    rotated.header = path.header
+    for original in path.poses:
+        pose = PoseStamped()
+        pose.header = original.header
+        pose.pose.position = original.pose.position
+        current = [
+            original.pose.orientation.x,
+            original.pose.orientation.y,
+            original.pose.orientation.z,
+            original.pose.orientation.w,
+        ]
+        orientation = quaternion_multiply(current, rotation)
+        pose.pose.orientation.x = float(orientation[0])
+        pose.pose.orientation.y = float(orientation[1])
+        pose.pose.orientation.z = float(orientation[2])
+        pose.pose.orientation.w = float(orientation[3])
+        rotated.poses.append(pose)
+    return rotated
+
+
 def _make_path(frame_id: str, positions: list[np.ndarray], orientations: list[Any], timestamps: list[float]) -> Path:
     path = Path()
     path.header.frame_id = frame_id
@@ -173,6 +198,7 @@ def export_component_paths(
     arm_transform_rpy: Iterable[float] = (0.0, 0.0, 0.0),
     base_transform_xyz: Iterable[float] = (0.0, 0.0, 0.0),
     base_transform_rpy: Iterable[float] = (0.0, 0.0, 0.0),
+    arm_flip_x_deg: float = 180.0,
     normal_vector: Iterable[float] = (0.0, 1.0, 0.0),
     arm_filename: str = 'arm_path.json',
     base_filename: str = 'base_path.json',
@@ -190,6 +216,10 @@ def export_component_paths(
         base_z=base_z,
     )
     arm_path = _transform_path(arm_path, arm_transform_xyz, arm_transform_rpy)
+    arm_path = _rotate_pose_orientations_local(
+        arm_path,
+        (math.radians(float(arm_flip_x_deg)), 0.0, 0.0),
+    )
     base_path = _transform_path(base_path, base_transform_xyz, base_transform_rpy)
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -285,6 +315,7 @@ class ComponentPathExporter(Node):
         self.declare_parameter('arm_transform_rpy', [0.0, 0.0, 0.0])
         self.declare_parameter('base_transform_xyz', [0.0, 0.0, 0.0])
         self.declare_parameter('base_transform_rpy', [0.0, 0.0, 0.0])
+        self.declare_parameter('arm_flip_x_deg', 180.0)
         self.declare_parameter('normal_vector', [0.0, 1.0, 0.0])
         self.declare_parameter('arm_filename', 'arm_path.json')
         self.declare_parameter('base_filename', 'base_path.json')
@@ -316,6 +347,7 @@ class ComponentPathExporter(Node):
             base_transform_rpy=as_float_list(
                 self.get_parameter('base_transform_rpy').value, [0.0, 0.0, 0.0]
             ),
+            arm_flip_x_deg=float(self.get_parameter('arm_flip_x_deg').value),
             normal_vector=as_float_list(
                 self.get_parameter('normal_vector').value, [0.0, 1.0, 0.0]
             ),

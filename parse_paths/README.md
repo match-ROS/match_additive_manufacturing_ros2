@@ -74,6 +74,10 @@ matching pose timestamps, computes arm tangent orientations, and uses the
 component MiR orientation vectors for base yaw. Set `start_index:=0`
 `end_trim:=0` to retain the complete series.
 
+The arm orientations are flipped by 180 degrees around each pose's local X
+axis by default; arm positions are unchanged. Override this with
+`arm_flip_x_deg:=0.0` if the source orientation is already correct.
+
 The component files do not contain a frame registration transform. Both
 `arm_transform_xyz/rpy` and `base_transform_xyz/rpy` therefore default to the
 identity transform. Set them only after calibrating the component coordinates

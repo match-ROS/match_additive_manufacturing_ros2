@@ -6,6 +6,12 @@
     "xyz": [-0.25, 0.0, 0.015],
     "quaternion_xyzw": [0.0, -0.7071067812, 0.0, 0.7071067812]
   },
+  "fixed_tool_offsets_by_platform": {
+    "robotnik": {
+      "xyz": [-0.25, 0.0, 0.015],
+      "quaternion_xyzw": [0.0, -0.7071067812, 0.0, 0.7071067812]
+    }
+  },
   "simulation": true,
   "simulation_gui": false,
   "trajectory_directory": "",
