@@ -405,6 +405,13 @@ class RosBridge:
             except Exception:
                 pass
 
+    def publish_desired_arm_speed(self, value: float) -> None:
+        if self._node is not None:
+            try:
+                self._node.publish_desired_arm_speed(value)
+            except Exception:
+                pass
+
     def reset_tf_buffer(self) -> None:
         if self._node is not None:
             try:

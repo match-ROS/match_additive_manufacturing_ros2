@@ -332,6 +332,11 @@ PLATFORM_PROFILES = {
         'arm_controller_manager': '/mur620a/controller_manager',
         'arm_trajectory_topic': '/mur620a/joint_trajectory_controller/joint_trajectory',
         'arm_world_twist_topic': '/mur620a/arm_following/twist_world',
+        'start_base_motion_compensation': True,
+        'base_velocity_topic': '/mur620a/ground_truth/odom',
+        'base_velocity_type': 'odometry',
+        'compensation_base_frame': 'mur620a/base_footprint',
+        'base_compensation_topic': '/mur620a/arm_following/twist_base_compensation_world',
         'arm_stop_topic': '/mur620a/jparse_velocity_controller_l/twist_cmd',
         'arm_stop_frame': 'UR10_l/base_link',
         'arm_move_to_start_supported': True,
@@ -1313,6 +1318,8 @@ class OperatorWindow(QMainWindow):
                     'robot_description_topic', 'joint_states_topic',
                     'arm_velocity_command_topic', 'arm_controller_manager',
                     'arm_trajectory_topic', 'arm_world_twist_topic',
+                    'start_base_motion_compensation', 'base_velocity_topic',
+                    'base_velocity_type', 'compensation_base_frame', 'base_compensation_topic',
                     'arm_stop_topic', 'arm_stop_frame', 'arm_move_to_start_supported',
                 )
             })
@@ -2194,6 +2201,14 @@ class OperatorWindow(QMainWindow):
         ]
         if mur_native_arm:
             command.append(f'combined_twist_source_topic:={profile["arm_world_twist_topic"]}')
+            if bool(profile.get('start_base_motion_compensation', False)):
+                command.extend([
+                    'start_base_motion_compensation:=true',
+                    f'base_velocity_topic:={profile["base_velocity_topic"]}',
+                    f'base_velocity_type:={profile["base_velocity_type"]}',
+                    f'compensation_base_frame:={profile["compensation_base_frame"]}',
+                    f'base_compensation_topic:={profile["base_compensation_topic"]}',
+                ])
         command.extend(OperatorWindow._tool_offset_launch_arguments(self))
         command.extend(self._pid_launch_arguments(
             'arm_direction',

@@ -243,17 +243,25 @@ class SimpleBaseFollower(Node):
             command_override = self.velocity_override
             if command_override <= 0.0 and self._as_bool(self.get_parameter('hold_reference_on_pause').value):
                 command_override = 1.0
+            # A paired path may revisit its final base pose before its shared
+            # arm/base progress index reaches the end.  Do not let that
+            # geometric coincidence terminate base tracking early.
+            final_pose = self.path[-1]
+            if self.use_external_path_index and self.current_index < len(self.path) - 1:
+                final_pose = target_pose
             command = compute_velocity_command(
                 self.robot_pose,
                 target_pose,
-                self.path[-1],
+                final_pose,
                 self._gains(),
                 self._limits(),
                 self._tolerances(),
                 self.diff_drive_mode,
                 command_override,
             )
-        self.goal_reached = command.reached_goal
+        self.goal_reached = command.reached_goal and (
+            not self.use_external_path_index or self.current_index >= len(self.path) - 1
+        )
         if self.goal_reached:
             self._publish_stop('goal reached')
             self.get_logger().info("Base path goal reached.", throttle_duration_sec=2.0)

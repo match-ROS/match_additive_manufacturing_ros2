@@ -64,6 +64,11 @@ PROFILES = {
                             'arm_controller_manager': '/mur620a/controller_manager',
                             'arm_trajectory_topic': '/mur620a/joint_trajectory_controller/joint_trajectory',
                             'arm_world_twist_topic': '/mur620a/arm_following/twist_world',
+                            'start_base_motion_compensation': True,
+                            'base_velocity_topic': '/mur620a/ground_truth/odom',
+                            'base_velocity_type': 'odometry',
+                            'compensation_base_frame': 'mur620a/base_footprint',
+                            'base_compensation_topic': '/mur620a/arm_following/twist_base_compensation_world',
                             'arm_stop_topic': '/mur620a/jparse_velocity_controller_l/twist_cmd'},
 }
 
@@ -395,6 +400,11 @@ class OperatorService:
                 'arm_controller_manager': '/mur620a/controller_manager',
                 'arm_trajectory_topic': f'/mur620a/joint_trajectory_controller{suffix}/joint_trajectory',
                 'arm_world_twist_topic': '/mur620a/arm_following/twist_world',
+                'start_base_motion_compensation': True,
+                'base_velocity_topic': '/mur620a/ground_truth/odom',
+                'base_velocity_type': 'odometry',
+                'compensation_base_frame': 'mur620a/base_footprint',
+                'base_compensation_topic': '/mur620a/arm_following/twist_base_compensation_world',
                 'arm_stop_topic': f'/mur620a/jparse_velocity_controller{suffix}/twist_cmd',
                 'arm_stop_frame': f'{prefix}/base_link',
                 'arm_selected': arm,
@@ -740,6 +750,13 @@ class OperatorService:
                     'arm_reference_topic:=/arm_trajectory_reference', 'desired_speed_topic:=/desired_arm_speed',
                     f'default_velocity:={self._default_velocity_parameter():.6f}',
                     *( [f'combined_twist_source_topic:={profile["arm_world_twist_topic"]}'] if mur_native_arm else [] ),
+                    *([
+                        'start_base_motion_compensation:=true',
+                        f'base_velocity_topic:={profile["base_velocity_topic"]}',
+                        f'base_velocity_type:={profile["base_velocity_type"]}',
+                        f'compensation_base_frame:={profile["compensation_base_frame"]}',
+                        f'base_compensation_topic:={profile["base_compensation_topic"]}',
+                    ] if mur_native_arm and bool(profile.get('start_base_motion_compensation', False)) else []),
                     *self._fixed_tool_arguments(), *direction_gains, *orientation_gains]
         if name == 'controllers':
             if mur_native_arm:

@@ -98,6 +98,13 @@ base-velocity/odometry topic. Enable the existing `ur_vel_induced_by_base` plus
 and negative base-induced TCP twists, then transform the result once into the arm
 command frame before J-PARSE/controller output.
 
+**Status (2026-08-11):** The GUI launch wiring is now present and a direct MuR
+simulation check verified a non-zero, opposite-sign correction from the GUI-launched
+node for non-zero ground-truth odometry. A bounded coupled run still recorded up to
+0.30 m TCP error (predominantly spray-axis error), so this must not yet be declared
+end-to-end validated; investigate/tune the arm tracking and add the required stale
+input safety gate before relying on it for printing.
+
 Use an additive combiner for these simultaneous Cartesian contributions, as ROS 1 did;
 do not use a `twist_mux` to select between them. A mux/arbitrator remains appropriate
 only for mutually exclusive control ownership such as E-stop, manual jog, or homing.
