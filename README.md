@@ -79,6 +79,8 @@ The current hardware-free build and test baseline is recorded in
 [docs/offline_verification.md](docs/offline_verification.md).
 The ordered development and hardware-commissioning stages are in
 [docs/implementation_plan.md](docs/implementation_plan.md).
+Outstanding implementation work, including the ROS 1 behaviors worth selectively
+retaining in ROS 2, is tracked in [docs/open_todos.md](docs/open_todos.md).
 For a MuR620 with MiR base and two UR10 arms, without Robotnik, use the staged
 [MuR620 installation manual](docs/mur620_install.md).
 
