@@ -961,10 +961,26 @@ class OperatorWindow(QMainWindow):
         self.direction_mode.setCurrentText('goal_direction')
         self.index_spin = QSpinBox()
         self.index_spin.setRange(0, 100000)
-        self.index_spin.setValue(0)
+        self.index_spin.setValue(max(0, int(self._config.get('path_index', 0))))
+        self.index_spin.setToolTip(
+            'Index in den resampelten Trackingpfaden /ur_path_tracking und '
+            '/base_path_tracking. Path Index resampelt den transformierten Arm- '
+            'pfad auf 5 mm; deshalb unterscheidet er sich normalerweise vom '
+            'Original-Armindex. Beide Felder werden nach zurückgelegter Strecke '
+            'zugeordnet, sobald beide Pfade vorliegen.'
+        )
         self.original_arm_index_spin = QSpinBox()
         self.original_arm_index_spin.setRange(0, 100000)
-        self.original_arm_index_spin.setValue(0)
+        self.original_arm_index_spin.setValue(
+            max(0, int(self._config.get('original_arm_index', self.index_spin.value())))
+        )
+        self.original_arm_index_spin.setToolTip(
+            'Index im transformierten, aber nicht resampelten Armpfad '
+            '/ur_path_transformed. Move Arm To Start verwendet diesen Wert. '
+            'Er wird nach zurückgelegter Strecke aus dem Trackingindex abgeleitet. '
+            'Gleiche Werte bedeuten: Pfade noch nicht verfügbar oder zufällig '
+            'gleich abgetastet.'
+        )
 
         self.path_folder = QLineEdit(str(self._configured_trajectory_directory()))
         self.path_folder.setReadOnly(True)
@@ -994,6 +1010,10 @@ class OperatorWindow(QMainWindow):
         self.launch_button = QPushButton('Launch All')
         self.launch_sim_button = QPushButton('Launch Sim')
         self.publish_path_button = QPushButton('Publish Path')
+        self.publish_path_button.setToolTip(
+            'Publish the source arm/base paths and apply the configured rigid '
+            'path transform. This does not resample the arm path.'
+        )
         self.rviz_button = QPushButton('Open RViz')
         self.pid_gains_button = QPushButton('PID Gains...')
         self.base_smoothing_button = QPushButton('Base Smoothing...')
@@ -1009,9 +1029,13 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.diff_drive_checkbox, 0, 7)
         launch_layout.addWidget(QLabel('Direction'), 1, 0)
         launch_layout.addWidget(self.direction_mode, 1, 1)
-        launch_layout.addWidget(QLabel('Interpolated index'), 1, 2)
+        tracking_index_label = QLabel('Interpolated index')
+        tracking_index_label.setToolTip(self.index_spin.toolTip())
+        launch_layout.addWidget(tracking_index_label, 1, 2)
         launch_layout.addWidget(self.index_spin, 1, 3)
-        launch_layout.addWidget(QLabel('Non-interpolated arm index'), 1, 4)
+        original_arm_index_label = QLabel('Non-interpolated arm index')
+        original_arm_index_label.setToolTip(self.original_arm_index_spin.toolTip())
+        launch_layout.addWidget(original_arm_index_label, 1, 4)
         launch_layout.addWidget(self.original_arm_index_spin, 1, 5)
         launch_layout.addWidget(self.odometry_pose_checkbox, 2, 4)
         launch_layout.addWidget(self.vicon_tcp_base_pose_fallback_checkbox, 2, 5)
@@ -1057,6 +1081,19 @@ class OperatorWindow(QMainWindow):
         self.base_follower_button = QPushButton('Launch Base Follower')
         self.arm_follower_button = QPushButton('Launch Arm Follower')
         self.path_index_button = QPushButton('Launch Path Index')
+        self.path_index_button.setToolTip(
+            'Start shared path progress. It resamples /ur_path_transformed '
+            'into /ur_path_tracking at 5 mm spacing and publishes /path_index. '
+            'The interpolated index addresses that tracking path.'
+        )
+        self.base_follower_button.setToolTip(
+            'Follow the resampled base tracking path using the shared '
+            'interpolated /path_index.'
+        )
+        self.arm_follower_button.setToolTip(
+            'Follow the resampled arm tracking path using the shared '
+            'interpolated /path_index.'
+        )
         self.current_tcp_pose_button = QPushButton('Launch Transformations')
         self.arm_controllers_button = QPushButton('Start Controllers')
         self.switch_arm_velocity_button = QPushButton('Switch Arm Velocity')
@@ -1106,6 +1143,18 @@ class OperatorWindow(QMainWindow):
         self.move_base_button = QPushButton('Move Base To Start')
         self.move_arm_button = QPushButton('Move Arm To Start')
         self.start_following_button = QPushButton('Start Following')
+        self.move_base_button.setToolTip(
+            'Move the base to the pose at the selected interpolated index in '
+            'the resampled base tracking path.'
+        )
+        self.move_arm_button.setToolTip(
+            'Move the arm to the selected non-interpolated arm index in '
+            '/ur_path_transformed.'
+        )
+        self.start_following_button.setToolTip(
+            'Enable trajectory progress from the selected interpolated index. '
+            'The Path Index, Base Follower, and Arm Follower must be running.'
+        )
         self.stop_following_button = QPushButton('Stop Following')
 
         motion_layout.addWidget(self.move_base_button, 0, 0)
@@ -1217,7 +1266,159 @@ class OperatorWindow(QMainWindow):
         splitter.setSizes([760, 520])
 
         layout.addWidget(splitter)
+        self._set_operation_tooltips()
         self.setCentralWidget(root)
+
+    def _set_operation_tooltips(self) -> None:
+        """Describe the ROS work performed by the operator controls on hover."""
+        self.simulation_checkbox.setToolTip(
+            'Wählt die Ausführungsumgebung für alle gestarteten Knoten. '
+            'Simulation verwendet Simulationszeit und die Controller/Topics des '
+            'gewählten Simulators; Hardware verwendet die externen Pose-Quellen '
+            'und Hardware-Controller des gewählten Plattformprofils.'
+        )
+        self.platform_combo.setToolTip(
+            'Wählt das Plattformprofil. Dieses bestimmt unter anderem Base- '
+            'Pfad, Pose- und cmd_vel-Topics sowie den Controller-Manager. '
+            'Beim MuR wählt „MuR arm“ zusätzlich linken oder rechten Arm.'
+        )
+        self.mur_arm_combo.setToolTip(
+            'Wählt beim MuR den linken oder rechten nativen Arm. Davon hängen '
+            'Gelenkpräfix, Tool-Link, Velocity-Controller und Controller-Manager ab.'
+        )
+        self.odometry_pose_checkbox.setToolTip(
+            'Nur Hardware-Posekette: erzeugt /robot_pose aus Odometry, angeheftet '
+            'an /base_path am gewählten interpolierten Index, statt aus dem '
+            'Vicon-Basismarker. Der Index muss zur realen Startpose passen.'
+        )
+        self.vicon_tcp_base_pose_fallback_checkbox.setToolTip(
+            'Nur Hardware-Posekette: rekonstruiert /robot_pose aus der Vicon- '
+            'Werkzeugpose und dem Roboter-TF, wenn kein Vicon-Basismarker verfügbar ist.'
+        )
+        self.path_folder.setToolTip(
+            'Verzeichnis der exportierten Arm-, Base- und Normalenpfade. '
+            '„Publish Path“ lädt diese Daten und wendet den unten konfigurierten '
+            'starren Pfadversatz an.'
+        )
+        self.calculate_path_transform_button.setToolTip(
+            'Berechnet aus der aktuellen /robot_pose und /base_path am gewählten '
+            'Index eine starre Translation und Z-Drehung. Der Wert wird für das '
+            'aktuelle Pfadverzeichnis gespeichert und beim nächsten Publish Path angewandt.'
+        )
+        self.launch_sim_button.setToolTip(
+            'Startet ausschließlich die Simulation des gewählten Plattformprofils: '
+            'Bunker, Robotnik oder MuR620. Beim MuR werden Gazebo-Fenster, Kamera '
+            'und Sensoren entsprechend „Show simulator window“ konfiguriert.'
+        )
+        self.launch_button.setToolTip(
+            'Startet den AM-Stack. In der Simulation: Simulator, Pose-Transformation, '
+            'Pfad-Publisher, Index, Follower und – falls ein Arm gewählt ist – '
+            'Velocity-Stack; anschließend fahren Base und Arm koordiniert zur Startpose. '
+            'Auf Hardware startet er statt des Simulators die Vicon/Odometrie-Poseadapter '
+            'und startet keine automatischen Startbewegungen.'
+        )
+        self.publish_path_button.setToolTip(
+            'Startet den Pfad-Publisher, der die exportierten Trajektorien zyklisch lädt '
+            'und /ur_path_transformed, den Base-Pfad sowie Normalen publiziert. '
+            'Die eingestellte Translation und Gierrotation werden vorher angewandt; '
+            'eine 5-mm-Resampling erfolgt hier noch nicht.'
+        )
+        self.path_index_button.setToolTip(
+            'Startet den gemeinsamen Fortschrittsknoten. Er resampelt Arm- und '
+            'gekoppelten Base-Pfad auf 5 mm, publiziert /ur_path_tracking, '
+            '/base_path_tracking, Referenzposen und /path_index. Fortschritt erfolgt '
+            'nach Zeit oder Sollgeschwindigkeit, aber erst bei /start_condition=true.'
+        )
+        self.base_follower_button.setToolTip(
+            'Startet den Base-Follower auf /base_path_tracking. Er verwendet /robot_pose '
+            'und das plattformspezifische cmd_vel-Topic, folgt dem externen /path_index '
+            'und wartet ebenfalls auf /start_condition. PID/Pure-Pursuit, Diff-Drive '
+            'und Glättung stammen aus den aktuellen Einstellungen.'
+        )
+        self.arm_follower_button.setToolTip(
+            'Startet die Arm-Bahnregelung mit /ur_path_transformed, Normalen, '
+            '/path_index und der Arm-Referenzpose. Sie erzeugt Welt-Twist-Kommandos '
+            'für den gewählten Arm und wartet auf /start_condition. Beim nativen MuR '
+            'kann zusätzlich die Basebewegung kompensiert werden.'
+        )
+        self.current_tcp_pose_button.setToolTip(
+            'Simulation: startet die TCP-/Nozzle-Transformation; die Nozzle-Pose wird '
+            'aus TCP, Werkzeugoffset und Sprühabstand abgeleitet. Hardware: startet '
+            'die Vicon-Posekette (Flansch-Umrechnung, Base-Pose aus Vicon/Odometrie/'
+            'Tool-TF und Nozzle-Poseadapter). Ein erneuter Klick stoppt diese Kette.'
+        )
+        self.arm_controllers_button.setToolTip(
+            'Startet die Arm-Velocity-Kette: Welt-Twist wird in den Controller-Rahmen '
+            'transformiert und der Trajektoriencontroller wird zugunsten eines '
+            'Velocity-Controllers umgeschaltet. Simulation und Hardware verwenden '
+            'unterschiedliche Controller-Manager/Velocity-Topics; native MuR-Arme '
+            'verwenden ihren eigenen Stack.'
+        )
+        self.switch_arm_velocity_button.setToolTip(
+            'Führt direkt „ros2 control switch_controllers“ aus: deaktiviert den '
+            'Joint-Trajectory-Controller und aktiviert den passenden Velocity-Controller. '
+            'Auf Simulation, Hardware und linkem/rechtem MuR-Arm sind die Zielnamen verschieden.'
+        )
+        self.capture_tool_offset_button.setToolTip(
+            'Liest den TF von robot_arm_tool0 nach robot_arm_tool0_controller und '
+            'speichert Translation und Quaternion als plattformspezifischen '
+            'Flansch-zu-Nozzle-Offset. Er verändert keine laufenden Controller.'
+        )
+        self.move_base_button.setToolTip(
+            'Startet einen einmaligen Base-Regler zur Pose des interpolierten Index. '
+            'Er verwendet den Plattformpfad, /robot_pose und das Plattform-cmd_vel-Topic '
+            'mit 6 cm Positions- und 0,08-rad Giertoleranz. Allein gestartet setzt er '
+            'noch nicht /start_condition für die Bahnfolger.'
+        )
+        self.move_arm_button.setToolTip(
+            'Startet einen einmaligen Arm-Regler zur Pose des nicht-interpolierten '
+            'Indexes in /ur_path_transformed. Er nutzt /current_deposition_pose und '
+            'sendet Welt-Twist an den gewählten Arm; ein fehlender Pfad-/Pose-Adapter '
+            'wird zuvor automatisch gestartet.'
+        )
+        self.start_following_button.setToolTip(
+            'Publiziert den gewählten /path_index_command und anschließend mehrfach '
+            '/start_condition=true. Das aktiviert Fortschritt sowie Base- und Armfolger. '
+            'Der Klick wird blockiert, bis Pfad, Base-/Arm-Pose, Arm-Bereitschaft und '
+            'alle drei Steuerprozesse verfügbar sind.'
+        )
+        self.stop_following_button.setToolTip(
+            'Publiziert mehrfach /start_condition=false und für etwa eine Sekunde '
+            'wiederholt Null-Kommandos an Base und Arm. Die gestarteten Knoten bleiben '
+            'erhalten, aber Fortschritt und Bewegung werden angehalten.'
+        )
+        self.rviz_button.setToolTip(
+            'Öffnet RViz mit der Bunker- bzw. Robotnik-Konfiguration des gewählten '
+            'Plattformprofils und setzt den konfigurierten Control Frame als Fixed Frame.'
+        )
+        self.pid_gains_button.setToolTip(
+            'Öffnet die PID- und Geschwindigkeitsgrenzen für Startbewegungen sowie '
+            'Base- und Armfolger. Änderungen werden gespeichert; laufende Knoten '
+            'übernehmen sie erst nach einem Neustart.'
+        )
+        self.base_smoothing_button.setToolTip(
+            'Konfiguriert die Glättung der Base-Geschwindigkeitskommandos, '
+            'Beschleunigungsgrenzen und den externen Index-Stride. Die Werte werden '
+            'beim nächsten Start des Base Followers als ROS-Parameter verwendet.'
+        )
+        self.sync_workspace_button.setToolTip(
+            'Synchronisiert den Quellbaum per rsync über SSH auf den fest konfigurierten '
+            'Rechner. Dies verändert Dateien auf dem entfernten Zielsystem.'
+        )
+        self.base_accuracy_monitor_button.setToolTip(
+            'Zeichnet die Abweichung von /robot_pose zu Base-Pfad und Base-Referenzpose '
+            'auf. Die Messung beginnt nach /start_pose_reached und schreibt CSV, JSON '
+            'sowie einen Konfigurations-Snapshot nach /tmp/am_trajectory_runs.'
+        )
+        self.tcp_accuracy_monitor_button.setToolTip(
+            'Zeichnet die Abweichung von /current_deposition_pose zum resampelten '
+            'Arm-Pfad und zur Arm-Referenzpose auf. Die Messung beginnt mit '
+            '/start_condition und schreibt Ergebnisse nach /tmp/am_trajectory_runs.'
+        )
+        self.accuracy_report_button.setToolTip(
+            'Erstellt aus den aufgezeichneten Läufen in /tmp/am_trajectory_runs einen '
+            'Genauigkeitsbericht für das aktuell ausgewählte Pfadverzeichnis.'
+        )
 
     def _connect_signals(self) -> None:
         self.browse_button.clicked.connect(self._choose_path_folder)
@@ -1881,6 +2082,9 @@ class OperatorWindow(QMainWindow):
             self._start_sim()
         else:
             self._start_pose_adapters()
+        start_transformations = getattr(self, '_start_current_tcp_pose', None)
+        if start_transformations is not None:
+            start_transformations()
         self._start_publish_path()
         if self.simulation_checkbox.isChecked() and self.odometry_pose_checkbox.isChecked():
             self._start_odometry_pose_adapter()
@@ -2171,13 +2375,14 @@ class OperatorWindow(QMainWindow):
             f"velocity_command_topic:={self._arm_velocity_command_topic()}",
             'start_jparse_controller:=false',
             'start_command_transform:=false',
-            f'publish_current_pose_from_tf:={str(mur_native_arm).lower()}',
+            'publish_current_pose_from_tf:=false',
+            'start_pose_pipeline:=false',
             'publish_path:=false',
             'publish_path_index:=false',
             f'move_to_start_pose:={str(move_to_start_pose).lower()}',
             f"start_pose_trajectory_topic:={self._arm_trajectory_topic()}",
             'start_pose_publish_delay:=8.0',
-            f'derive_nozzle_pose_from_tcp:={str(simulation).lower()}',
+            'derive_nozzle_pose_from_tcp:=false',
             'tcp_pose_topic:=/current_tcp_pose',
             'nozzle_pose_topic:=/current_nozzle_tip_pose',
             'current_pose_topic:=/current_deposition_pose',
@@ -2270,14 +2475,6 @@ class OperatorWindow(QMainWindow):
         self.processes.start(PATH_INDEX_NAME, command)
 
     def _toggle_current_tcp_pose(self) -> None:
-        sim_process = self.processes.get(SIM_NAME)
-        if self.simulation_checkbox.isChecked() and sim_process is not None and sim_process.is_running():
-            self._append_process_output(
-                CURRENT_TCP_POSE_NAME,
-                'simulation launch already publishes /current_tcp_pose; no second publisher started',
-            )
-            self._refresh_process_states()
-            return
         if not self.simulation_checkbox.isChecked():
             running = any(
                 (process := self.processes.get(name)) is not None and process.is_running()
@@ -2297,8 +2494,10 @@ class OperatorWindow(QMainWindow):
                 self.processes.stop(ODOMETRY_POSE_ADAPTER_NAME)
                 self.processes.stop(VICON_TCP_POSE_BACKUP_NAME)
                 self.processes.stop(ARM_POSE_ADAPTER_NAME)
+                self.processes.stop(CURRENT_TCP_POSE_NAME)
             else:
                 self._start_pose_adapters()
+                self._start_current_tcp_pose()
             self._refresh_process_states()
             return
         process = self.processes.get(CURRENT_TCP_POSE_NAME)
@@ -2317,18 +2516,25 @@ class OperatorWindow(QMainWindow):
         self._refresh_process_states()
 
     def _start_current_tcp_pose(self) -> None:
+        profile = OperatorWindow._arm_platform_profile(self)
+        simulation = self.simulation_checkbox.isChecked()
         command = [
             'ros2',
-            'run',
-            'ur_trajectory_follower',
-            'current_pose_from_tf',
-            '--ros-args',
-            '-p', f'use_sim_time:={self._use_sim_time()}',
-            '-p', f'target_frame:={self.control_frame.text().strip()}',
-            '-p', 'source_frame:=robot_arm_nozzle_tip',
-            '-p', 'pose_topic:=/current_nozzle_tip_pose',
-            '-p', 'publish_rate:=20.0',
+            'launch',
+            'am_operator_gui',
+            'pose_transformations.launch.py',
+            f'use_sim_time:={self._use_sim_time()}',
+            f'path_frame:={self.control_frame.text().strip()}',
+            f'tip_link:={profile.get("arm_tip_link", "robot_arm_tool0")}',
+            f'publish_tcp_pose_from_tf:={str(bool(profile.get("mur_native_arm", False))).lower()}',
+            f'derive_nozzle_pose_from_tcp:={str(simulation).lower()}',
+            'tcp_pose_topic:=/current_tcp_pose',
+            'nozzle_pose_topic:=/current_nozzle_tip_pose',
+            'deposition_pose_topic:=/current_deposition_pose',
+            f'spray_distance_initial:={self._ros_float_literal(OperatorWindow._effective_spray_distance_m(self))}',
+            f'spray_distance_max_rate:={self._ros_float_literal(OperatorWindow._configured_spray_distance_max_rate(self) if hasattr(self, "_configured_spray_distance_max_rate") else DEFAULT_SPRAY_DISTANCE_MAX_RATE)}',
         ]
+        command.extend(OperatorWindow._tool_offset_launch_arguments(self))
         self._append_process_output(CURRENT_TCP_POSE_NAME, ' '.join(command))
         self.processes.start(CURRENT_TCP_POSE_NAME, command)
 

@@ -22,6 +22,10 @@ def _launch_setup(context, *args, **kwargs):
     use_sim_time = ParameterValue(LaunchConfiguration('use_sim_time'), value_type=bool)
     path_topic = LaunchConfiguration('path_topic')
     current_pose_topic = LaunchConfiguration('current_pose_topic')
+    start_pose_pipeline = (
+        LaunchConfiguration('start_pose_pipeline').perform(context).strip().lower()
+        in {'1', 'true', 'yes', 'on'}
+    )
     derive_nozzle_pose_from_tcp = (
         LaunchConfiguration('derive_nozzle_pose_from_tcp').perform(context).strip().lower()
         in {'1', 'true', 'yes', 'on'}
@@ -59,55 +63,6 @@ def _launch_setup(context, *args, **kwargs):
                 'height_gain': LaunchConfiguration('contour_height_gain'),
                 'max_lateral_velocity': LaunchConfiguration('contour_max_lateral_velocity'),
                 'max_height_velocity': LaunchConfiguration('contour_max_height_velocity'),
-            }],
-        ),
-        Node(
-            package='ur_trajectory_follower',
-            executable='deposition_pose',
-            name='deposition_pose',
-            output='screen',
-            parameters=[{
-                'use_sim_time': use_sim_time,
-                'nozzle_pose_topic': LaunchConfiguration('nozzle_pose_topic'),
-                'deposition_pose_topic': current_pose_topic,
-                'spray_distance_topic': LaunchConfiguration('spray_distance_topic'),
-                'smoothed_spray_distance_topic': LaunchConfiguration('smoothed_spray_distance_topic'),
-                'spray_distance_initial': LaunchConfiguration('spray_distance_initial'),
-                'spray_distance_max_rate': LaunchConfiguration('spray_distance_max_rate'),
-            }],
-        ),
-        Node(
-            package='ur_trajectory_follower',
-            executable='fixed_tool_pose',
-            name='fixed_tool_pose',
-            output='screen',
-            condition=IfCondition(LaunchConfiguration('derive_nozzle_pose_from_tcp')),
-            parameters=[{
-                'input_pose_topic': tcp_pose_topic,
-                'output_pose_topic': LaunchConfiguration('nozzle_pose_topic'),
-                'fixed_tool_offset_xyz': LaunchConfiguration('fixed_tool_offset_xyz'),
-                'fixed_tool_offset_quaternion_xyzw':
-                    LaunchConfiguration('fixed_tool_offset_quaternion_xyzw'),
-            }],
-        ),
-        Node(
-            package='ur_trajectory_follower',
-            executable='current_pose_from_tf',
-            name='current_pose_from_tf',
-            output='screen',
-            condition=IfCondition(LaunchConfiguration('publish_current_pose_from_tf')),
-            parameters=[{
-                'use_sim_time': use_sim_time,
-                'target_frame': LaunchConfiguration('path_frame'),
-                'source_frame': LaunchConfiguration('tip_link'),
-                # MuR publishes its raw tool0/TCP pose from TF. When an offset
-                # is configured, publish that raw pose separately so
-                # fixed_tool_pose is the sole nozzle-pose publisher.
-                'pose_topic': (
-                    tcp_pose_topic if derive_nozzle_pose_from_tcp
-                    else LaunchConfiguration('nozzle_pose_topic')
-                ),
-                'publish_rate': LaunchConfiguration('pose_publish_rate'),
             }],
         ),
         Node(
@@ -284,6 +239,45 @@ def _launch_setup(context, *args, **kwargs):
         ),
     ]
 
+    if start_pose_pipeline:
+        nodes.append(Node(
+            package='ur_trajectory_follower', executable='deposition_pose',
+            name='deposition_pose', output='screen', parameters=[{
+                'use_sim_time': use_sim_time,
+                'nozzle_pose_topic': LaunchConfiguration('nozzle_pose_topic'),
+                'deposition_pose_topic': current_pose_topic,
+                'spray_distance_topic': LaunchConfiguration('spray_distance_topic'),
+                'smoothed_spray_distance_topic': LaunchConfiguration('smoothed_spray_distance_topic'),
+                'spray_distance_initial': LaunchConfiguration('spray_distance_initial'),
+                'spray_distance_max_rate': LaunchConfiguration('spray_distance_max_rate'),
+            }],
+        ))
+        if derive_nozzle_pose_from_tcp:
+            nodes.append(Node(
+                package='ur_trajectory_follower', executable='fixed_tool_pose',
+                name='fixed_tool_pose', output='screen', parameters=[{
+                    'input_pose_topic': tcp_pose_topic,
+                    'output_pose_topic': LaunchConfiguration('nozzle_pose_topic'),
+                    'fixed_tool_offset_xyz': LaunchConfiguration('fixed_tool_offset_xyz'),
+                    'fixed_tool_offset_quaternion_xyzw':
+                        LaunchConfiguration('fixed_tool_offset_quaternion_xyzw'),
+                }],
+            ))
+        if LaunchConfiguration('publish_current_pose_from_tf').perform(context).strip().lower() in {'1', 'true', 'yes', 'on'}:
+            nodes.append(Node(
+                package='ur_trajectory_follower', executable='current_pose_from_tf',
+                name='current_pose_from_tf', output='screen', parameters=[{
+                    'use_sim_time': use_sim_time,
+                    'target_frame': LaunchConfiguration('path_frame'),
+                    'source_frame': LaunchConfiguration('tip_link'),
+                    'pose_topic': (
+                        tcp_pose_topic if derive_nozzle_pose_from_tcp
+                        else LaunchConfiguration('nozzle_pose_topic')
+                    ),
+                    'publish_rate': LaunchConfiguration('pose_publish_rate'),
+                }],
+            ))
+
     if LaunchConfiguration('start_jparse_controller').perform(context).lower() == 'true':
         nodes.append(
             IncludeLaunchDescription(
@@ -338,6 +332,7 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('start_command_transform', default_value='true'),
         DeclareLaunchArgument('publish_current_pose_from_tf', default_value='true'),
+        DeclareLaunchArgument('start_pose_pipeline', default_value='true'),
         DeclareLaunchArgument('derive_nozzle_pose_from_tcp', default_value='false'),
         DeclareLaunchArgument('tcp_pose_topic', default_value='/current_tcp_pose'),
         DeclareLaunchArgument('nozzle_pose_topic', default_value='/current_nozzle_tip_pose'),

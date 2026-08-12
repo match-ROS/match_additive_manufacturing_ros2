@@ -100,6 +100,80 @@ ONE_SHOT_ACTIONS = {
     'accuracy_report': ('accuracy_report', 'Summarize Accuracy', 'Summarizing Accuracy'),
 }
 
+# These descriptions are returned with each action state.  They are deliberately
+# operational, rather than merely reporting whether a child process exists.
+ACTION_DESCRIPTIONS = {
+    'simulation': (
+        'Startet die Simulation des gewählten Bunker-, Robotnik- oder MuR620-Profils. '
+        'Beim MuR bestimmen die GUI-Optionen Gazebo-Fenster, Kamera und Sensoren.'
+    ),
+    'publish_path': (
+        'Lädt die exportierten Arm-, Base- und Normalenpfade und publiziert sie nach '
+        'Anwendung der gespeicherten Translation und Gierrotation.'
+    ),
+    'path_index': (
+        'Resampelt den gekoppelten Arm-/Base-Pfad auf 5 mm und publiziert Trackingpfade, '
+        'Referenzposen und den gemeinsamen /path_index.'
+    ),
+    'base_follower': (
+        'Folgt /base_path_tracking mit /robot_pose und dem plattformspezifischen '
+        'cmd_vel-Topic; Bewegung beginnt erst mit /start_condition=true.'
+    ),
+    'arm_follower': (
+        'Regelt den gewählten Arm entlang von /ur_path_transformed mit Normalen, '
+        '/path_index und Arm-Referenzpose und sendet Welt-Twist-Kommandos.'
+    ),
+    'controllers': (
+        'Transformiert Arm-Welt-Twist in den Controller-Rahmen und schaltet vom '
+        'Trajectory- auf den passenden Velocity-Controller.'
+    ),
+    'base_accuracy': (
+        'Zeichnet die Abweichung von /robot_pose zu Base-Pfad und Base-Referenzpose '
+        'ab /start_pose_reached nach /tmp/am_trajectory_runs auf.'
+    ),
+    'tcp_accuracy': (
+        'Zeichnet die Abweichung von /current_deposition_pose zum Tracking-Armpfad '
+        'und zur Arm-Referenzpose ab /start_condition auf.'
+    ),
+    'sync_workspace': (
+        'Synchronisiert den Quellbaum per rsync über SSH auf das fest konfigurierte '
+        'entfernte Zielsystem.'
+    ),
+    'move_base': (
+        'Fährt die Base einmalig zur Pose des interpolierten Indexes mit Plattformpfad, '
+        '/robot_pose und plattformspezifischem cmd_vel-Topic.'
+    ),
+    'move_arm': (
+        'Fährt den Arm einmalig zur Pose des nicht-resampelten Indexes in '
+        '/ur_path_transformed und sendet Welt-Twist an den gewählten Arm.'
+    ),
+    'switch_arm_velocity': (
+        'Deaktiviert per ros2 control den Joint-Trajectory-Controller und aktiviert '
+        'den passenden Velocity-Controller für Simulation, Hardware oder MuR-Arm.'
+    ),
+    'accuracy_report': (
+        'Erstellt aus den Läufen in /tmp/am_trajectory_runs einen Genauigkeitsbericht '
+        'für das ausgewählte Pfadverzeichnis.'
+    ),
+    'transformations': (
+        'Simulation: leitet TCP-/Nozzle-Pose aus Robot-TF, Werkzeugoffset und '
+        'Sprühabstand ab. Hardware: startet die Vicon-/Odometrie-Posekette.'
+    ),
+    'pose_adapters': (
+        'Erzeugt auf Hardware Base- und Nozzle-Pose aus Vicon, Odometry oder Tool-TF '
+        'und publiziert die standardisierten Pose-Topics.'
+    ),
+    'rviz': 'Öffnet RViz mit der zum Plattformprofil passenden Konfiguration.',
+    'capture_tool_offset': (
+        'Liest den TF robot_arm_tool0 → robot_arm_tool0_controller und speichert ihn '
+        'als plattformspezifischen Flansch-zu-Nozzle-Offset.'
+    ),
+    'calculate_path_transform': (
+        'Berechnet aus /robot_pose und /base_path am gewählten Index die starre '
+        'Pfadtranslation und Gierrotation.'
+    ),
+}
+
 
 class OperatorService:
     """Configuration, process lifecycle and ROS command construction.
@@ -195,11 +269,7 @@ class OperatorService:
         """Keep the ROS-published progress visible without persisting every tick."""
         index = max(0, int(value))
         self._live_path_index = index
-        mapper = getattr(self.ros_bridge, 'original_arm_index_for_tracking_index', None)
-        try:
-            self._live_original_arm_index = int(mapper(index)) if mapper is not None else index
-        except Exception:
-            self._live_original_arm_index = index
+        self._live_original_arm_index = self._original_arm_index_for_tracking(index)
         if self._external_path_index_callback is not None:
             self._external_path_index_callback(index)
 
@@ -225,28 +295,57 @@ class OperatorService:
             else:
                 values = dict(values)
                 values['mur_arm'] = arm
-        self.config.update({key: value for key, value in values.items() if key in allowed})
+        accepted = {key: value for key, value in values.items() if key in allowed}
+        # The live progress index addresses the resampled tracking path, while
+        # the arm start mover addresses the original arm path.  A manual edit
+        # of either GUI field must therefore update the other field too.
+        # Preserve an explicitly supplied pair for advanced API clients.
+        if 'path_index' in accepted and 'original_arm_index' not in accepted:
+            accepted['original_arm_index'] = self._original_arm_index_for_tracking(
+                accepted['path_index']
+            )
+        elif 'original_arm_index' in accepted and 'path_index' not in accepted:
+            accepted['path_index'] = self._tracking_arm_index_for_original(
+                accepted['original_arm_index']
+            )
+        self.config.update(accepted)
         if 'platform' in values and self.ros_bridge is not None:
             configure_pose = getattr(self.ros_bridge, 'set_robot_pose_topic', None)
             if configure_pose is not None:
                 configure_pose(str(self._profile()['robot_pose']))
-        if 'path_index' in values:
-            self._live_path_index = max(0, int(values['path_index']))
-        if 'original_arm_index' in values:
-            self._live_original_arm_index = max(0, int(values['original_arm_index']))
+        if 'path_index' in accepted:
+            self._live_path_index = max(0, int(accepted['path_index']))
+        if 'original_arm_index' in accepted:
+            self._live_original_arm_index = max(0, int(accepted['original_arm_index']))
         self.store.save(self.config)
         if self.ros_bridge is not None:
-            if 'path_index' in values:
+            if 'path_index' in accepted:
                 self.ros_bridge.publish_path_index(int(self._setting('path_index', 0)))
-            if 'velocity_override' in values:
+            if 'velocity_override' in accepted:
                 self.ros_bridge.publish_velocity_override(float(self._setting('velocity_override', 100.0)) / 100.0)
-            if 'spray_distance_mm' in values or 'nozzle_offset_mm' in values:
+            if 'spray_distance_mm' in accepted or 'nozzle_offset_mm' in accepted:
                 effective = float(self._setting('spray_distance_mm', 100.0)) + float(self._setting('nozzle_offset_mm', 0.0))
                 self.ros_bridge.publish_spray_distance(effective / 1000.0)
-            if 'default_velocity' in values or 'default_velocity_enabled' in values:
+            if 'default_velocity' in accepted or 'default_velocity_enabled' in accepted:
                 desired = float(self._setting('default_velocity', 0.1)) if self._setting('default_velocity_enabled', False) else 0.0
                 self.ros_bridge.publish_desired_arm_speed(desired)
         return self.config
+
+    def _original_arm_index_for_tracking(self, index: Any) -> int:
+        value = max(0, int(index))
+        mapper = getattr(self.ros_bridge, 'original_arm_index_for_tracking_index', None)
+        try:
+            return max(0, int(mapper(value))) if mapper is not None else value
+        except Exception:
+            return value
+
+    def _tracking_arm_index_for_original(self, index: Any) -> int:
+        value = max(0, int(index))
+        mapper = getattr(self.ros_bridge, 'tracking_arm_index_for_original_index', None)
+        try:
+            return max(0, int(mapper(value))) if mapper is not None else value
+        except Exception:
+            return value
 
     def snapshot(self) -> dict[str, Any]:
         processes = {}
@@ -293,28 +392,42 @@ class OperatorService:
                 'actions': self._action_states(),
                 'logs': list(self.logs), 'ros_error': self.ros_error}
 
-    def _process_state(self, names: tuple[str, ...], start_label: str, stop_label: str, one_shot: bool = False) -> dict[str, str]:
+    def _process_state(
+        self,
+        names: tuple[str, ...],
+        start_label: str,
+        stop_label: str,
+        description: str,
+        one_shot: bool = False,
+    ) -> dict[str, str]:
         managed = [self.processes.get(name) for name in names]
         present = [process for process in managed if process is not None]
         running = any(process.is_running() for process in present)
         if running:
-            return {'label': stop_label, 'state': 'progress' if one_shot else 'running', 'detail': 'Prozess läuft'}
+            return {'label': stop_label, 'state': 'progress' if one_shot else 'running',
+                    'detail': f'{description}\n\nStatus: aktiv.'}
         if not present:
-            return {'label': start_label, 'state': 'idle', 'detail': 'Noch nicht gestartet'}
+            return {'label': start_label, 'state': 'idle',
+                    'detail': f'{description}\n\nStatus: noch nicht gestartet.'}
         return_codes = [process.poll() for process in present]
         if any(code not in (None, 0) for code in return_codes):
-            return {'label': start_label, 'state': 'error', 'detail': 'Letzter Prozess endete mit Fehler'}
+            return {'label': start_label, 'state': 'error',
+                    'detail': f'{description}\n\nStatus: letzter Prozess endete mit Fehler; Details stehen in der Konsole.'}
         if one_shot:
-            return {'label': start_label, 'state': 'success', 'detail': 'Letzte Aktion erfolgreich beendet'}
-        return {'label': start_label, 'state': 'success', 'detail': 'Letzter Prozess erfolgreich beendet'}
+            return {'label': start_label, 'state': 'success',
+                    'detail': f'{description}\n\nStatus: letzte Ausführung erfolgreich beendet.'}
+        return {'label': start_label, 'state': 'success',
+                'detail': f'{description}\n\nStatus: Prozess wurde erfolgreich beendet.'}
 
     def _action_states(self) -> dict[str, dict[str, str]]:
         states = {
-            action: self._process_state((process,), start, stop)
+            action: self._process_state((process,), start, stop, ACTION_DESCRIPTIONS[action])
             for action, (process, start, stop) in TOGGLE_ACTIONS.items()
         }
         states.update({
-            action: self._process_state((process,), start, stop, one_shot=True)
+            action: self._process_state(
+                (process,), start, stop, ACTION_DESCRIPTIONS[action], one_shot=True
+            )
             for action, (process, start, stop) in ONE_SHOT_ACTIONS.items()
         })
         launch_processes = tuple(self.processes.get(name) for name in self._launch_all_process_names())
@@ -322,32 +435,72 @@ class OperatorService:
         states['launch_all'] = {
             'label': 'Stop All' if launch_running else 'Launch All',
             'state': 'running' if launch_running else 'idle',
-            'detail': 'Verwalteter Komponentensatz aktiv' if launch_running else 'Komponentensatz nicht gestartet',
+            'detail': (
+                'Simulation: startet Simulator, Transformation, Pfad-Publisher, Index, '
+                'Follower und Velocity-Stack sowie koordinierte Startbewegungen. Hardware: '
+                'startet die externe Posekette statt des Simulators.\n\nStatus: aktiv.'
+                if launch_running else
+                'Simulation: startet Simulator, Transformation, Pfad-Publisher, Index, '
+                'Follower und Velocity-Stack sowie koordinierte Startbewegungen. Hardware: '
+                'startet die externe Posekette statt des Simulators.\n\nStatus: noch nicht gestartet.'
+            ),
         }
-        states['stop_all'] = {'label': 'Stop All', 'state': 'danger', 'detail': 'Alle verwalteten Prozesse stoppen'}
+        states['stop_all'] = {
+            'label': 'Stop All', 'state': 'danger',
+            'detail': 'Stoppt alle von der GUI verwalteten Prozesse und publiziert Stop-Kommandos an Base und Arm.',
+        }
         transformations = self._process_state(
             POSE_ADAPTER_PROCESSES if not bool(self._setting('simulation', False)) else ('transformations',),
             'Launch Transformations',
             'Stop Transformations',
+            ACTION_DESCRIPTIONS['transformations'],
         )
         if bool(self._setting('simulation', False)) and self._is_running('simulation'):
-            transformations = {'label': 'TCP Pose from Sim', 'state': 'running', 'detail': 'Simulation publiziert die TCP-Pose'}
+            transformations = {
+                'label': 'TCP Pose from Sim', 'state': 'running',
+                'detail': f"{ACTION_DESCRIPTIONS['transformations']}\n\nStatus: Die Simulation publiziert die TCP-Pose.",
+            }
         states['transformations'] = transformations
-        states['pose_adapters'] = self._process_state(POSE_ADAPTER_PROCESSES, 'Pose Adapters', 'Stop Pose Adapters')
-        states['rviz'] = self._process_state(('rviz',), 'Open RViz', 'Open RViz')
-        states['capture_tool_offset'] = self._message_state('capture_tool_offset', 'Capture UR TCP Offset')
-        states['calculate_path_transform'] = self._message_state('calculate_path_transform', 'Calculate Path Transform')
+        states['pose_adapters'] = self._process_state(
+            POSE_ADAPTER_PROCESSES, 'Pose Adapters', 'Stop Pose Adapters', ACTION_DESCRIPTIONS['pose_adapters']
+        )
+        states['rviz'] = self._process_state(
+            ('rviz',), 'Open RViz', 'Open RViz', ACTION_DESCRIPTIONS['rviz']
+        )
+        states['capture_tool_offset'] = self._message_state(
+            'capture_tool_offset', 'Capture UR TCP Offset', ACTION_DESCRIPTIONS['capture_tool_offset']
+        )
+        states['calculate_path_transform'] = self._message_state(
+            'calculate_path_transform', 'Calculate Path Transform', ACTION_DESCRIPTIONS['calculate_path_transform']
+        )
         ready = all(self._status.values())
         controls = all(self._is_running(name) for name in ('path_index', 'base_follower', 'arm_follower'))
         states['start_following'] = {
             'label': 'Following active' if self._following_active else 'Start Following',
             'state': 'running' if self._following_active else ('ready' if ready and controls else 'warning'),
-            'detail': 'Following aktiv' if self._following_active else ('Bereit für Following' if ready and controls else 'Wartet auf ROS-Status oder Steuerprozesse'),
+            'detail': (
+                'Publiziert /path_index_command und mehrfach /start_condition=true; '
+                'dadurch starten Fortschritt sowie Base- und Armfolger.\n\nStatus: Following aktiv.'
+                if self._following_active else (
+                    'Publiziert /path_index_command und mehrfach /start_condition=true; '
+                    'dadurch starten Fortschritt sowie Base- und Armfolger.\n\nStatus: bereit.'
+                    if ready and controls else
+                    'Publiziert /path_index_command und mehrfach /start_condition=true; '
+                    'dadurch starten Fortschritt sowie Base- und Armfolger.\n\nStatus: '
+                    'wartet auf frische Pfad-/Pose-Topics, Arm-Bereitschaft oder Steuerprozesse.'
+                )
+            ),
         }
         states['stop_following'] = {
             'label': 'Stop Following',
             'state': 'danger' if self._following_active else 'idle',
-            'detail': 'Following stoppen' if self._following_active else 'Following ist nicht aktiv',
+            'detail': (
+                'Publiziert mehrfach /start_condition=false und wiederholt Null-Kommandos '
+                'an Base und Arm.\n\nStatus: Following wird gestoppt.'
+                if self._following_active else
+                'Publiziert mehrfach /start_condition=false und wiederholt Null-Kommandos '
+                'an Base und Arm.\n\nStatus: Following ist nicht aktiv.'
+            ),
         }
         return states
 
@@ -355,12 +508,12 @@ class OperatorService:
         process = self.processes.get(name)
         return process is not None and process.is_running()
 
-    def _message_state(self, action: str, label: str) -> dict[str, str]:
+    def _message_state(self, action: str, label: str, description: str) -> dict[str, str]:
         message = self._last_action_messages.get(action)
         return {
             'label': label,
             'state': 'success' if message else 'idle',
-            'detail': message or 'Noch nicht ausgeführt',
+            'detail': f'{description}\n\nStatus: {message}' if message else f'{description}\n\nStatus: noch nicht ausgeführt.',
         }
 
     def _setting(self, name: str, default: Any) -> Any:
@@ -536,6 +689,7 @@ class OperatorService:
             self._launch_all_active = True
             if bool(self._setting('simulation', False)):
                 self._start('simulation')
+                self._start('transformations')
             else:
                 self.start_pose_adapters()
             arm_supported = bool(self._profile().get('arm_control_supported', True))
@@ -609,11 +763,19 @@ class OperatorService:
                 for delay in range(0, 1000, 100):
                     self._schedule(delay / 1000.0, self._publish_stop_commands)
             return
-        if name == 'move_base' and not self._is_running('publish_path'):
-            # A one-shot move is useful on its own, not only after Launch All.
-            # Start its path dependency first; the mover waits until it has
-            # received both that path and the selected platform pose.
-            self._start('publish_path')
+        if name in {'move_base', 'move_arm'} and not self._is_running(name):
+            # One-shot moves must be usable without a running follower.  The
+            # progress node builds /{base,ur}_path_tracking even while its
+            # start condition is false, so it is a safe dependency for setup.
+            if not self._is_running('publish_path'):
+                self._start('publish_path')
+            if name == 'move_base' and not self._is_running('path_index'):
+                self._start('path_index')
+            if name == 'move_arm' and not self._is_running('transformations'):
+                if not bool(self._setting('simulation', False)):
+                    self.start_pose_adapters()
+                else:
+                    self._start('transformations')
         if name in {'controllers', 'arm_follower', 'move_arm', 'switch_arm_velocity'}:
             if not bool(self._profile().get('arm_control_supported', True)):
                 self.log('safety', f'{name} is unavailable: no MuR arm is selected')
@@ -624,9 +786,12 @@ class OperatorService:
         self._toggle(name, command)
 
     def _toggle_pose_adapters(self) -> None:
-        if any(self._is_running(name) for name in POSE_ADAPTER_PROCESSES):
+        if self._is_running('transformations') or any(
+            self._is_running(name) for name in POSE_ADAPTER_PROCESSES
+        ):
             for name in POSE_ADAPTER_PROCESSES:
                 self.processes.stop(name)
+            self.processes.stop('transformations')
             self.log('transformations', 'stopped by operator')
             return
         self.start_pose_adapters()
@@ -733,10 +898,13 @@ class OperatorService:
                     f'joint_states_topic:={profile.get("joint_states_topic", "/robot/joint_states")}',
                     f"velocity_command_topic:={profile.get('arm_velocity_command_topic', '/robot/arm_forward_velocity_controller/commands' if simulation else '/robot/arm/forward_velocity_controller/commands')}",
                     'start_jparse_controller:=false', 'start_command_transform:=false',
-                    f'publish_current_pose_from_tf:={str(mur_native_arm).lower()}',
+                    'publish_current_pose_from_tf:=false', 'start_pose_pipeline:=false',
                     'publish_path:=false', 'publish_path_index:=false', 'move_to_start_pose:=false',
                     f"start_pose_trajectory_topic:={profile.get('arm_trajectory_topic', '/robot/joint_trajectory_controller/joint_trajectory' if simulation else '/robot/arm/joint_trajectory_controller/joint_trajectory')}",
                     'start_pose_publish_delay:=8.0',
+                    # Retain the source-mode setting for compatibility; the
+                    # false start_pose_pipeline above keeps all pose-pipeline
+                    # nodes owned by Launch Transformations.
                     f'derive_nozzle_pose_from_tcp:={str(simulation).lower()}',
                     'tcp_pose_topic:=/current_tcp_pose',
                     'nozzle_pose_topic:=/current_nozzle_tip_pose',
@@ -790,8 +958,15 @@ class OperatorService:
                     'command_joint_names_csv:=robot_arm_shoulder_pan_joint,robot_arm_shoulder_lift_joint,robot_arm_elbow_joint,robot_arm_wrist_1_joint,robot_arm_wrist_2_joint,robot_arm_wrist_3_joint',
                     *self._fixed_tool_arguments()]
         if name == 'transformations':
-            return ['ros2', 'run', 'ur_trajectory_follower', 'current_pose_from_tf', '--ros-args',
-                    '-p', f'target_frame:={frame}', '-p', 'source_frame:=robot_arm_nozzle_tip', '-p', 'pose_topic:=/current_nozzle_tip_pose']
+            return ['ros2', 'launch', 'am_operator_gui', 'pose_transformations.launch.py',
+                    f'use_sim_time:={self._use_sim_time()}', f'path_frame:={frame}',
+                    f'tip_link:={profile.get("arm_tip_link", "robot_arm_tool0")}',
+                    f'publish_tcp_pose_from_tf:={str(mur_native_arm).lower()}',
+                    f'derive_nozzle_pose_from_tcp:={str(simulation).lower()}',
+                    'tcp_pose_topic:=/current_tcp_pose', 'nozzle_pose_topic:=/current_nozzle_tip_pose',
+                    'deposition_pose_topic:=/current_deposition_pose',
+                    f"spray_distance_initial:={(float(self._setting('spray_distance_mm', 100.0)) + float(self._setting('nozzle_offset_mm', 0.0))) / 1000.0:.6f}",
+                    'spray_distance_max_rate:=0.020000', *self._fixed_tool_arguments()]
         if name in {'base_accuracy', 'tcp_accuracy'}:
             mode = 'base' if name == 'base_accuracy' else 'tcp'
             actual = '/robot_pose' if mode == 'base' else '/current_deposition_pose'
@@ -813,7 +988,7 @@ class OperatorService:
             diff_drive = bool(self._control_setting('diff_drive_mode', False)) or bool(profile.get('diff_drive_mode', False))
             start_target_yaw_mode = str(profile.get('start_target_yaw_mode', 'auto'))
             return ['ros2', 'run', 'move_to_path_idx', 'move_to_path_idx', '--ros-args',
-                    '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"path_topic:={profile['path']}",
+                    '-p', f'use_sim_time:={self._use_sim_time()}', '-p', 'path_topic:=/base_path_tracking',
                     '-p', f"robot_pose_topic:={profile['robot_pose']}", '-p', 'robot_pose_type:=pose_stamped',
                     '-p', f"cmd_vel_topic:={profile['cmd_vel']}", '-p', f"output_stamped:={str(profile['stamped']).lower()}",
                     '-p', f"command_frame_id:={profile['frame']}", '-p', f'diff_drive_mode:={str(diff_drive).lower()}',
@@ -886,6 +1061,8 @@ class OperatorService:
         self.processes.start('arm_pose_adapter', ['ros2', 'run', 'am_operator_gui', 'pose_stamped_adapter', '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"input_topic:={self._setting('arm_pose_topic', '/vicon/tool_transformed')}",
             '-p', 'output_topic:=/current_nozzle_tip_pose', '-p', f'target_frame:={frame}'])
+        if not self._is_running('transformations'):
+            self._start('transformations')
 
     def _publish_start_condition_repeatedly(self, value: bool) -> None:
         """Mirror the reference GUI's transient-local start/stop safety pulses."""

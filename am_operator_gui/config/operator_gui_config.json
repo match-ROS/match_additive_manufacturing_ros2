@@ -53,13 +53,13 @@
       "xyz": [
         0,
         0,
-        0.015
+        0.25
       ]
     }
   },
   "follower_type": "pure_pursuit",
   "mur_arm": "r",
-  "original_arm_index": 0,
+  "original_arm_index": 10,
   "path_index": 0,
   "path_transforms_by_directory": {
     "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/bunker_paired_demo": {
@@ -113,5 +113,6 @@
   "spray_distance_mm": 100.0,
   "trajectory_directory": "/home/rosmatch/workspaces/print2_ws/src/match_additive_manufacturing_ros2/components/rectangleRoundedCorners",
   "use_odometry_robot_pose": false,
-  "use_vicon_tcp_base_pose_fallback": false
+  "use_vicon_tcp_base_pose_fallback": false,
+  "velocity_override": 50
 }
