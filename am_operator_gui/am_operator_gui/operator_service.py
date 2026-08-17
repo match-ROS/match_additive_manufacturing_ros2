@@ -734,6 +734,14 @@ class OperatorService:
                 # operator paused following in between.
                 index = self._live_path_index if self._live_path_index is not None else int(self._setting('path_index', 0))
                 self.ros_bridge.publish_path_index(index)
+                # ``/velocity_override`` is intentionally a non-latched command
+                # topic.  The GUI can therefore have a persisted value while a
+                # freshly started progress node has only seen its 1.0 default.
+                # Apply the configured value immediately before opening the
+                # start gate, after all followers have been launched.
+                self.ros_bridge.publish_velocity_override(
+                    float(self._setting('velocity_override', 100.0)) / 100.0
+                )
                 self._publish_start_condition_repeatedly(True)
                 self._following_active = True
             return
@@ -793,14 +801,6 @@ class OperatorService:
             if not bool(self._profile().get('arm_control_supported', True)):
                 self.log('safety', f'{name} is unavailable: no MuR arm is selected')
                 return
-        command = self.command_for(name)
-        if command is None:
-            raise ValueError(f'unknown action: {name}')
-        self._toggle(name, command)
-
-    def _toggle_pose_adapters(self) -> None:
-        if self._is_running('transformations') or any(
-            self._is_running(name) for name in POSE_ADAPTER_PROCESSES
         if name == 'twist_base_compensation' and not bool(
             self._profile().get('start_base_motion_compensation', False)
         ):
@@ -814,6 +814,14 @@ class OperatorService:
             else:
                 self._start(name)
             return
+        command = self.command_for(name)
+        if command is None:
+            raise ValueError(f'unknown action: {name}')
+        self._toggle(name, command)
+
+    def _toggle_pose_adapters(self) -> None:
+        if self._is_running('transformations') or any(
+            self._is_running(name) for name in POSE_ADAPTER_PROCESSES
         ):
             for name in POSE_ADAPTER_PROCESSES:
                 self.processes.stop(name)
@@ -951,14 +959,6 @@ class OperatorService:
                     *( [f'base_compensation_topic:={profile["base_compensation_topic"]}'] if mur_native_arm else [] ),
                     *(['start_base_motion_compensation:=false'] if mur_native_arm else []),
                     *self._fixed_tool_arguments(), *direction_gains, *orientation_gains]
-        if name == 'controllers':
-            if mur_native_arm:
-                return ['ros2', 'launch', 'am_operator_gui', 'mur_arm_velocity_stack.launch.py',
-                        f'use_sim_time:={self._use_sim_time()}', 'robot_name:=mur620a', f'arm:={profile["arm_selected"]}',
-                        f'path_frame:={frame}',
-                        f'arm_base_link:={profile["arm_base_link"]}',
-                        f'controller_frame:={profile.get("arm_command_frame", profile["arm_base_link"])}',
-                        f'source_twist_topic:={profile["arm_world_twist_topic"]}',
         if name == 'twist_base_compensation':
             if not bool(profile.get('start_base_motion_compensation', False)):
                 return None
@@ -973,6 +973,14 @@ class OperatorService:
                 '-p', f'world_frame:={frame}',
                 '-p', f'output_topic:={profile["base_compensation_topic"]}',
             ]
+        if name == 'controllers':
+            if mur_native_arm:
+                return ['ros2', 'launch', 'am_operator_gui', 'mur_arm_velocity_stack.launch.py',
+                        f'use_sim_time:={self._use_sim_time()}', 'robot_name:=mur620a', f'arm:={profile["arm_selected"]}',
+                        f'path_frame:={frame}',
+                        f'arm_base_link:={profile["arm_base_link"]}',
+                        f'controller_frame:={profile.get("arm_command_frame", profile["arm_base_link"])}',
+                        f'source_twist_topic:={profile["arm_world_twist_topic"]}',
                         f'controller_twist_topic:={profile["arm_stop_topic"]}',
                         f'velocity_command_topic:={profile["arm_velocity_command_topic"]}',
                         f'tip_link:={profile["arm_tip_link"]}',
@@ -1194,6 +1202,7 @@ class OperatorService:
         if self.ros_bridge is not None:
             self.ros_bridge.publish_start_condition(False)
             self._publish_stop_commands()
+            self._publish_zero_base_compensation()
         self.processes.stop_all()
         for timer in self._timers:
             timer.cancel()
@@ -1202,15 +1211,6 @@ class OperatorService:
         self._following_active = False
         self.log('system', 'all managed processes stopped')
 
-            self._publish_zero_base_compensation()
-    def _publish_stop_commands(self) -> None:
-        """Stop the active platform's base and arm without its follower stack."""
-        if self.ros_bridge is None:
-            return
-        profile = self._profile()
-        arm_frame = str(profile.get('arm_command_frame', self._setting('control_frame', 'map')))
-        try:
-            self.ros_bridge.publish_stop_commands(
     def _publish_zero_base_compensation(self) -> None:
         """Ensure stopping compensation cannot leave its last correction active."""
         if self.ros_bridge is None:
@@ -1223,6 +1223,14 @@ class OperatorService:
         if topic:
             publish_zero(str(topic))
 
+    def _publish_stop_commands(self) -> None:
+        """Stop the active platform's base and arm without its follower stack."""
+        if self.ros_bridge is None:
+            return
+        profile = self._profile()
+        arm_frame = str(profile.get('arm_command_frame', self._setting('control_frame', 'map')))
+        try:
+            self.ros_bridge.publish_stop_commands(
                 arm_frame,
                 base_topic=str(profile['cmd_vel']),
                 base_stamped=bool(profile['stamped']),
