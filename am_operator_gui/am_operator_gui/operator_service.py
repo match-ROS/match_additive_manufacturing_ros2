@@ -87,6 +87,11 @@ TOGGLE_ACTIONS = {
     'path_index': ('path_index', 'Launch Path Index', 'Stop Path Index'),
     'base_follower': ('base_follower', 'Launch Base Follower', 'Stop Base Follower'),
     'arm_follower': ('arm_follower', 'Launch Arm Follower', 'Stop Arm Follower'),
+    'twist_base_compensation': (
+        'twist_base_compensation',
+        'Start Twist Base Compensation',
+        'Stop Twist Base Compensation',
+    ),
     'controllers': ('controllers', 'Start Controllers', 'Stop Controllers'),
     'base_accuracy': ('base_accuracy', 'Record Base Accuracy', 'Stop Base Recording'),
     'tcp_accuracy': ('tcp_accuracy', 'Record TCP Accuracy', 'Stop TCP Recording'),
@@ -122,6 +127,11 @@ ACTION_DESCRIPTIONS = {
     'arm_follower': (
         'Regelt den gewählten Arm entlang von /ur_path_transformed mit Normalen, '
         '/path_index und Arm-Referenzpose und sendet Welt-Twist-Kommandos.'
+    ),
+    'twist_base_compensation': (
+        'Kompensiert die durch die MuR-Base am TCP induzierte Geschwindigkeit und '
+        'publiziert den Korrektur-Twist für den Arm-Combiner. Verfügbar nur mit einem '
+        'gewählten nativen MuR-Arm.'
     ),
     'controllers': (
         'Transformiert Arm-Welt-Twist in den Controller-Rahmen und schaltet vom '
@@ -674,6 +684,7 @@ class OperatorService:
         return (
             'simulation', 'publish_path', 'move_arm', 'path_index', 'transformations',
             *POSE_ADAPTER_PROCESSES, 'controllers', 'base_follower', 'arm_follower',
+            'twist_base_compensation',
             'move_base', 'switch_arm_velocity', 'base_accuracy', 'tcp_accuracy',
             'accuracy_report', 'rviz', 'sync_workspace',
         )
@@ -696,6 +707,8 @@ class OperatorService:
             components = ['publish_path', 'path_index', 'base_follower']
             if arm_supported:
                 components[1:1] = ['controllers']
+                if bool(self._profile().get('start_base_motion_compensation', False)):
+                    components.append('twist_base_compensation')
                 components.append('arm_follower')
             for item in components:
                 self._start(item)
@@ -788,6 +801,19 @@ class OperatorService:
     def _toggle_pose_adapters(self) -> None:
         if self._is_running('transformations') or any(
             self._is_running(name) for name in POSE_ADAPTER_PROCESSES
+        if name == 'twist_base_compensation' and not bool(
+            self._profile().get('start_base_motion_compensation', False)
+        ):
+            self.log('safety', 'twist_base_compensation is unavailable: no native MuR arm is selected')
+            return
+        if name == 'twist_base_compensation':
+            if self._is_running(name):
+                self._publish_zero_base_compensation()
+                self.processes.stop(name)
+                self.log(name, 'stopped by operator')
+            else:
+                self._start(name)
+            return
         ):
             for name in POSE_ADAPTER_PROCESSES:
                 self.processes.stop(name)
@@ -918,13 +944,12 @@ class OperatorService:
                     'arm_reference_topic:=/arm_trajectory_reference', 'desired_speed_topic:=/desired_arm_speed',
                     f'default_velocity:={self._default_velocity_parameter():.6f}',
                     *( [f'combined_twist_source_topic:={profile["arm_world_twist_topic"]}'] if mur_native_arm else [] ),
-                    *([
-                        'start_base_motion_compensation:=true',
-                        f'base_velocity_topic:={profile["base_velocity_topic"]}',
-                        f'base_velocity_type:={profile["base_velocity_type"]}',
-                        f'compensation_base_frame:={profile["compensation_base_frame"]}',
-                        f'base_compensation_topic:={profile["base_compensation_topic"]}',
-                    ] if mur_native_arm and bool(profile.get('start_base_motion_compensation', False)) else []),
+                    # MuR runs base compensation as a separate managed process.
+                    # The follower still owns the twist combiner, so its input
+                    # must be pointed at that profile-specific publisher rather
+                    # than sideways_arm_control's generic default.
+                    *( [f'base_compensation_topic:={profile["base_compensation_topic"]}'] if mur_native_arm else [] ),
+                    *(['start_base_motion_compensation:=false'] if mur_native_arm else []),
                     *self._fixed_tool_arguments(), *direction_gains, *orientation_gains]
         if name == 'controllers':
             if mur_native_arm:
@@ -934,6 +959,20 @@ class OperatorService:
                         f'arm_base_link:={profile["arm_base_link"]}',
                         f'controller_frame:={profile.get("arm_command_frame", profile["arm_base_link"])}',
                         f'source_twist_topic:={profile["arm_world_twist_topic"]}',
+        if name == 'twist_base_compensation':
+            if not bool(profile.get('start_base_motion_compensation', False)):
+                return None
+            return [
+                'ros2', 'run', 'ur_trajectory_follower', 'ur_vel_induced_by_base',
+                '--ros-args',
+                '-p', f'use_sim_time:={self._use_sim_time()}',
+                '-p', f'base_velocity_topic:={profile["base_velocity_topic"]}',
+                '-p', f'base_velocity_type:={profile["base_velocity_type"]}',
+                '-p', f'base_frame:={profile["compensation_base_frame"]}',
+                '-p', f'tcp_frame:={profile["arm_tip_link"]}',
+                '-p', f'world_frame:={frame}',
+                '-p', f'output_topic:={profile["base_compensation_topic"]}',
+            ]
                         f'controller_twist_topic:={profile["arm_stop_topic"]}',
                         f'velocity_command_topic:={profile["arm_velocity_command_topic"]}',
                         f'tip_link:={profile["arm_tip_link"]}',
@@ -1163,6 +1202,7 @@ class OperatorService:
         self._following_active = False
         self.log('system', 'all managed processes stopped')
 
+            self._publish_zero_base_compensation()
     def _publish_stop_commands(self) -> None:
         """Stop the active platform's base and arm without its follower stack."""
         if self.ros_bridge is None:
@@ -1171,6 +1211,18 @@ class OperatorService:
         arm_frame = str(profile.get('arm_command_frame', self._setting('control_frame', 'map')))
         try:
             self.ros_bridge.publish_stop_commands(
+    def _publish_zero_base_compensation(self) -> None:
+        """Ensure stopping compensation cannot leave its last correction active."""
+        if self.ros_bridge is None:
+            return
+        publish_zero = getattr(self.ros_bridge, 'publish_zero_twist', None)
+        if publish_zero is None:
+            return
+        profile = self._profile()
+        topic = profile.get('base_compensation_topic')
+        if topic:
+            publish_zero(str(topic))
+
                 arm_frame,
                 base_topic=str(profile['cmd_vel']),
                 base_stamped=bool(profile['stamped']),

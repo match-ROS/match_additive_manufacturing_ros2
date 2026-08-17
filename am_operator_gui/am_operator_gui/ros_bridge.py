@@ -124,6 +124,15 @@ class OperatorGuiNode(Node):
     def publish_spray_distance(self, value: float) -> None:
         self._spray_distance_pub.publish(Float32(data=float(value)))
 
+    def publish_zero_twist(self, topic: str) -> None:
+        """Clear a Twist input owned by an independently managed GUI process."""
+        key = ('zero_twist', topic)
+        publisher = self._profiled_stop_publishers.get(key)
+        if publisher is None:
+            publisher = self.create_publisher(Twist, topic, 10)
+            self._profiled_stop_publishers[key] = publisher
+        publisher.publish(Twist())
+
     def lookup_tool_offset(self, tool_frame: str, controller_frame: str):
         try:
             return self._tf_buffer.lookup_transform(tool_frame, controller_frame, rclpy.time.Time())
@@ -409,6 +418,13 @@ class RosBridge:
         if self._node is not None:
             try:
                 self._node.publish_desired_arm_speed(value)
+            except Exception:
+                pass
+
+    def publish_zero_twist(self, topic: str) -> None:
+        if self._node is not None:
+            try:
+                self._node.publish_zero_twist(topic)
             except Exception:
                 pass
 

@@ -122,6 +122,7 @@ SIM_NAME = 'launch_sim'
 PUBLISH_PATH_NAME = 'publish_path'
 BASE_FOLLOWER_NAME = 'base_follower'
 ARM_FOLLOWER_NAME = 'arm_follower'
+TWIST_BASE_COMPENSATION_NAME = 'twist_base_compensation'
 PATH_INDEX_NAME = 'path_index'
 CURRENT_TCP_POSE_NAME = 'current_tcp_pose'
 BASE_POSE_ADAPTER_NAME = 'base_pose_adapter'
@@ -1080,6 +1081,7 @@ class OperatorWindow(QMainWindow):
         component_layout = QGridLayout(component_group)
         self.base_follower_button = QPushButton('Launch Base Follower')
         self.arm_follower_button = QPushButton('Launch Arm Follower')
+        self.twist_base_compensation_button = QPushButton('Start Twist Base Compensation')
         self.path_index_button = QPushButton('Launch Path Index')
         self.path_index_button.setToolTip(
             'Start shared path progress. It resamples /ur_path_transformed '
@@ -1125,6 +1127,7 @@ class OperatorWindow(QMainWindow):
         component_layout.addWidget(self.path_index_button, 0, 1)
         component_layout.addWidget(self.base_follower_button, 1, 0)
         component_layout.addWidget(self.arm_follower_button, 1, 1)
+        component_layout.addWidget(self.twist_base_compensation_button, 1, 2, 1, 2)
         component_layout.addWidget(self.current_tcp_pose_button, 2, 0)
         component_layout.addWidget(self.arm_controllers_button, 2, 1)
         component_layout.addWidget(self.switch_arm_velocity_button, 2, 2)
@@ -1338,8 +1341,11 @@ class OperatorWindow(QMainWindow):
         self.arm_follower_button.setToolTip(
             'Startet die Arm-Bahnregelung mit /ur_path_transformed, Normalen, '
             '/path_index und der Arm-Referenzpose. Sie erzeugt Welt-Twist-Kommandos '
-            'für den gewählten Arm und wartet auf /start_condition. Beim nativen MuR '
-            'kann zusätzlich die Basebewegung kompensiert werden.'
+            'für den gewählten Arm und wartet auf /start_condition.'
+        )
+        self.twist_base_compensation_button.setToolTip(
+            'Kompensiert die von der MuR-Base am TCP induzierte Geschwindigkeit. '
+            'Launch All startet sie automatisch, wenn ein nativer MuR-Arm gewählt ist.'
         )
         self.current_tcp_pose_button.setToolTip(
             'Simulation: startet die TCP-/Nozzle-Transformation; die Nozzle-Pose wird '
@@ -1445,6 +1451,9 @@ class OperatorWindow(QMainWindow):
         self.publish_path_button.clicked.connect(lambda: self._invoke_service_action('publish_path'))
         self.base_follower_button.clicked.connect(lambda: self._invoke_service_action('base_follower'))
         self.arm_follower_button.clicked.connect(lambda: self._invoke_service_action('arm_follower'))
+        self.twist_base_compensation_button.clicked.connect(
+            lambda: self._invoke_service_action('twist_base_compensation')
+        )
         self.path_index_button.clicked.connect(lambda: self._invoke_service_action('path_index'))
         self.current_tcp_pose_button.clicked.connect(lambda: self._invoke_service_action('transformations'))
         self.arm_controllers_button.clicked.connect(lambda: self._invoke_service_action('controllers'))
@@ -2161,6 +2170,7 @@ class OperatorWindow(QMainWindow):
             ARM_CONTROLLERS_NAME,
             BASE_FOLLOWER_NAME,
             ARM_FOLLOWER_NAME,
+            TWIST_BASE_COMPENSATION_NAME,
             MOVE_BASE_NAME,
             SWITCH_ARM_VELOCITY_NAME,
             BASE_ACCURACY_MONITOR_NAME,
@@ -3144,6 +3154,7 @@ class OperatorWindow(QMainWindow):
         self._set_arm_controllers_button_state()
         self._set_base_follower_button_state()
         self._set_arm_follower_button_state()
+        self._set_twist_base_compensation_button_state()
         self._set_move_base_state()
         self._set_move_arm_state()
         self._set_switch_arm_velocity_state()
@@ -3247,6 +3258,14 @@ class OperatorWindow(QMainWindow):
             ARM_FOLLOWER_NAME,
             'Stop Arm Follower',
             'Launch Arm Follower',
+        )
+
+    def _set_twist_base_compensation_button_state(self) -> None:
+        self._set_process_toggle_button(
+            self.twist_base_compensation_button,
+            TWIST_BASE_COMPENSATION_NAME,
+            'Stop Twist Base Compensation',
+            'Start Twist Base Compensation',
         )
 
     def _set_move_base_state(self) -> None:

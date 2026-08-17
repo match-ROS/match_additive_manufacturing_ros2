@@ -9,6 +9,7 @@ motion remains on the world-frame print path.
 
 from __future__ import annotations
 
+import signal
 from typing import Optional, Tuple
 
 import numpy as np
@@ -199,14 +200,32 @@ class BaseMotionCompensation(Node):
             return
         self.publisher.publish(self._smooth(output))
 
+    def publish_zero(self) -> None:
+        """Clear the correction before this independently managed node exits."""
+        self.previous_output = Twist()
+        self.publisher.publish(Twist())
+
 
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = BaseMotionCompensation()
+
+    def _stop(_signum, _frame) -> None:
+        # ProcessRegistry terminates this process group with SIGTERM.  Publish
+        # through the already matched publisher before exiting so the combiner
+        # cannot retain a stale non-zero correction.
+        node.publish_zero()
+        raise KeyboardInterrupt
+
+    previous_sigterm_handler = signal.signal(signal.SIGTERM, _stop)
     try:
         rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
     finally:
+        node.publish_zero()
         node.destroy_node()
+        signal.signal(signal.SIGTERM, previous_sigterm_handler)
         rclpy.shutdown()
 
 

@@ -83,7 +83,7 @@ async def _run_action(request: Request, action: str):
 # rather than using an unconstrained command endpoint.
 ACTION_ENDPOINTS = (
     'launch_all', 'stop_all', 'simulation', 'pose_adapters', 'publish_path',
-    'path_index', 'base_follower', 'arm_follower', 'transformations', 'controllers',
+    'path_index', 'base_follower', 'arm_follower', 'twist_base_compensation', 'transformations', 'controllers',
     'switch_arm_velocity', 'capture_tool_offset', 'base_accuracy', 'tcp_accuracy',
     'accuracy_report', 'move_base', 'move_arm', 'start_following', 'stop_following',
     'calculate_path_transform', 'rviz', 'sync_workspace',

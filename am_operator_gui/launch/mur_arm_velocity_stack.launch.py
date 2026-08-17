@@ -30,6 +30,14 @@ def generate_launch_description():
             'fixed_tool_offset_quaternion_xyzw', default_value='[0.0, 0.0, 0.0, 1.0]'),
         DeclareLaunchArgument('spray_distance_topic', default_value='/spray_distance_smoothed'),
         DeclareLaunchArgument('jparse_readiness_topic', default_value='/am/jparse_ready'),
+        DeclareLaunchArgument(
+            'jparse_max_cartesian_linear_velocity',
+            default_value='0.8',
+            description=(
+                'Cartesian input limit for J-PARSE.  It must cover the mobile-base '
+                'TCP cancellation term plus the arm tracking command.'
+            ),
+        ),
         Node(
             package='ur_trajectory_follower', executable='transform_twist_stamped',
             name='mur_transform_twist_to_arm_base', output='screen',
@@ -65,6 +73,8 @@ def generate_launch_description():
                 'command_topic': LaunchConfiguration('velocity_command_topic'),
                 'joint_states_topic': LaunchConfiguration('joint_states_topic'),
                 'readiness_topic': LaunchConfiguration('jparse_readiness_topic'),
+                'max_cartesian_linear_velocity': LaunchConfiguration(
+                    'jparse_max_cartesian_linear_velocity'),
             }.items(),
         ),
         Node(
