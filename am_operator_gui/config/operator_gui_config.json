@@ -1,5 +1,16 @@
 {
+  "accuracy_phase": "baseline",
   "arm_pose_topic": "/vicon/tool_transformed",
+  "arm_start_configuration": "shoulder_right_elbow_up_wrist_unflip",
+  "arm_start_ik_seed_positions": [
+    -1.5708,
+    -1.5708,
+    1.5708,
+    -1.5708,
+    -1.5708,
+    0.0
+  ],
+  "arm_start_mode": "ik_then_twist",
   "base_pose_topic": "/vicon/Base_RB/Base_RB",
   "base_smoothing": {
     "enabled": false,
@@ -59,8 +70,8 @@
   },
   "follower_type": "pure_pursuit",
   "mur_arm": "r",
-  "original_arm_index": 10,
-  "path_index": 0,
+  "original_arm_index": 800,
+  "path_index": 800,
   "path_transforms_by_directory": {
     "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/bunker_paired_demo": {
       "x": 1.0,
@@ -114,5 +125,5 @@
   "trajectory_directory": "/home/rosmatch/workspaces/print2_ws/src/match_additive_manufacturing_ros2/components/rectangleRoundedCorners",
   "use_odometry_robot_pose": false,
   "use_vicon_tcp_base_pose_fallback": false,
-  "velocity_override": 50
+  "velocity_override": 100
 }
