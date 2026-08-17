@@ -25,9 +25,10 @@ duration so base motion, orientation-only motion, and dwell segments remain
 valid. Coupled paths must have equal lengths and matching, strictly increasing
 timestamps.
 
-`/velocity_override` scales phase advancement. At zero it freezes the reference
-phase; by default the arm and base controllers continue bounded feedback to the
-frozen reference. This is a trajectory pause, not an emergency stop.
+`/velocity_override` scales phase advancement and arm feedforward. At zero it
+freezes the reference phase; the arm and base controllers continue bounded
+feedback to the frozen reference. This is a trajectory pause, not an emergency
+stop.
 
 ## Cartesian arm control
 
@@ -36,6 +37,12 @@ frozen reference. This is a trajectory pause, not an emergency stop.
 ```text
 v_cmd = v_feedforward + v_along + v_lateral + v_spray
 ```
+
+For debugging, the controller publishes the already-limited and smoothed
+components separately on `/ur_twist_world_feedforward` and
+`/ur_twist_world_control`; the latter is the sum of the three feedback terms.
+The twist combiner subscribes to both topics. The legacy `/ur_twist_world`
+topic remains available as their combined value for monitoring.
 
 The feedforward follows the active segment. Along-track, lateral, and spray-axis
 terms use measured deposition-pose error and are independently bounded before a

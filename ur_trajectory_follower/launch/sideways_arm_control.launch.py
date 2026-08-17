@@ -37,7 +37,9 @@ def _launch_setup(context, *args, **kwargs):
     combined_twist_source_topic = LaunchConfiguration('combined_twist_source_topic')
     twist_topics = (
         '['
-        + LaunchConfiguration('ur_twist_world_topic').perform(context)
+        + LaunchConfiguration('ur_twist_world_feedforward_topic').perform(context)
+        + ', '
+        + LaunchConfiguration('ur_twist_world_control_topic').perform(context)
         + ', '
         + LaunchConfiguration('orientation_twist_topic').perform(context)
         + ', '
@@ -164,6 +166,8 @@ def _launch_setup(context, *args, **kwargs):
             }],
             remappings=[
                 ('ur_twist_world', LaunchConfiguration('ur_twist_world_topic')),
+                ('ur_twist_world_feedforward', LaunchConfiguration('ur_twist_world_feedforward_topic')),
+                ('ur_twist_world_control', LaunchConfiguration('ur_twist_world_control_topic')),
             ],
         ),
         Node(
@@ -303,6 +307,12 @@ def _launch_setup(context, *args, **kwargs):
                     'joint_states_topic': LaunchConfiguration('joint_states_topic'),
                     'readiness_topic': LaunchConfiguration('jparse_readiness_topic'),
                     'command_joint_names_csv': LaunchConfiguration('command_joint_names_csv'),
+                    # The combined command contains the mobile-base TCP
+                    # cancellation term.  Its permitted magnitude must cover
+                    # that term plus the tracking command, otherwise J-PARSE
+                    # clips the cancellation before solving the joints.
+                    'max_cartesian_linear_velocity': LaunchConfiguration(
+                        'jparse_max_cartesian_linear_velocity'),
                 }.items(),
             )
         )
@@ -325,6 +335,14 @@ def generate_launch_description():
         DeclareLaunchArgument('joint_states_topic', default_value='/joint_states'),
         DeclareLaunchArgument('velocity_command_topic', default_value='/ur_forward_velocity_controller/commands'),
         DeclareLaunchArgument('start_jparse_controller', default_value='true'),
+        DeclareLaunchArgument(
+            'jparse_max_cartesian_linear_velocity',
+            default_value='0.8',
+            description=(
+                'Cartesian input limit for J-PARSE.  Must exceed the maximum '
+                'base-induced TCP compensation plus the tracking command.'
+            ),
+        ),
         DeclareLaunchArgument(
             'start_orientation_controller',
             default_value='true',
@@ -394,6 +412,8 @@ def generate_launch_description():
         DeclareLaunchArgument('nozzle_height_override_topic', default_value='/nozzle_height_override'),
         DeclareLaunchArgument('ur_error_topic', default_value='/ur_error_world'),
         DeclareLaunchArgument('ur_twist_world_topic', default_value='/ur_twist_world'),
+        DeclareLaunchArgument('ur_twist_world_feedforward_topic', default_value='/ur_twist_world_feedforward'),
+        DeclareLaunchArgument('ur_twist_world_control_topic', default_value='/ur_twist_world_control'),
         DeclareLaunchArgument('orientation_twist_topic', default_value='/ur_orientation_twist'),
         DeclareLaunchArgument('contour_control_enabled', default_value='false'),
         DeclareLaunchArgument('contour_lateral_error_topic', default_value='/contour/lateral_error'),

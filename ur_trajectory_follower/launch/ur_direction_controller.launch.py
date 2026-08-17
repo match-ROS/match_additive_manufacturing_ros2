@@ -53,6 +53,8 @@ def _launch_setup(context, *args, **kwargs):
         remappings=[
             ('nozzle_height_override', LaunchConfiguration('nozzle_height_override_topic')),
             ('ur_twist_world', LaunchConfiguration('twist_topic')),
+            ('ur_twist_world_feedforward', LaunchConfiguration('feedforward_twist_topic')),
+            ('ur_twist_world_control', LaunchConfiguration('control_twist_topic')),
         ],
     )
 
@@ -78,6 +80,8 @@ def generate_launch_description():
             DeclareLaunchArgument('nozzle_height_override_topic', default_value='/nozzle_height_override'),
             DeclareLaunchArgument('joint_state_topic', default_value='/mur620c/joint_states'),
             DeclareLaunchArgument('twist_topic', default_value='/ur_error_world'),
+            DeclareLaunchArgument('feedforward_twist_topic', default_value='/ur_twist_world_feedforward'),
+            DeclareLaunchArgument('control_twist_topic', default_value='/ur_twist_world_control'),
             DeclareLaunchArgument('from_index_offset', default_value='-1'),
             DeclareLaunchArgument('goal_index_offset', default_value='0'),
             DeclareLaunchArgument('control_mode', default_value='goal_direction'),

@@ -8,6 +8,17 @@ from tf2_ros import Buffer, TransformException, TransformListener
 from tf_transformations import quaternion_matrix
 
 
+def rotate_twist_components(rotation, linear, angular):
+    """Re-express a TCP twist at the same physical reference point.
+
+    ``rotation`` is ``R_target_source`` from TF.  Translation is deliberately
+    absent: the command is a TCP/deposition-point velocity, not a spatial
+    twist being shifted to another reference point.
+    """
+    matrix = np.asarray(rotation, dtype=float).reshape(3, 3)
+    return matrix @ np.asarray(linear, dtype=float), matrix @ np.asarray(angular, dtype=float)
+
+
 class TransformTwistStamped(Node):
     def __init__(self) -> None:
         super().__init__('transform_twist_stamped')
@@ -65,13 +76,10 @@ class TransformTwistStamped(Node):
 
         quat = transform.transform.rotation
         rotation = quaternion_matrix([quat.x, quat.y, quat.z, quat.w])[0:3, 0:3]
-        linear = rotation @ np.array(
+        linear, angular = rotate_twist_components(
+            rotation,
             [msg.twist.linear.x, msg.twist.linear.y, msg.twist.linear.z],
-            dtype=float,
-        )
-        angular = rotation @ np.array(
             [msg.twist.angular.x, msg.twist.angular.y, msg.twist.angular.z],
-            dtype=float,
         )
 
         out = TwistStamped()

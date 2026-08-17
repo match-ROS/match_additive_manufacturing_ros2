@@ -7,6 +7,7 @@ import pytest
 import rclpy
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Float32, Int32
 
@@ -68,7 +69,10 @@ def test_direction_controller_combines_feedforward_and_holds_reference_on_pause(
     override_pub = harness.create_publisher(Float32, '/tracking_override', 10)
     speed_pub = harness.create_publisher(Float32, '/tracking_speed', LATCH_QOS)
     commands = []
+    feedforward = []
     harness.create_subscription(Twist, '/ur_twist_world', lambda msg: commands.append(msg), 10)
+    harness.create_subscription(
+        Twist, '/ur_twist_world_feedforward', lambda msg: feedforward.append(msg), 10)
 
     path = Path()
     path.header.frame_id = 'map'
@@ -83,6 +87,20 @@ def test_direction_controller_combines_feedforward_and_holds_reference_on_pause(
         assert _spin_until(executor, lambda: bool(commands))
         running = commands[-1]
         assert 0.1 < running.linear.x <= 0.12
+
+        # The debug switch must suppress only feedforward.  The position
+        # correction remains available so the A/B run keeps its feedback loop.
+        controller.set_parameters([Parameter('feedforward_scale', value=0.0)])
+        feedforward.clear()
+        commands.clear()
+        current_pub.publish(_pose(0.0))
+        assert _spin_until(
+            executor,
+            lambda: any(abs(msg.linear.x) < 1e-6 for msg in feedforward)
+            and any(msg.linear.x == pytest.approx(0.03, abs=1e-3) for msg in commands),
+        )
+
+        controller.set_parameters([Parameter('feedforward_scale', value=1.0)])
 
         commands.clear()
         override_pub.publish(Float32(data=0.0))

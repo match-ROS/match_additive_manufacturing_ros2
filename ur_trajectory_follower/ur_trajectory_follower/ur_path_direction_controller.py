@@ -32,6 +32,11 @@ class DirectionController(Node):
         self.declare_parameter('velocity_override_topic', '/velocity_override')
         self.declare_parameter('desired_speed_topic', '/desired_arm_speed')
         self.declare_parameter('default_velocity', -1.0)
+        # Runtime diagnostic switch: leave reference progression and feedback
+        # untouched while suppressing only the path-derivative contribution.
+        # This makes A/B checks of a suspected frame error possible without
+        # changing the initial conditions of the run.
+        self.declare_parameter('feedforward_scale', 1.0)
         self.declare_parameter('start_condition_topic', '/start_condition')
         self.declare_parameter('wait_for_start_condition', True)
         self.declare_parameter('initial_path_index', 0)
@@ -46,7 +51,6 @@ class DirectionController(Node):
         self.declare_parameter('max_tracking_linear_velocity', 0.12)
         self.declare_parameter('final_position_tolerance', 0.005)
         self.declare_parameter('final_tolerance_cycles', 3)
-        self.declare_parameter('hold_reference_on_pause', True)
         self.declare_parameter('output_smoothing_coeff', 0.0)
         # Tracking must not depend on new path or pose messages arriving.  In
         # particular, the final-position correction has to remain active once
@@ -62,11 +66,19 @@ class DirectionController(Node):
         self.control_enabled = not self._as_bool(self.get_parameter('wait_for_start_condition').value)
         self.spray_axis_source = str(self.get_parameter('spray_axis_source').value)
         self.spray_axis_sign = float(self.get_parameter('spray_axis_sign').value)
-        self.command_old = Twist()
+        # Keep smoothing state per channel. Their sum therefore remains equal
+        # to smoothing the final combined command.
+        self.feedforward_old = np.zeros(3)
+        self.control_old = np.zeros(3)
         self.final_cycles = 0
         self.completed = False
 
         latch_qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL, reliability=QoSReliabilityPolicy.RELIABLE)
+        self.feedforward_pub = self.create_publisher(Twist, 'ur_twist_world_feedforward', 10)
+        self.control_pub = self.create_publisher(Twist, 'ur_twist_world_control', 10)
+        # Keep the original combined topic available for existing monitoring
+        # and external consumers. The command pipeline itself uses the two
+        # components via twist_combiner.
         self.pub = self.create_publisher(Twist, 'ur_twist_world', 10)
         self.complete_pub = self.create_publisher(Bool, 'trajectory_complete', latch_qos)
         self.create_subscription(Path, str(self.get_parameter('path_topic').value), self._path_cb, latch_qos)
@@ -120,7 +132,12 @@ class DirectionController(Node):
             self.control_enabled = enabled
             self.final_cycles = 0
             if not enabled:
-                self.command_old = Twist()
+                self.feedforward_old = np.zeros(3)
+                self.control_old = np.zeros(3)
+                # The twist combiner retains its latest messages, so clear
+                # both channels explicitly when control stops.
+                self.feedforward_pub.publish(Twist())
+                self.control_pub.publish(Twist())
                 self.pub.publish(Twist())
             else:
                 self._calculate()
@@ -147,14 +164,23 @@ class DirectionController(Node):
             speed = self.desired_speed
         else:
             speed = segment_speed(self._position(start), self._position(goal), max(0.0, (goal.header.stamp.sec - start.header.stamp.sec) + (goal.header.stamp.nanosec - start.header.stamp.nanosec) / 1e9))
-        return path_feedforward(delta, speed, self.velocity_override)
+        return path_feedforward(
+            delta,
+            speed,
+            self.velocity_override * max(
+                0.0, float(self.get_parameter('feedforward_scale').value)
+            ),
+        )
 
-    def _smooth(self, command: np.ndarray) -> np.ndarray:
+    def _smooth_components(
+        self, feedforward: np.ndarray, control: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
         coeff = max(0.0, min(1.0, float(self.get_parameter('output_smoothing_coeff').value)))
-        previous = np.array([self.command_old.linear.x, self.command_old.linear.y, self.command_old.linear.z])
-        output = coeff * previous + (1.0 - coeff) * command
-        self.command_old.linear.x, self.command_old.linear.y, self.command_old.linear.z = map(float, output)
-        return output
+        feedforward_output = coeff * self.feedforward_old + (1.0 - coeff) * feedforward
+        control_output = coeff * self.control_old + (1.0 - coeff) * control
+        self.feedforward_old = feedforward_output
+        self.control_old = control_output
+        return feedforward_output, control_output
 
     def _calculate(self) -> None:
         if not self.control_enabled or self.path is None or self.reference_pose is None or self.current_pose is None:
@@ -162,14 +188,17 @@ class DirectionController(Node):
         reference, measured = self._position(self.reference_pose), self._position(self.current_pose)
         error = reference - measured
         spray_axis = self._spray_axis(self.reference_pose)
-        paused = self.velocity_override <= 0.0
-        correction_scale = 1.0 if paused and self._as_bool(self.get_parameter('hold_reference_on_pause').value) else self.velocity_override
+        # The GUI override controls trajectory progress and feedforward speed.
+        # Keep pose feedback at its configured bounded rate so tracking
+        # stiffness and disturbance recovery do not change with print speed.
+        correction_scale = 1.0
+        feedforward = self._feedforward()
         tracking = cartesian_tracking_command(
             reference=reference,
             measured=measured,
             tangent=self._segment_tangent(),
             spray_axis=spray_axis,
-            feedforward=self._feedforward(),
+            feedforward=feedforward,
             along_track_kp=float(self.get_parameter('along_track_kp').value),
             orthogonal_kp=float(self.get_parameter('orthogonal_kp').value),
             spray_kp=float(self.get_parameter('kp_z').value),
@@ -179,6 +208,7 @@ class DirectionController(Node):
             max_linear=float(self.get_parameter('max_tracking_linear_velocity').value),
             correction_scale=correction_scale,
         )
+        control = tracking.along + tracking.lateral + tracking.spray
         command = tracking.command
 
         final = self.current_index >= len(self.path.poses) - 1
@@ -195,10 +225,28 @@ class DirectionController(Node):
             self.complete_pub.publish(Bool(data=False))
 
         command = limit_vector(command, float(self.get_parameter('max_tracking_linear_velocity').value))
-        command = self._smooth(command)
-        out = Twist()
-        out.linear.x, out.linear.y, out.linear.z = map(float, command)
-        self.pub.publish(out)
+
+        # The limiter applies to the sum, not to each component. Scale both
+        # channels by the same factor so their downstream sum is exactly the
+        # bounded command this controller previously published.
+        unbounded_command = feedforward + control
+        unbounded_norm = float(np.linalg.norm(unbounded_command))
+        scale = float(np.linalg.norm(command)) / unbounded_norm if unbounded_norm > 1e-12 else 0.0
+        feedforward *= scale
+        control *= scale
+        feedforward, control = self._smooth_components(feedforward, control)
+
+        feedforward_out = Twist()
+        feedforward_out.linear.x, feedforward_out.linear.y, feedforward_out.linear.z = map(float, feedforward)
+        control_out = Twist()
+        control_out.linear.x, control_out.linear.y, control_out.linear.z = map(float, control)
+        self.feedforward_pub.publish(feedforward_out)
+        self.control_pub.publish(control_out)
+        combined_out = Twist()
+        combined_out.linear.x, combined_out.linear.y, combined_out.linear.z = map(
+            float, feedforward + control
+        )
+        self.pub.publish(combined_out)
 
     def _segment_tangent(self) -> np.ndarray:
         if self.path is None or len(self.path.poses) < 2:

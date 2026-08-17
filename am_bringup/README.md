@@ -169,7 +169,8 @@ ros2 topic echo /robot/robotnik_base_control/cmd_vel_unstamped
 ros2 topic echo /robot/joint_trajectory_controller/joint_trajectory --once
 ros2 topic hz /current_tcp_pose
 ros2 topic echo /ur_error_world --once
-ros2 topic echo /ur_twist_world --once
+ros2 topic echo /ur_twist_world_feedforward --once
+ros2 topic echo /ur_twist_world_control --once
 ros2 topic echo /jparse_velocity_controller_ur/twist_cmd --once
 ros2 topic echo /robot/arm_forward_velocity_controller/commands --once
 ros2 control list_controllers --controller-manager /robot/controller_manager
