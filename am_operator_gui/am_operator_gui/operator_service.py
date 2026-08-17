@@ -1004,6 +1004,38 @@ class OperatorService:
         if name == 'move_arm':
             original_index = int(self._setting('original_arm_index', index))
             command_topic = profile.get('arm_world_twist_topic', '/jparse_velocity_controller_ur/twist_cmd_world')
+            ik_start_enabled = (
+                mur_native_arm and profile.get('arm_selected') == 'r' and
+                str(self._setting('arm_start_mode', 'ik_then_twist')).lower() == 'ik_then_twist'
+            )
+            if ik_start_enabled:
+                seed = self._setting(
+                    'arm_start_ik_seed_positions',
+                    [-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0],
+                )
+                if not isinstance(seed, list) or len(seed) != 6:
+                    seed = [-1.5708, -1.5708, 1.5708, -1.5708, -1.5708, 0.0]
+                seed_arg = '[' + ', '.join(f'{float(value):.6f}' for value in seed) + ']'
+                spray_distance = (
+                    float(self._setting('spray_distance_mm', 100.0)) +
+                    float(self._setting('nozzle_offset_mm', 0.0))
+                ) / 1000.0
+                return ['ros2', 'launch', 'move_to_path_idx', 'move_ur_to_path_idx_ik.launch.py',
+                        f'use_sim_time:={self._use_sim_time()}', 'path_topic:=/ur_path_transformed',
+                        'current_pose_topic:=/current_deposition_pose', f'path_index:={original_index}',
+                        f'wait_for_start_condition:={str(wait_for_start_condition).lower()}',
+                        'start_condition_topic:=/start_pose_reached',
+                        *( [f'ready_topic:={ready_topic}'] if ready_topic else [] ),
+                        f'cmd_vel_topic:={command_topic}', f'path_frame:={frame}',
+                        f'tf_arm_base_frame:={profile["compensation_base_frame"]}',
+                        'ik_pose_frame:=base_footprint',
+                        f'joint_states_topic:={profile["joint_states_topic"]}',
+                        f'trajectory_topic:={profile["arm_trajectory_topic"]}',
+                        f'ik_configuration:={self._setting("arm_start_configuration", "shoulder_right_elbow_up_wrist_unflip")}',
+                        f'ik_seed_positions:={seed_arg}', f'spray_distance:={spray_distance:.6f}',
+                        *self._fixed_tool_arguments(),
+                        f'kp_linear:={self._pid("arm_move.kp_linear", 0.8):.6f}', f'kp_angular:={self._pid("arm_move.kp_angular", 1.0):.6f}',
+                        f'max_linear_velocity:={self._pid("arm_move.max_linear_velocity", 0.12):.6f}', f'max_angular_velocity:={self._pid("arm_move.max_angular_velocity", 0.5):.6f}']
             return ['ros2', 'launch', 'move_to_path_idx', 'move_ur_to_path_idx.launch.py',
                     f'use_sim_time:={self._use_sim_time()}', 'path_topic:=/ur_path_transformed',
                     'current_pose_topic:=/current_deposition_pose', f'path_index:={original_index}',

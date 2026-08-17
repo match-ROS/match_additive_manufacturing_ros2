@@ -26,6 +26,7 @@ setup(
             'move_to_path_idx = move_to_path_idx.move_to_path_idx:main',
             'move_to_pose = move_to_path_idx.move_to_pose:main',
             'move_ur_to_path_idx = move_to_path_idx.move_ur_to_path_idx:main',
+            'move_ur_ik_to_path_idx = move_to_path_idx.move_ur_ik_to_path_idx:main',
         ],
     },
 )

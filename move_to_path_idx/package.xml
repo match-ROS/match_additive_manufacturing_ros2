@@ -13,6 +13,12 @@
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>builtin_interfaces</exec_depend>
+  <exec_depend>controller_manager_msgs</exec_depend>
+  <exec_depend>moveit_msgs</exec_depend>
+  <exec_depend>mur_moveit_config</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>trajectory_msgs</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

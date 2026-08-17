@@ -195,7 +195,7 @@ class MoveUrToPathIdx(Node):
         if self.path is None or self.robot_pose is None:
             if not self.has_logged_waiting:
                 self.has_logged_waiting = True
-                self.get_logger().info("Waiting until both path and current TCP pose are available.")
+                self.get_logger().info("Waiting until both path and current controlled pose are available.")
             return
         if self.path_index >= len(self.path.poses):
             self.get_logger().error(
@@ -209,7 +209,7 @@ class MoveUrToPathIdx(Node):
         self.target_pose = self.path.poses[self.path_index].pose
         self.state = ControlState.DRIVE_TO_POINT
         self.get_logger().info(
-            f"Received path and TCP pose. Moving to path index {self.path_index}."
+            f"Received path and controlled pose. Moving to path index {self.path_index}."
         )
 
     def _publish_stop(self) -> None:
@@ -269,6 +269,22 @@ class MoveUrToPathIdx(Node):
             cmd.twist.linear.x = float(vx)
             cmd.twist.linear.y = float(vy)
             cmd.twist.linear.z = float(vz)
+            # The controlled point is the deposition point, 0.35 m ahead of
+            # the flange.  Keeping the flange orientation fixed until that
+            # point has reached the target can drive the remote-point Jacobian
+            # into a poor configuration.  Start reducing the pose error as a
+            # whole, so the tool takes the coupled approach to the target.
+            kp_angular = float(self.get_parameter('kp_angular').value)
+            max_angular = float(self.get_parameter('max_angular_velocity').value)
+            wx, wy, wz = scale_to_limit(
+                kp_angular * ox,
+                kp_angular * oy,
+                kp_angular * oz,
+                max_angular,
+            )
+            cmd.twist.angular.x = float(wx)
+            cmd.twist.angular.y = float(wy)
+            cmd.twist.angular.z = float(wz)
             self.cmd_vel_pub.publish(cmd)
             return
 
@@ -280,7 +296,7 @@ class MoveUrToPathIdx(Node):
                 self.stop_count_remaining = max(1, int(self.get_parameter('publish_stop_count').value))
                 self._publish_stop()
                 self.get_logger().info(
-                    f"Reached TCP target index {self.path_index}: dist={dist:.3f}, "
+                    f"Reached controlled-pose target index {self.path_index}: dist={dist:.3f}, "
                     f"orientation_error={orientation_error:.3f}. Shutting down."
                 )
                 self._publish_completion()
