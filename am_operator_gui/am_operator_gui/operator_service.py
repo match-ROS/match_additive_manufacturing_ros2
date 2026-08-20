@@ -296,7 +296,8 @@ class OperatorService:
                    'base_smoothing', 'fixed_tool_offset', 'fixed_tool_offsets_by_platform',
                    'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
-                   'direction_mode', 'accuracy_phase', 'mur_arm', 'fixed_tool_offset_input_mode'}
+                   'direction_mode', 'accuracy_phase', 'mur_arm', 'fixed_tool_offset_input_mode',
+                   'monitor_output_directory', 'monitor_run_name'}
         if 'mur_arm' in values:
             arm = str(values['mur_arm']).strip().lower()
             if arm not in MUR_ARMS:
@@ -905,6 +906,10 @@ class OperatorService:
                     '-p', f'kp_x:={self._pid("base_follower.kp_x", 0.8):.6f}', '-p', f'kp_y:={self._pid("base_follower.kp_y", 0.8):.6f}',
                     '-p', f'kp_yaw:={self._pid("base_follower.kp_yaw", 1.2):.6f}', '-p', f'max_vx:={self._pid("base_follower.max_vx", 0.25):.6f}',
                     '-p', f'max_vy:={self._pid("base_follower.max_vy", 0.25):.6f}', '-p', f'max_wz:={self._pid("base_follower.max_wz", 0.5):.6f}',
+                    '-p', f'pure_pursuit_k_progress:={self._pid("base_follower.pure_pursuit_k_progress", 1.0):.6f}',
+                    '-p', f'max_progress_speed_correction:={self._pid("base_follower.max_progress_speed_correction", 0.5):.6f}',
+                    '-p', f'base_progress_xy_tolerance:={self._pid("base_follower.base_progress_xy_tolerance", 0.05):.6f}',
+                    '-p', f'base_progress_yaw_tolerance:={self._pid("base_follower.base_progress_yaw_tolerance", 0.08):.6f}',
                     '-p', f"smooth_velocity_commands:={str(bool(self._smoothing('enabled', True))).lower()}",
                     '-p', f"velocity_smoothing_method:={self._smoothing('method', 'moving_average')}",
                     '-p', f"max_accel_x:={float(self._smoothing('max_accel_x', 0.25)):.6f}", '-p', f"max_accel_y:={float(self._smoothing('max_accel_y', 0.25)):.6f}",
@@ -1016,17 +1021,38 @@ class OperatorService:
                     'spray_distance_max_rate:=0.020000', *self._fixed_tool_arguments()]
         if name in {'base_accuracy', 'tcp_accuracy'}:
             mode = 'base' if name == 'base_accuracy' else 'tcp'
-            actual = '/robot_pose' if mode == 'base' else '/current_deposition_pose'
-            path = '/base_path' if mode == 'base' else '/ur_path_tracking'
+            actual = profile['robot_pose'] if mode == 'base' else '/current_deposition_pose'
+            path = '/base_path_tracking' if mode == 'base' else '/ur_path_tracking'
             reference = '/base_trajectory_reference' if mode == 'base' else '/arm_trajectory_reference'
+            command_topic = (
+                profile['cmd_vel'] if mode == 'base'
+                else profile.get('arm_world_twist_topic', '/jparse_velocity_controller_ur/twist_cmd_world')
+            )
+            command_type = 'twist_stamped' if (mode == 'base' and bool(profile.get('stamped', False))) or mode == 'tcp' else 'twist'
+            max_tracking_speed = (
+                self._pid('base_follower.max_vx', 0.25)
+                if mode == 'base' else self._pid('arm_direction.max_tracking_linear_velocity', 0.12)
+            )
+            max_tracking_angular_speed = self._pid('base_follower.max_wz', 0.5) if mode == 'base' else 0.0
             phase = str(self._setting('accuracy_phase', 'baseline'))
+            output_directory = str(self._setting('monitor_output_directory', '/tmp/am_trajectory_runs'))
+            run_name = str(self._setting('monitor_run_name', '')).strip()
+            monitor_name = f'{run_name}_{mode}' if run_name else ''
             return ['ros2', 'run', 'print_path_monitoring', 'trajectory_accuracy_monitor', '--ros-args',
                     '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f'mode:={mode}',
                     '-p', f'actual_pose_topic:={actual}', '-p', f'reference_path_topic:={path}',
                     '-p', f'reference_pose_topic:={reference}', '-p', 'path_index_topic:=/path_index',
-                    '-p', 'output_directory:=/tmp/am_trajectory_runs', '-p', f'phase:={phase}',
+                    '-p', f'command_twist_topic:={command_topic}', '-p', f'command_twist_type:={command_type}',
+                    '-p', f'max_tracking_linear_velocity:={max_tracking_speed:.6f}',
+                    '-p', f'max_tracking_angular_velocity:={max_tracking_angular_speed:.6f}',
+                    '-p', f'output_directory:={output_directory}',
+                    *( ['-p', f'run_name:={monitor_name}'] if monitor_name else [] ),
+                    '-p', f'phase:={phase}',
                     '-p', 'required_frame:=map',
-                    '-p', f"start_condition_topic:={'/start_pose_reached' if mode == 'base' else '/start_condition'}"]
+                    # Campaign monitors begin with the coupled trajectory,
+                    # not with either one-shot move-to-start action.  This
+                    # keeps base and TCP sample windows comparable.
+                    '-p', 'start_condition_topic:=/start_condition']
         if name == 'accuracy_report':
             return ['ros2', 'run', 'print_path_monitoring', 'trajectory_accuracy_report',
                     '--input-directory', '/tmp/am_trajectory_runs', '--trajectory-directory', trajectory,

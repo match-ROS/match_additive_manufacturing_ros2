@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import rclpy
-from geometry_msgs.msg import PoseStamped, Twist, Vector3Stamped
+from geometry_msgs.msg import PoseStamped, Twist, TwistStamped, Vector3Stamped
 from nav_msgs.msg import Path as RosPath
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
@@ -41,6 +41,10 @@ class TrajectoryAccuracyMonitor(Node):
         self.declare_parameter('max_reachable_radius', 0.85)
         self.declare_parameter('reach_boundary_margin', 0.05)
         self.declare_parameter('path_index_topic', '/path_index')
+        self.declare_parameter('base_progress_index_topic', '/base_progress_index')
+        self.declare_parameter('base_progress_error_topic', '/base_progress_error_m')
+        self.declare_parameter('base_reference_progress_topic', '/base_reference_progress_m')
+        self.declare_parameter('base_progress_arc_length_topic', '/base_progress_arc_length_m')
         self.declare_parameter('trajectory_phase_topic', '')
         self.declare_parameter('velocity_override_topic', '')
         self.declare_parameter('desired_speed_topic', '')
@@ -60,10 +64,13 @@ class TrajectoryAccuracyMonitor(Node):
         self.declare_parameter('max_post_end_seconds', 30.0)
         self.declare_parameter('error_topic_prefix', '/trajectory_accuracy')
         self.declare_parameter('command_twist_topic', '')
+        self.declare_parameter('command_twist_type', 'twist')
         self.declare_parameter('joint_states_topic', '')
         self.declare_parameter('max_tracking_linear_velocity', 0.12)
+        self.declare_parameter('max_tracking_angular_velocity', 0.0)
         self.declare_parameter('saturation_fraction', 0.99)
         self.declare_parameter('completion_topic', '/trajectory_complete')
+        self.declare_parameter('shutdown_after_completion', False)
 
         self.mode = str(self.get_parameter('mode').value).strip().lower()
         if self.mode not in {'base', 'tcp'}:
@@ -75,6 +82,10 @@ class TrajectoryAccuracyMonitor(Node):
         self.base_path: Optional[RosPath] = None
         self.reference_pose: Optional[PoseStamped] = None
         self.path_index: Optional[int] = None
+        self.base_progress_index: Optional[int] = None
+        self.base_progress_error_m: Optional[float] = None
+        self.base_reference_progress_m: Optional[float] = None
+        self.base_progress_arc_length_m: Optional[float] = None
         self.trajectory_phase: Optional[float] = None
         self.velocity_override: Optional[float] = None
         self.desired_speed: Optional[float] = None
@@ -89,12 +100,15 @@ class TrajectoryAccuracyMonitor(Node):
         self.completion_time = None
         self.last_twist_time = None
         self.last_twist_speed = 0.0
+        self.last_twist_angular_z = 0.0
         self.twist_duration = 0.0
         self.twist_saturation_duration = 0.0
+        self.twist_angular_saturation_duration = 0.0
         self.twist_speeds: list[float] = []
         self.twist_linear_x: list[float] = []
         self.twist_linear_y: list[float] = []
         self.twist_linear_z: list[float] = []
+        self.twist_angular_z: list[float] = []
         self.joint_velocities: dict[str, list[float]] = {}
 
         qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
@@ -111,6 +125,32 @@ class TrajectoryAccuracyMonitor(Node):
                 qos,
             )
         self.create_subscription(Int32, str(self.get_parameter('path_index_topic').value), self._index_cb, 10)
+        base_progress_index_topic = str(self.get_parameter('base_progress_index_topic').value).strip()
+        if base_progress_index_topic:
+            self.create_subscription(Int32, base_progress_index_topic, self._base_progress_index_cb, 10)
+        base_progress_error_topic = str(self.get_parameter('base_progress_error_topic').value).strip()
+        if base_progress_error_topic:
+            self.create_subscription(Float32, base_progress_error_topic, self._base_progress_error_cb, 10)
+        base_reference_progress_topic = str(
+            self.get_parameter('base_reference_progress_topic').value
+        ).strip()
+        if base_reference_progress_topic:
+            self.create_subscription(
+                Float32,
+                base_reference_progress_topic,
+                self._base_reference_progress_cb,
+                10,
+            )
+        base_progress_arc_length_topic = str(
+            self.get_parameter('base_progress_arc_length_topic').value
+        ).strip()
+        if base_progress_arc_length_topic:
+            self.create_subscription(
+                Float32,
+                base_progress_arc_length_topic,
+                self._base_progress_arc_length_cb,
+                10,
+            )
         trajectory_phase_topic = str(self.get_parameter('trajectory_phase_topic').value).strip()
         if trajectory_phase_topic:
             self.create_subscription(Float32, trajectory_phase_topic, self._trajectory_phase_cb, 10)
@@ -123,7 +163,11 @@ class TrajectoryAccuracyMonitor(Node):
         self.create_subscription(PoseStamped, str(self.get_parameter('actual_pose_topic').value), self._pose_cb, 10)
         command_twist_topic = str(self.get_parameter('command_twist_topic').value).strip()
         if command_twist_topic:
-            self.create_subscription(Twist, command_twist_topic, self._twist_cb, 10)
+            command_twist_type = str(self.get_parameter('command_twist_type').value).strip().lower()
+            if command_twist_type in {'twist_stamped', 'stamped', 'geometry_msgs/msg/twiststamped'}:
+                self.create_subscription(TwistStamped, command_twist_topic, self._twist_stamped_cb, 10)
+            else:
+                self.create_subscription(Twist, command_twist_topic, self._twist_cb, 10)
         joint_states_topic = str(self.get_parameter('joint_states_topic').value).strip()
         if joint_states_topic:
             self.create_subscription(JointState, joint_states_topic, self._joint_state_cb, 10)
@@ -151,6 +195,8 @@ class TrajectoryAccuracyMonitor(Node):
         self.csv_file = self.csv_path.open('w', newline='', encoding='utf-8')
         self.writer = csv.DictWriter(self.csv_file, fieldnames=[
             'stamp_sec', 'path_index', 'trajectory_phase', 'velocity_override', 'desired_speed',
+            'base_progress_index', 'base_progress_error_m',
+            'base_reference_progress_m', 'base_progress_arc_length_m',
             'reference_source', 'actual_x', 'actual_y', 'actual_z',
             'dx', 'dy', 'dz', 'absolute_error', 'yaw_error',
             'planar_tangential_error', 'planar_cross_track_error',
@@ -159,6 +205,7 @@ class TrajectoryAccuracyMonitor(Node):
             'planned_arm_base_z', 'planned_arm_base_planar_radius',
         ])
         self.writer.writeheader()
+        self.create_timer(0.25, self._completion_shutdown_tick)
         self.get_logger().info(f'Recording {self.mode} trajectory accuracy to {self.csv_path}')
 
     def _path_cb(self, msg: RosPath) -> None:
@@ -174,6 +221,18 @@ class TrajectoryAccuracyMonitor(Node):
         self.path_index = max(0, int(msg.data))
         if self.path is not None and self.path.poses and self.path_index >= len(self.path.poses) - 1:
             self.path_end_time = self.get_clock().now()
+
+    def _base_progress_index_cb(self, msg: Int32) -> None:
+        self.base_progress_index = max(0, int(msg.data))
+
+    def _base_progress_error_cb(self, msg: Float32) -> None:
+        self.base_progress_error_m = float(msg.data)
+
+    def _base_reference_progress_cb(self, msg: Float32) -> None:
+        self.base_reference_progress_m = float(msg.data)
+
+    def _base_progress_arc_length_cb(self, msg: Float32) -> None:
+        self.base_progress_arc_length_m = float(msg.data)
 
     def _trajectory_phase_cb(self, msg: Float32) -> None:
         self.trajectory_phase = max(0.0, min(1.0, float(msg.data)))
@@ -192,6 +251,15 @@ class TrajectoryAccuracyMonitor(Node):
     def _completion_cb(self, msg: Bool) -> None:
         if bool(msg.data) and self.completion_time is None:
             self.completion_time = self.get_clock().now()
+
+    def _completion_shutdown_tick(self) -> None:
+        if (not self._as_bool(self.get_parameter('shutdown_after_completion').value)
+                or self.completion_time is None):
+            return
+        elapsed = (self.get_clock().now() - self.completion_time).nanoseconds / 1e9
+        if elapsed >= max(0.0, float(self.get_parameter('post_end_grace_seconds').value)):
+            self.get_logger().info('Completion grace period elapsed; stopping monitor.')
+            rclpy.shutdown()
 
     def _recording_window_open(self) -> bool:
         if not self.recording_enabled:
@@ -220,12 +288,21 @@ class TrajectoryAccuracyMonitor(Node):
             threshold = maximum * max(0.0, float(self.get_parameter('saturation_fraction').value))
             if maximum > 0.0 and self.last_twist_speed >= threshold:
                 self.twist_saturation_duration += dt
+            maximum_angular = max(0.0, float(self.get_parameter('max_tracking_angular_velocity').value))
+            angular_threshold = maximum_angular * max(0.0, float(self.get_parameter('saturation_fraction').value))
+            if maximum_angular > 0.0 and abs(self.last_twist_angular_z) >= angular_threshold:
+                self.twist_angular_saturation_duration += dt
         self.last_twist_time = now
         self.last_twist_speed = speed
+        self.last_twist_angular_z = float(msg.angular.z)
         self.twist_speeds.append(speed)
         self.twist_linear_x.append(float(msg.linear.x))
         self.twist_linear_y.append(float(msg.linear.y))
         self.twist_linear_z.append(float(msg.linear.z))
+        self.twist_angular_z.append(float(msg.angular.z))
+
+    def _twist_stamped_cb(self, msg: TwistStamped) -> None:
+        self._twist_cb(msg.twist)
 
     def _joint_state_cb(self, msg: JointState) -> None:
         if not self._recording_window_open():
@@ -312,6 +389,10 @@ class TrajectoryAccuracyMonitor(Node):
             'trajectory_phase': self.trajectory_phase,
             'velocity_override': self.velocity_override,
             'desired_speed': self.desired_speed,
+            'base_progress_index': self.base_progress_index,
+            'base_progress_error_m': self.base_progress_error_m,
+            'base_reference_progress_m': self.base_reference_progress_m,
+            'base_progress_arc_length_m': self.base_progress_arc_length_m,
             'reference_source': reference_source,
             'actual_x': actual.pose.position.x,
             'actual_y': actual.pose.position.y,
@@ -366,13 +447,20 @@ class TrajectoryAccuracyMonitor(Node):
                 'linear_x': summarize_distances(self.twist_linear_x),
                 'linear_y': summarize_distances(self.twist_linear_y),
                 'linear_z': summarize_distances(self.twist_linear_z),
+                'angular_z': summarize_distances(self.twist_angular_z),
                 'observed_duration_seconds': self.twist_duration,
                 'saturation_duration_seconds': self.twist_saturation_duration,
                 'saturation_time_fraction': (
                     self.twist_saturation_duration / self.twist_duration
                     if self.twist_duration > 1e-9 else 0.0
                 ),
+                'angular_saturation_duration_seconds': self.twist_angular_saturation_duration,
+                'angular_saturation_time_fraction': (
+                    self.twist_angular_saturation_duration / self.twist_duration
+                    if self.twist_duration > 1e-9 else 0.0
+                ),
             },
+            'base_progress': self._base_progress_summary(),
             'joint_velocity': {
                 name: summarize_distances(values)
                 for name, values in sorted(self.joint_velocities.items())
@@ -393,6 +481,26 @@ class TrajectoryAccuracyMonitor(Node):
         self.summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + '\n', encoding='utf-8')
         self.get_logger().info(f'Wrote accuracy summary to {self.summary_path}')
 
+    def _base_progress_summary(self) -> dict[str, object]:
+        indices = [int(row['base_progress_index']) for row in self.samples
+                   if row.get('base_progress_index') is not None]
+        errors = [float(row['base_progress_error_m']) for row in self.samples
+                  if row.get('base_progress_error_m') is not None]
+        return {
+            'samples': len(errors),
+            'index': {
+                'first': indices[0] if indices else None,
+                'last': indices[-1] if indices else None,
+                'minimum': min(indices) if indices else None,
+                'maximum': max(indices) if indices else None,
+            },
+            'arc_length_error_m': {
+                'minimum_signed': min(errors) if errors else None,
+                'maximum_signed': max(errors) if errors else None,
+                'absolute': summarize_distances(abs(error) for error in errors),
+            },
+        }
+
     def _valid_sample_fraction(self) -> float:
         # The gate deliberately discards pre-start and post-end messages; they
         # are not attempted tracking samples and must not dilute data quality.
@@ -402,6 +510,12 @@ class TrajectoryAccuracyMonitor(Node):
         )
         total = len(self.samples) + attempted_invalid
         return len(self.samples) / total if total else 0.0
+
+    @staticmethod
+    def _as_bool(value) -> bool:
+        return value if isinstance(value, bool) else str(value).strip().lower() in {
+            '1', 'true', 'yes', 'y', 'on'
+        }
 
     def _reach_classification(self, index: int, tcp_reference: PoseStamped) -> dict[str, float | str]:
         unavailable = {

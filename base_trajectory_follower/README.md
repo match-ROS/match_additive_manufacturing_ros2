@@ -10,6 +10,7 @@ The first node, `simple_base_follower`, is intentionally small and platform-ligh
 - can publish `geometry_msgs/msg/TwistStamped` when `output_stamped:=true`
 - supports x, y, and yaw velocity for omnidirectional bases such as RB-VOGUI
 - can optionally consume a shared external `std_msgs/msg/Int32` path index
+- publishes independent sequential geometric base-progress diagnostics for coupled paths
 - can wait for a shared `std_msgs/msg/Bool` start condition before publishing commands
 - publishes zero velocity if no path, no pose, stale pose, or goal reached
 
@@ -56,6 +57,23 @@ ros2 launch base_trajectory_follower simple_base_follower.launch.py \
 - `max_vx`, `max_vy`, `max_wz`: command limits.
 - `xy_goal_tolerance`, `yaw_goal_tolerance`: final pose tolerances.
 - `allow_reverse`: if false, negative x velocity is clamped to zero.
+- `pure_pursuit_k_progress`: gain (m/s per m) for the signed base-path
+  geometric progress error.  It affects only Pure Pursuit linear feedforward.
+- `max_progress_speed_correction`: absolute bound on that extra linear speed.
+- `base_progress_xy_tolerance`, `base_progress_yaw_tolerance`: deprecated
+  compatibility parameters; translational progress no longer uses reach gates.
+
+For an external index, the node maps `/path_index` through
+`external_path_index_stride` to its `base_reference_index`.  Separately,
+`/base_progress_index` is a forward-only, sequential estimate of translational
+progress. It advances when the next densely sampled base waypoint is closer to
+the measured base XY pose than the current waypoint, and it skips zero-XY/yaw-only entries because
+they add no arc length.  `/base_progress_error_m` is the discrete arc-length
+difference `arc_length(base_reference_index) - arc_length(base_progress_index)`.
+`/base_reference_progress_m` and `/base_progress_arc_length_m` publish the two
+coordinates.  This is intentionally a discrete approximation; consider a local
+continuous segment projection if base paths become sparse or quantization causes
+visible catch-up steps.
 
 ## Expected Topic Contract
 

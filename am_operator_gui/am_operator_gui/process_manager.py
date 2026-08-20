@@ -57,11 +57,19 @@ class ManagedProcess:
                 self.return_code = process.returncode
                 return
             try:
-                os.killpg(process.pid, signal.SIGTERM)
+                # ROS 2 Python nodes handle SIGINT by leaving their spin loop,
+                # which lets campaign monitors flush CSV/JSON summaries in
+                # their normal finally block.  Escalate only if a process does
+                # not stop promptly.
+                os.killpg(process.pid, signal.SIGINT)
                 process.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
-                os.killpg(process.pid, signal.SIGKILL)
-                process.wait()
+                os.killpg(process.pid, signal.SIGTERM)
+                try:
+                    process.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
             except ProcessLookupError:
                 pass
             self.return_code = process.returncode

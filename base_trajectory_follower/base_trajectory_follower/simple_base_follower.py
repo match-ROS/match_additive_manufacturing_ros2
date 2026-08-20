@@ -15,8 +15,12 @@ from base_trajectory_follower.controller import (
     FollowerTolerances,
     Pose2D,
     PurePursuitGains,
+    advance_geometric_path_index,
+    cumulative_path_arc_lengths,
     compute_pure_pursuit_command,
     compute_velocity_command,
+    path_arc_length_error,
+    progress_index_after_reference_seek,
     select_lookahead_index,
 )
 
@@ -62,16 +66,33 @@ class SimpleBaseFollower(Node):
         self.declare_parameter('yaw_goal_tolerance', 0.08)
         self.declare_parameter('pure_pursuit_kv', 1.0)
         self.declare_parameter('pure_pursuit_kw', 1.0)
-        self.declare_parameter('pure_pursuit_ky', 0.3)
+        self.declare_parameter('pure_pursuit_ky', 2.0)
         self.declare_parameter('pure_pursuit_k_distance', 0.0)
         self.declare_parameter('pure_pursuit_k_orientation', 0.5)
-        self.declare_parameter('pure_pursuit_k_index', 0.02)
+        self.declare_parameter('pure_pursuit_k_progress', 1.0)
+        self.declare_parameter('max_progress_speed_correction', 0.5)
+        # Retained as no-op compatibility parameters for existing launch files.
+        # Translational progress no longer depends on waypoint reach tolerances.
+        self.declare_parameter('base_progress_xy_tolerance', 0.05)
+        self.declare_parameter('base_progress_yaw_tolerance', 0.08)
+        self.declare_parameter('base_progress_index_topic', '/base_progress_index')
+        self.declare_parameter('base_progress_error_topic', '/base_progress_error_m')
+        self.declare_parameter('base_reference_index_topic', '/base_reference_index')
+        self.declare_parameter('base_reference_progress_topic', '/base_reference_progress_m')
+        self.declare_parameter('base_progress_arc_length_topic', '/base_progress_arc_length_m')
 
         self.path: List[Pose2D] = []
         self.path_timestamps: List[float] = []
         self.robot_pose: Optional[Pose2D] = None
         self.last_pose_time = None
         self.current_index = 0
+        self.base_reference_index = 0
+        # Discrete, forward-only estimate of translational base-path progress.
+        # It is intentionally geometric rather than an XY/yaw reach-gated
+        # completion state; see advance_geometric_path_index().
+        self.base_progress_index = 0
+        self.base_path_arc_lengths: List[float] = []
+        self._external_reference_received_for_path = False
         self.external_path_index: Optional[int] = None
         self.reference_pose: Optional[Pose2D] = None
         self.goal_reached = False
@@ -133,6 +154,21 @@ class SimpleBaseFollower(Node):
             self.cmd_pub = self.create_publisher(TwistStamped, self.cmd_vel_topic, 10)
         else:
             self.cmd_pub = self.create_publisher(Twist, self.cmd_vel_topic, 10)
+        self.base_progress_index_pub = self.create_publisher(
+            Int32, str(self.get_parameter('base_progress_index_topic').value), latch_qos
+        )
+        self.base_progress_error_pub = self.create_publisher(
+            Float32, str(self.get_parameter('base_progress_error_topic').value), latch_qos
+        )
+        self.base_reference_index_pub = self.create_publisher(
+            Int32, str(self.get_parameter('base_reference_index_topic').value), latch_qos
+        )
+        self.base_reference_progress_pub = self.create_publisher(
+            Float32, str(self.get_parameter('base_reference_progress_topic').value), latch_qos
+        )
+        self.base_progress_arc_length_pub = self.create_publisher(
+            Float32, str(self.get_parameter('base_progress_arc_length_topic').value), latch_qos
+        )
 
         rate = max(1.0, float(self.get_parameter('publish_rate').value))
         self.create_timer(1.0 / rate, self._tick)
@@ -150,14 +186,46 @@ class SimpleBaseFollower(Node):
         ]
         self.path = poses
         self.path_timestamps = timestamps
-        self.current_index = 0
+        self.base_path_arc_lengths = cumulative_path_arc_lengths(self.path)
+        requested_index = 0
         if self.external_path_index is not None and self.path:
-            self.current_index = self._path_index_from_external_index(self.external_path_index)
+            requested_index = self._path_index_from_external_index(self.external_path_index)
+        # A replacement can describe a wholly different path.  Do not carry a
+        # physical-reach claim from the old one into the new path.
+        self.base_reference_index = requested_index
+        self.base_progress_index = requested_index
+        self.current_index = requested_index
+        self._external_reference_received_for_path = self.external_path_index is not None
         self.goal_reached = False
+        self._publish_progress_diagnostics()
         self.get_logger().info(f"Received base path with {len(self.path)} poses.")
 
     def _path_index_cb(self, msg: Int32) -> None:
         self.external_path_index = max(0, int(msg.data))
+        if not self.path:
+            return
+        requested_index = self._path_index_from_external_index(self.external_path_index)
+        previous_progress_index = self.base_progress_index
+        if not self._external_reference_received_for_path:
+            # Path and index are independently latched.  If the path arrived
+            # first, this first reference still defines its requested start.
+            self.base_progress_index = requested_index
+            self._external_reference_received_for_path = True
+        else:
+            self.base_progress_index = progress_index_after_reference_seek(
+                self.base_reference_index,
+                self.base_progress_index,
+                requested_index,
+            )
+        if self.base_progress_index != previous_progress_index:
+            # An operator seek is a new progress origin.  It must be possible
+            # to report that progress accurately even if the robot happens to
+            # be physically near a later section of a self-crossing path.
+            self._reset_smoother()
+        self.base_reference_index = requested_index
+        self.current_index = requested_index
+        self.goal_reached = False
+        self._publish_progress_diagnostics()
 
     def _reference_pose_cb(self, msg: PoseStamped) -> None:
         self.reference_pose = self._pose2d_from_pose(msg.pose)
@@ -201,24 +269,51 @@ class SimpleBaseFollower(Node):
             if self.external_path_index is None:
                 self._publish_stop('no path index')
                 return
-            self.current_index = self._path_index_from_external_index(self.external_path_index)
+            self.base_reference_index = self._path_index_from_external_index(self.external_path_index)
         else:
             lookahead = float(self.get_parameter('lookahead_distance').value)
-            self.current_index = select_lookahead_index(
+            self.base_reference_index = select_lookahead_index(
                 self.path,
                 self.robot_pose,
                 lookahead,
-                self.current_index,
+                self.base_reference_index,
             )
+        self.current_index = self.base_reference_index
+        self.base_progress_index = advance_geometric_path_index(
+            self.path,
+            self.base_progress_index,
+            self.robot_pose,
+        )
+        progress_error_m = path_arc_length_error(
+            self.base_path_arc_lengths,
+            self.base_reference_index,
+            self.base_progress_index,
+        )
+        self._publish_progress_diagnostics(progress_error_m)
         lookahead = float(self.get_parameter('lookahead_distance').value)
         target_index = self.current_index
-        if self.follower_type == 'pure_pursuit' and self.reference_pose is None:
-            target_index = select_lookahead_index(
-                self.path,
-                self.robot_pose,
-                lookahead,
-                self.current_index,
-            )
+        final_goal_is_eligible = (
+            not self.use_external_path_index or self.current_index >= len(self.path) - 1
+        )
+        if self.follower_type == 'pure_pursuit':
+            # A continuous paired-path reference must not turn the selected
+            # Pure Pursuit follower into a position-only PID controller.  The
+            # latter has no path-velocity feedforward, so it necessarily lags
+            # a moving base reference and can pull the arm out of reach.  An
+            # external index/reference is the synchronized tracking point,
+            # not merely a hint.  Looking 0.3 m farther along a sharp corner
+            # cuts the base across the corner and moves the mounted arm far
+            # off its paired deposition pose.  Retain velocity feedforward,
+            # but target the exact shared reference for coupled paths.
+            if self.use_external_path_index:
+                target_index = self.current_index
+            else:
+                target_index = select_lookahead_index(
+                    self.path,
+                    self.robot_pose,
+                    lookahead,
+                    self.current_index,
+                )
             command = compute_pure_pursuit_command(
                 self.robot_pose,
                 self.path,
@@ -231,6 +326,9 @@ class SimpleBaseFollower(Node):
                 self.velocity_override,
                 float(self.get_parameter('path_time_step').value),
                 self.diff_drive_mode,
+                progress_error_m,
+                float(self.get_parameter('max_progress_speed_correction').value),
+                check_final_goal=final_goal_is_eligible,
             )
         else:
             # With the shared external index, that index is the progress
@@ -259,9 +357,7 @@ class SimpleBaseFollower(Node):
                 self.diff_drive_mode,
                 command_override,
             )
-        self.goal_reached = command.reached_goal and (
-            not self.use_external_path_index or self.current_index >= len(self.path) - 1
-        )
+        self.goal_reached = command.reached_goal and final_goal_is_eligible
         if self.goal_reached:
             self._publish_stop('goal reached')
             self.get_logger().info("Base path goal reached.", throttle_duration_sec=2.0)
@@ -271,6 +367,12 @@ class SimpleBaseFollower(Node):
         twist.linear.x = command.vx if self._as_bool(self.get_parameter('allow_reverse').value) else max(0.0, command.vx)
         twist.linear.y = 0.0 if self.diff_drive_mode else command.vy
         twist.angular.z = command.wz
+        if self.follower_type == 'pure_pursuit' and self._pure_pursuit_segment_is_rotation_only():
+            # The controller has deliberately commanded zero translation for
+            # an orientation-only segment.  Do not let an acceleration or
+            # moving-average history leak the prior segment's linear command
+            # into that rotation.
+            self._clear_linear_smoothing_history()
         self._publish_twist(self._smooth_twist(twist))
         self.last_stop_reason = ''
 
@@ -282,6 +384,47 @@ class SimpleBaseFollower(Node):
     def _path_index_from_external_index(self, external_index: int) -> int:
         stride = max(1, int(self.get_parameter('external_path_index_stride').value))
         return max(0, min(int(external_index) * stride, len(self.path) - 1))
+
+    def _pure_pursuit_segment_is_rotation_only(self) -> bool:
+        if len(self.path) < 2:
+            return False
+        index = max(1, min(self.current_index, len(self.path) - 1))
+        previous, current = self.path[index - 1], self.path[index]
+        return math.hypot(current.x - previous.x, current.y - previous.y) <= 1e-9
+
+    def _clear_linear_smoothing_history(self) -> None:
+        self.last_twist.linear.x = 0.0
+        self.last_twist.linear.y = 0.0
+        for twist in self.moving_average_history:
+            twist.linear.x = 0.0
+            twist.linear.y = 0.0
+
+    def _reference_arc_length(self) -> float:
+        if not self.base_path_arc_lengths:
+            return 0.0
+        index = max(0, min(self.base_reference_index, len(self.base_path_arc_lengths) - 1))
+        return float(self.base_path_arc_lengths[index])
+
+    def _progress_arc_length(self) -> float:
+        if not self.base_path_arc_lengths:
+            return 0.0
+        index = max(0, min(self.base_progress_index, len(self.base_path_arc_lengths) - 1))
+        return float(self.base_path_arc_lengths[index])
+
+    def _publish_progress_diagnostics(self, progress_error_m: Optional[float] = None) -> None:
+        s_reference = self._reference_arc_length()
+        s_base_discrete = self._progress_arc_length()
+        if progress_error_m is None:
+            progress_error_m = path_arc_length_error(
+                self.base_path_arc_lengths,
+                self.base_reference_index,
+                self.base_progress_index,
+            )
+        self.base_progress_index_pub.publish(Int32(data=int(self.base_progress_index)))
+        self.base_progress_error_pub.publish(Float32(data=float(progress_error_m)))
+        self.base_reference_index_pub.publish(Int32(data=int(self.base_reference_index)))
+        self.base_reference_progress_pub.publish(Float32(data=s_reference))
+        self.base_progress_arc_length_pub.publish(Float32(data=s_base_discrete))
 
     def _publish_stop(self, reason: str) -> None:
         self._reset_smoother()
@@ -410,7 +553,7 @@ class SimpleBaseFollower(Node):
             ky=float(self.get_parameter('pure_pursuit_ky').value),
             k_distance=float(self.get_parameter('pure_pursuit_k_distance').value),
             k_orientation=float(self.get_parameter('pure_pursuit_k_orientation').value),
-            k_index=float(self.get_parameter('pure_pursuit_k_index').value),
+            k_progress=float(self.get_parameter('pure_pursuit_k_progress').value),
         )
 
     @staticmethod

@@ -63,7 +63,7 @@ tests prove stale pose input freezes progress, valid progress is monotonic and b
 and simulation shows the arm reference does not advance while the measured TCP is
 behind it.
 
-### `TODO(ros1-migration):` Add a bounded, optional base/arm index-skew adapter
+### Completed: bounded base-only progress catch-up
 
 **Why:** ROS 1 maps the arm-derived index through an offset vector, but keeps a
 separate MiR waypoint index. That physical base index advances only after the base
@@ -71,18 +71,15 @@ reaches its waypoint. The controller uses the difference between the modified ar
 reference and the reached base index to scale **base** velocity; it does not send an
 index-offset velocity command to the arm or skip base waypoints.
 
-**Where to implement:** Add a separate adapter in `ur_trajectory_follower` that
-maps the master `/path_index` to a bounded `/base_progress_reference`. Extend
-`base_trajectory_follower/simple_base_follower.py` with an opt-in
-`velocity_sync` mode: retain its own physically reached waypoint anchor, consume the
-base-progress reference only to calculate bounded phase/index error, and apply that
-error to its base velocity. The adapter must not change the master index or arm
-reference.
-
-**Done when:** The base waypoint anchor advances only after its pose/tolerance rule is
-satisfied; positive/negative index error changes base speed within configured limits;
-the reference and base anchor are monotonic and bounded; stale input fails safely; and
-unit tests cover repeated geometry, boundaries, and both signs of phase error.
+**Implementation:** `simple_base_follower` maps the shared `/path_index` with
+the existing external-index stride to `base_reference_index`, while keeping an
+independent, sequential geometric `base_progress_index`.  It advances one densely
+sampled base waypoint at a time when the next point is closer in XY, and skips
+zero-translation/yaw-only entries.  The resulting signed discrete arc-length error
+drives only a bounded Pure Pursuit base-speed correction; it never changes the
+arm/coordinator timeline.  Diagnostics publish on `/base_progress_index` and
+`/base_progress_error_m`, and the trajectory monitor records them with base-command
+saturation data.
 
 ### `TODO(ros1-migration):` Integrate moving-base TCP compensation in GUI operation
 
