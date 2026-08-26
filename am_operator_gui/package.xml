@@ -11,7 +11,7 @@
   <exec_depend>launch_ros</exec_depend>
 
   <exec_depend>base_trajectory_follower</exec_depend>
-  <exec_depend>controllers_ros2</exec_depend>
+  <exec_depend>am_jparse_controller</exec_depend>
   <exec_depend>move_to_path_idx</exec_depend>
   <exec_depend>parse_paths</exec_depend>
   <exec_depend>rclpy</exec_depend>

@@ -52,13 +52,13 @@ def generate_launch_description() -> LaunchDescription:
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 PathJoinSubstitution([
-                    FindPackageShare('controllers_ros2'),
+                    FindPackageShare('am_jparse_controller'),
                     'launch',
-                    'bunkur_ur_velocity_controller.launch.py',
+                    'am_jparse_velocity_controller.launch.py',
                 ])
             ),
             launch_arguments={
-                'sim': LaunchConfiguration('use_sim_time'),
+                'use_sim_time': LaunchConfiguration('use_sim_time'),
                 'robot_name': LaunchConfiguration('robot_name'),
                 'arm': LaunchConfiguration('arm'),
                 'base_link': LaunchConfiguration('base_link'),

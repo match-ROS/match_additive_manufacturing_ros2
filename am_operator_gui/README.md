@@ -88,7 +88,7 @@ The hardware-specific packages are site dependent and must also be present:
 - vendor base driver and its velocity-command interface;
 - UR ROS 2 driver/robot description and the configured `ros2_control` hardware
   interface;
-- the `controllers_ros2` package providing the J-PARSE chain used here;
+- the local `am_jparse_controller` package providing the J-PARSE chain used here;
 - a Vicon ROS bridge publishing the required `PoseStamped` streams; and
 - `python3-pyqt5`, `tf2_ros`, `tf2_geometry_msgs`, `tf_transformations`, and
   NumPy/SciPy (normally installed by `rosdep`).

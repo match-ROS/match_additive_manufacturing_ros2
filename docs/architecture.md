@@ -35,7 +35,7 @@ Current evidence:
 
 - `bunker_description` launches Bunker/BunkUR simulation and publishes `/robot_pose`
   from Gazebo model pose.
-- `controllers_ros2` provides the KDL-based UR velocity controller.
+- `am_jparse_controller` provides the KDL-based UR velocity controller used by the AM stack.
 - Old mobile-robot vendor sources such as `match_mobile_robotics_jazzy` are not part
   of this workspace; add external simulation sources only when they are actively needed.
 

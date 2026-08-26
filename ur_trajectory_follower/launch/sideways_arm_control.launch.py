@@ -224,13 +224,13 @@ def _launch_setup(context, *args, **kwargs):
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     PathJoinSubstitution([
-                        FindPackageShare('controllers_ros2'),
+                        FindPackageShare('am_jparse_controller'),
                         'launch',
-                        'bunkur_ur_velocity_controller.launch.py',
+                        'am_jparse_velocity_controller.launch.py',
                     ])
                 ),
                 launch_arguments={
-                    'sim': LaunchConfiguration('use_sim_time'),
+                    'use_sim_time': LaunchConfiguration('use_sim_time'),
                     'robot_name': LaunchConfiguration('robot_name'),
                     'arm': LaunchConfiguration('arm'),
                     'base_link': LaunchConfiguration('base_link'),
@@ -244,6 +244,8 @@ def _launch_setup(context, *args, **kwargs):
                     'joint_states_topic': LaunchConfiguration('joint_states_topic'),
                     'readiness_topic': LaunchConfiguration('jparse_readiness_topic'),
                     'command_joint_names_csv': LaunchConfiguration('command_joint_names_csv'),
+                    'max_cartesian_linear_velocity': LaunchConfiguration(
+                        'jparse_max_cartesian_linear_velocity'),
                 }.items(),
             )
         )
@@ -266,6 +268,14 @@ def generate_launch_description():
         DeclareLaunchArgument('joint_states_topic', default_value='/joint_states'),
         DeclareLaunchArgument('velocity_command_topic', default_value='/ur_forward_velocity_controller/commands'),
         DeclareLaunchArgument('start_jparse_controller', default_value='true'),
+        DeclareLaunchArgument(
+            'jparse_max_cartesian_linear_velocity',
+            default_value='0.8',
+            description=(
+                'Cartesian input limit for J-PARSE. Must exceed the maximum '
+                'base-induced TCP compensation plus the tracking command.'
+            ),
+        ),
         DeclareLaunchArgument(
             'start_orientation_controller',
             default_value='true',
