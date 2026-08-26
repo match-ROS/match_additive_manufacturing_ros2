@@ -9,6 +9,92 @@ const consoleElements = {
 const consoleStorageKey = 'am-operator-console-preferences';
 let clearedAfter = null;
 let latestState = null;
+const toolOffsetElements = {
+  mode: document.querySelector('#tool-offset-mode'),
+  xyz: ['x', 'y', 'z'].map(axis => document.querySelector(`#tool-offset-${axis}`)),
+  rotation: [0, 1, 2, 3].map(index => document.querySelector(`#tool-offset-r${index}`)),
+  labels: [0, 1, 2, 3].map(index => document.querySelector(`#tool-offset-label-${index}`)),
+};
+const defaultFixedToolOffset = {xyz: [-0.25, 0, 0.015], quaternion_xyzw: [0, -0.7071067812, 0, 0.7071067812]};
+let toolOffsetDisplayedMode = 'quaternion';
+
+function normalizeQuaternion(values) {
+  const norm = Math.sqrt(values.reduce((sum, value) => sum + value * value, 0));
+  if (!Number.isFinite(norm) || norm < 1e-12) throw new Error('Quaternion norm must be greater than zero');
+  return values.map(value => value / norm);
+}
+function rpyDegreesToQuaternion(values) {
+  const [roll, pitch, yaw] = values.map(value => value * Math.PI / 180);
+  const [cr, sr] = [Math.cos(roll / 2), Math.sin(roll / 2)];
+  const [cp, sp] = [Math.cos(pitch / 2), Math.sin(pitch / 2)];
+  const [cy, sy] = [Math.cos(yaw / 2), Math.sin(yaw / 2)];
+  return normalizeQuaternion([
+    sr * cp * cy - cr * sp * sy,
+    cr * sp * cy + sr * cp * sy,
+    cr * cp * sy - sr * sp * cy,
+    cr * cp * cy + sr * sp * sy,
+  ]);
+}
+function quaternionToRpyDegrees(values) {
+  const [x, y, z, w] = normalizeQuaternion(values);
+  const roll = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
+  const pitch = Math.asin(Math.max(-1, Math.min(1, 2 * (w * y - z * x))));
+  const yaw = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+  return [roll, pitch, yaw].map(value => value * 180 / Math.PI);
+}
+function toolOffsetFocused() {
+  return [...toolOffsetElements.xyz, ...toolOffsetElements.rotation, toolOffsetElements.mode]
+    .includes(document.activeElement);
+}
+function updateToolOffsetMode() {
+  const rpy = toolOffsetElements.mode.value === 'rpy';
+  const labels = rpy ? ['Roll (deg)', 'Pitch (deg)', 'Yaw (deg)', 'Qw'] : ['Qx', 'Qy', 'Qz', 'Qw'];
+  toolOffsetElements.labels.forEach((label, index) => label.textContent = labels[index]);
+  toolOffsetElements.rotation.forEach((input, index) => {
+    input.disabled = rpy && index === 3;
+    input.step = rpy && index < 3 ? '0.1' : '0.000001';
+  });
+}
+function convertToolOffsetMode() {
+  const targetMode = toolOffsetElements.mode.value;
+  if (targetMode === toolOffsetDisplayedMode) {
+    updateToolOffsetMode();
+    return;
+  }
+  try {
+    if (targetMode === 'rpy') {
+      const quaternion = normalizeQuaternion(toolOffsetElements.rotation.map(input => Number(input.value)));
+      const rpy = quaternionToRpyDegrees(quaternion);
+      toolOffsetElements.rotation.slice(0, 3).forEach((input, index) => input.value = rpy[index]);
+      toolOffsetElements.rotation[3].value = quaternion[3];
+    } else {
+      const quaternion = rpyDegreesToQuaternion(
+        toolOffsetElements.rotation.slice(0, 3).map(input => Number(input.value))
+      );
+      toolOffsetElements.rotation.forEach((input, index) => input.value = quaternion[index]);
+    }
+    toolOffsetDisplayedMode = targetMode;
+    updateToolOffsetMode();
+  } catch (error) {
+    showFeedback(`Rotation could not be converted: ${error.message}`, true);
+    toolOffsetElements.mode.value = toolOffsetDisplayedMode;
+    updateToolOffsetMode();
+  }
+}
+function renderToolOffset(config) {
+  const platformOffsets = config.fixed_tool_offsets_by_platform || {};
+  const offset = platformOffsets[config.platform] || config.fixed_tool_offset || defaultFixedToolOffset;
+  let quaternion;
+  try { quaternion = normalizeQuaternion((offset.quaternion_xyzw || defaultFixedToolOffset.quaternion_xyzw).map(Number)); }
+  catch (_) { quaternion = defaultFixedToolOffset.quaternion_xyzw; }
+  toolOffsetElements.xyz.forEach((input, index) => input.value = Number(offset.xyz?.[index] ?? defaultFixedToolOffset.xyz[index]));
+  const mode = config.fixed_tool_offset_input_mode === 'rpy' ? 'rpy' : 'quaternion';
+  const rotation = mode === 'rpy' ? [...quaternionToRpyDegrees(quaternion), quaternion[3]] : quaternion;
+  toolOffsetElements.rotation.forEach((input, index) => input.value = rotation[index]);
+  toolOffsetElements.mode.value = mode;
+  toolOffsetDisplayedMode = mode;
+  updateToolOffsetMode();
+}
 
 function setField(field, value) { if (field.type === 'checkbox') field.checked = Boolean(value); else field.value = value ?? defaults[field.dataset.setting] ?? ''; }
 function logLevel(item) {
@@ -105,6 +191,7 @@ function render(state) {
   const config = state.config || {};
   const active = document.activeElement;
   fields.forEach(field => { if (active !== field) setField(field, config[field.dataset.setting]); });
+  if (!toolOffsetFocused()) renderToolOffset(config);
   if (active !== document.querySelector('#advanced-json')) document.querySelector('#advanced-json').value = JSON.stringify(config, null, 2);
   const labels = {path:'Pfad', robot_pose:'Roboterpose', arm_pose:'Deposition pose', jparse_ready:'J-PARSE', controller_ready:'Controller'};
   document.querySelector('#status').innerHTML = Object.entries(labels).map(([key, label]) => `<span class="${state.status[key] ? 'ok' : 'wait'}">${label}: ${state.status[key] ? 'bereit' : 'wartet'}</span>`).join('');
@@ -152,6 +239,25 @@ document.querySelector('#save-advanced').addEventListener('click', async () => {
     const values = JSON.parse(document.querySelector('#advanced-json').value);
     await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values})}).then(jsonResponse); await refresh();
   } catch (error) { button.textContent = `Ungültiges JSON: ${error.message}`; }
+});
+toolOffsetElements.mode.addEventListener('change', convertToolOffsetMode);
+document.querySelector('#save-tool-offset').addEventListener('click', async () => {
+  try {
+    const xyz = toolOffsetElements.xyz.map(input => Number(input.value));
+    const quaternion = toolOffsetElements.mode.value === 'rpy'
+      ? rpyDegreesToQuaternion(toolOffsetElements.rotation.slice(0, 3).map(input => Number(input.value)))
+      : normalizeQuaternion(toolOffsetElements.rotation.map(input => Number(input.value)));
+    if (![...xyz, ...quaternion].every(Number.isFinite)) throw new Error('All transform values must be numbers');
+    const config = latestState?.config || {};
+    const platformOffsets = {...(config.fixed_tool_offsets_by_platform || {})};
+    platformOffsets[config.platform || 'robotnik'] = {xyz, quaternion_xyzw: quaternion};
+    await fetch('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({values: {
+      fixed_tool_offsets_by_platform: platformOffsets,
+      fixed_tool_offset_input_mode: toolOffsetElements.mode.value,
+    }})}).then(jsonResponse);
+    showFeedback('Flange-to-nozzle transform saved; restart arm controllers and follower to apply.');
+    await refresh();
+  } catch (error) { showFeedback(`Tool transform could not be saved: ${error.message}`, true); }
 });
 [consoleElements.source, ...consoleElements.levels, consoleElements.search, consoleElements.autoScroll].forEach(element => element.addEventListener(element === consoleElements.search ? 'input' : 'change', () => { saveConsolePreferences(); if (latestState) renderConsole(latestState.logs || []); }));
 consoleElements.clear.addEventListener('click', () => { clearedAfter = Date.now(); if (latestState) renderConsole(latestState.logs || []); });

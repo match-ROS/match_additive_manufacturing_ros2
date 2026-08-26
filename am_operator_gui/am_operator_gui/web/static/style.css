@@ -20,6 +20,7 @@ main { max-width: 1600px; margin: auto; padding: 1rem; display: grid; grid-templ
 .fields label:has(input[type=checkbox]) { display: flex; align-items: center; gap: .55rem; padding-top: 1.55rem; font-weight: 500; }
 .fields input:not([type=checkbox]), .fields select { width: 100%; }
 input, select, button, textarea { padding: .48rem .55rem; border: 1px solid #b8c7cf; border-radius: 5px; background: #fff; font: inherit; }
+input:disabled, select:disabled, textarea:disabled { cursor: not-allowed; opacity: .6; }
 input:focus, select:focus, textarea:focus { outline: 2px solid #4297bd; outline-offset: 1px; }
 button { border-color: #bdced6; color: #18323f; background: #e3edf2; cursor: pointer; font-weight: 600; transition: background-color .15s, border-color .15s, opacity .15s; }
 button:hover { filter: brightness(.96); } button:active { transform: translateY(1px); } button:disabled { cursor: wait; opacity: .8; }

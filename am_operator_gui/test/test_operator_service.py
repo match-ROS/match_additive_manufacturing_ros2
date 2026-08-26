@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from am_operator_gui.operator_service import OperatorService
 
@@ -225,3 +226,66 @@ def test_following_resumes_from_live_path_index_after_stop(tmp_path: Path) -> No
     service.action('start_following')
 
     assert ('path_index', 37) in service.ros_bridge.calls
+
+
+def test_web_simulation_window_setting_is_forwarded_for_robotnik_and_bunker(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+
+    service.update_config({'platform': 'robotnik', 'simulation_gui': True})
+    assert 'gui:=true' in service.command_for('simulation')
+
+    service.update_config({'platform': 'bunker', 'simulation_gui': True})
+    assert 'headless:=false' in service.command_for('simulation')
+
+    service.update_config({'simulation_gui': False})
+    assert 'headless:=true' in service.command_for('simulation')
+
+
+def test_web_tool_offset_is_platform_scoped_and_used_for_arm_launch(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.update_config({
+        'platform': 'robotnik',
+        'fixed_tool_offset': {
+            'xyz': [-0.25, 0.0, 0.015],
+            'quaternion_xyzw': [0.0, -0.7071067812, 0.0, 0.7071067812],
+        },
+        'fixed_tool_offsets_by_platform': {
+            'robotnik': {
+                'xyz': [0.1, 0.2, 0.3],
+                'quaternion_xyzw': [0.0, 0.0, 0.0, 1.0],
+            },
+            'bunker': {
+                'xyz': [0.4, 0.5, 0.6],
+                'quaternion_xyzw': [0.0, 1.0, 0.0, 0.0],
+            },
+        },
+        'fixed_tool_offset_input_mode': 'rpy',
+    })
+
+    robotnik_command = service.command_for('arm_follower')
+    assert 'fixed_tool_offset_xyz:=[0.100000, 0.200000, 0.300000]' in robotnik_command
+    assert 'fixed_tool_offset_quaternion_xyzw:=[0.000000, 0.000000, 0.000000, 1.000000]' in robotnik_command
+    assert service.snapshot()['config']['fixed_tool_offset_input_mode'] == 'rpy'
+
+    service.update_config({'platform': 'bunker'})
+    bunker_command = service.command_for('arm_follower')
+    assert 'fixed_tool_offset_xyz:=[0.400000, 0.500000, 0.600000]' in bunker_command
+
+
+def test_capture_tool_offset_updates_the_selected_platform_offset(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.update_config({'platform': 'bunker'})
+    bridge = FakeRosBridge()
+    bridge.lookup_tool_offset = lambda *_args: SimpleNamespace(
+        transform=SimpleNamespace(
+            translation=SimpleNamespace(x=0.01, y=-0.02, z=0.03),
+            rotation=SimpleNamespace(x=0.0, y=0.0, z=0.0, w=1.0),
+        )
+    )
+    service.ros_bridge = bridge
+
+    service.action('capture_tool_offset')
+
+    offset = service.snapshot()['config']['fixed_tool_offsets_by_platform']['bunker']
+    assert offset == {'xyz': [0.01, -0.02, 0.03], 'quaternion_xyzw': [0.0, 0.0, 0.0, 1.0]}
+    assert 'fixed_tool_offset_xyz:=[0.010000, -0.020000, 0.030000]' in service.command_for('arm_follower')

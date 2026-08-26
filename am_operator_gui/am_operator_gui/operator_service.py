@@ -181,7 +181,8 @@ class OperatorService:
                    'use_vicon_tcp_base_pose_fallback', 'default_velocity',
                    'default_velocity_enabled', 'spray_distance_mm', 'path_transform',
                    'path_transforms_by_directory', 'platform_control_settings', 'pid_gains',
-                   'base_smoothing', 'fixed_tool_offset', 'path_index', 'original_arm_index',
+                   'base_smoothing', 'fixed_tool_offset', 'fixed_tool_offsets_by_platform',
+                   'fixed_tool_offset_input_mode', 'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
                    'direction_mode', 'accuracy_phase'}
         self.config.update({key: value for key, value in values.items() if key in allowed})
@@ -223,6 +224,7 @@ class OperatorService:
             'default_velocity_enabled': False,
             'default_velocity': 0.1,
             'spray_distance_mm': 100.0,
+            'simulation_gui': False,
         }
         for key, value in defaults.items():
             config.setdefault(key, value)
@@ -236,6 +238,7 @@ class OperatorService:
         config.setdefault('accuracy_phase', 'baseline')
         config.setdefault('velocity_override', 100)
         config.setdefault('nozzle_offset_mm', 0)
+        config.setdefault('fixed_tool_offset_input_mode', 'quaternion')
         return {'config': config, 'status': self._status, 'processes': processes,
                 'actions': self._action_states(),
                 'logs': list(self.logs), 'ros_error': self.ros_error,
@@ -321,6 +324,10 @@ class OperatorService:
     def _profile(self) -> dict[str, Any]:
         return PROFILES.get(str(self._setting('platform', 'robotnik')).lower(), PROFILES['robotnik'])
 
+    def _platform_key(self) -> str:
+        """Return the canonical key for platform-scoped operator settings."""
+        return str(self._setting('platform', 'robotnik')).strip().lower() or 'robotnik'
+
     def _control_setting(self, name: str, default: Any) -> Any:
         # The web form stores an explicit current value; the older Qt GUI stores
         # values per platform. Honour both representations during migration.
@@ -352,7 +359,14 @@ class OperatorService:
             return 0.1
 
     def _fixed_tool_arguments(self) -> list[str]:
-        offset = self._setting('fixed_tool_offset', {})
+        platform_offsets = self._setting('fixed_tool_offsets_by_platform', {})
+        offset = {}
+        if isinstance(platform_offsets, dict):
+            candidate = platform_offsets.get(self._platform_key(), {})
+            if isinstance(candidate, dict):
+                offset = candidate
+        if not offset:
+            offset = self._setting('fixed_tool_offset', {})
         offset = offset if isinstance(offset, dict) else {}
         try:
             xyz = ', '.join(f'{float(value):.6f}' for value in offset.get('xyz', [-0.25, 0.0, 0.015]))
@@ -445,12 +459,17 @@ class OperatorService:
                 return
             translation = transform.transform.translation
             rotation = transform.transform.rotation
-            self.config['fixed_tool_offset'] = {
+            offset = {
                 'xyz': [translation.x, translation.y, translation.z],
                 'quaternion_xyzw': [rotation.x, rotation.y, rotation.z, rotation.w],
             }
+            platform_offsets = self.config.setdefault('fixed_tool_offsets_by_platform', {})
+            if not isinstance(platform_offsets, dict):
+                platform_offsets = {}
+                self.config['fixed_tool_offsets_by_platform'] = platform_offsets
+            platform_offsets[self._platform_key()] = offset
             self.store.save(self.config)
-            self.log('calibration', 'captured UR TCP offset')
+            self.log('calibration', f'captured UR TCP offset for {self._platform_key()}')
             self._last_action_messages['capture_tool_offset'] = 'UR TCP offset captured'
             return
         if name == 'calculate_path_transform':
@@ -541,9 +560,13 @@ class OperatorService:
         trajectory = str(self._setting('trajectory_directory', REPO_ROOT / 'components' / 'robotnik_paired_demo'))
         index = int(self._setting('path_index', 0))
         if name == 'simulation':
-            if str(self._setting('platform', 'robotnik')) == 'bunker':
-                return ['ros2', 'launch', 'bunker_description', 'spawn_with_controllers.launch.py', 'headless:=true', 'launch_rviz:=false']
-            return ['ros2', 'launch', 'robotnik_rbvogui_tum', 'rbvogui_ur_standard_control.launch.py', 'gui:=false', 'robot_id:=robot', 'arm_type:=ur20']
+            show_window = str(bool(self._setting('simulation_gui', False))).lower()
+            if self._platform_key() == 'bunker':
+                return ['ros2', 'launch', 'bunker_description', 'spawn_with_controllers.launch.py',
+                        f'headless:={str(not bool(self._setting("simulation_gui", False))).lower()}',
+                        'launch_rviz:=false']
+            return ['ros2', 'launch', 'robotnik_rbvogui_tum', 'rbvogui_ur_standard_control.launch.py',
+                    f'gui:={show_window}', 'robot_id:=robot', 'arm_type:=ur20']
         if name == 'publish_path':
             return ['ros2', 'launch', 'parse_paths', 'robotnik_base_arm_paths.launch.py',
                     f'use_sim_time:={self._use_sim_time()}', f'frame_id:={frame}',
