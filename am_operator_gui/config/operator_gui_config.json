@@ -11,9 +11,11 @@
     "moving_average_window_size": 5
   },
   "control_frame": "map",
-  "default_velocity": 0.05,
+  "default_velocity": 0.15,
   "default_velocity_enabled": true,
   "external_map_frame": "map",
+  "original_arm_index": 100,
+  "path_index": 100,
   "path_transforms_by_directory": {
     "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/bunker_paired_demo": {
       "x": 1.0,
@@ -28,7 +30,14 @@
       "z": 0.0
     }
   },
-  "platform": "robotnik",
+  "pid_gains": {
+    "base_follower.base_progress_xy_tolerance": 0.05,
+    "base_follower.base_progress_yaw_tolerance": 0.08,
+    "base_follower.max_progress_speed_correction": 0.5,
+    "base_follower.max_vx": 1.0,
+    "base_follower.pure_pursuit_k_progress": 1.0
+  },
+  "platform": "mur620_sim",
   "platform_control_settings": {
     "bunker": {
       "diff_drive_mode": true,
@@ -46,7 +55,8 @@
   "simulation": true,
   "simulation_gui": false,
   "spray_distance_mm": 100.0,
-  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path",
+  "trajectory_directory": "/home/rosmatch/workspaces/print2_ws/src/match_additive_manufacturing_ros2/components/doubleCurvedTElement",
   "use_odometry_robot_pose": false,
-  "use_vicon_tcp_base_pose_fallback": false
+  "use_vicon_tcp_base_pose_fallback": false,
+  "velocity_override": 100.0
 }
