@@ -85,6 +85,14 @@ def test_direction_controller_combines_feedforward_and_holds_reference_on_pause(
         assert 0.1 < running.linear.x <= 0.12
 
         commands.clear()
+        override_pub.publish(Float32(data=0.5))
+        current_pub.publish(_pose(0.0))
+        assert _spin_until(
+            executor,
+            lambda: any(command.linear.x == pytest.approx(0.08, abs=1e-3) for command in commands),
+        )
+
+        commands.clear()
         override_pub.publish(Float32(data=0.0))
         current_pub.publish(_pose(0.0))
         assert _spin_until(

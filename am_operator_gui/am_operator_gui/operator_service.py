@@ -828,6 +828,14 @@ class OperatorService:
                 # operator paused following in between.
                 index = self._live_path_index if self._live_path_index is not None else int(self._setting('path_index', 0))
                 self.ros_bridge.publish_path_index(index)
+                # ``/velocity_override`` is deliberately non-latched.  The
+                # follower processes can therefore start after the GUI has
+                # last published it and would otherwise retain their 1.0
+                # default.  Publish the persisted value after all components
+                # are up and immediately before opening the start gate.
+                self.ros_bridge.publish_velocity_override(
+                    float(self._setting('velocity_override', 100.0)) / 100.0
+                )
                 self._publish_start_condition_repeatedly(True)
                 self._following_active = True
             return

@@ -162,8 +162,12 @@ class DirectionController(Node):
         reference, measured = self._position(self.reference_pose), self._position(self.current_pose)
         error = reference - measured
         spray_axis = self._spray_axis(self.reference_pose)
-        paused = self.velocity_override <= 0.0
-        correction_scale = 1.0 if paused and self._as_bool(self.get_parameter('hold_reference_on_pause').value) else self.velocity_override
+        # The override controls path progress and path-derivative feedforward.
+        # Keep the bounded pose feedback at its configured gain: otherwise a
+        # slower print would also be less able to reject a disturbance.  At
+        # zero the reference is frozen while this feedback holds it; this is a
+        # trajectory pause, not an emergency stop.
+        correction_scale = 1.0
         tracking = cartesian_tracking_command(
             reference=reference,
             measured=measured,

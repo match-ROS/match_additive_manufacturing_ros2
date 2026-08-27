@@ -25,9 +25,10 @@ duration so base motion, orientation-only motion, and dwell segments remain
 valid. Coupled paths must have equal lengths and matching, strictly increasing
 timestamps.
 
-`/velocity_override` scales phase advancement. At zero it freezes the reference
-phase; by default the arm and base controllers continue bounded feedback to the
-frozen reference. This is a trajectory pause, not an emergency stop.
+`/velocity_override` scales phase advancement and arm feedforward. At zero it
+freezes the reference phase; by default the arm and base controllers continue
+bounded feedback to the frozen reference. This is a trajectory pause, not an
+emergency stop.
 
 ## Cartesian arm control
 

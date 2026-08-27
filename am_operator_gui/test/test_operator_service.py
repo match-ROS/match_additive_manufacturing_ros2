@@ -70,8 +70,8 @@ class FakeRosBridge:
     def tracking_arm_index_for_original_index(self, index):
         return index * 2
 
-    def publish_velocity_override(self, _value):
-        pass
+    def publish_velocity_override(self, value):
+        self.calls.append(('velocity_override', value))
 
     def publish_spray_distance(self, _value):
         pass
@@ -314,13 +314,15 @@ def test_console_log_records_include_ros_level_and_time(tmp_path: Path) -> None:
 def test_following_resumes_from_live_path_index_after_stop(tmp_path: Path) -> None:
     service = make_service(tmp_path)
     service.ros_bridge = FakeRosBridge()
-    service.update_config({'path_index': 0})
+    service.update_config({'path_index': 0, 'velocity_override': 50})
+    service.ros_bridge.calls.clear()
     service._on_path_index(37)
 
     service.action('stop_following')
     service.action('start_following')
 
     assert ('path_index', 37) in service.ros_bridge.calls
+    assert ('velocity_override', 0.5) in service.ros_bridge.calls
 
 
 def test_web_simulation_window_setting_is_forwarded_for_robotnik_and_bunker(tmp_path: Path) -> None:
