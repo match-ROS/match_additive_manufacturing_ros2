@@ -46,6 +46,23 @@ ros2 launch am_bringup rbvogui_paired_base_arm_demo.launch.py launch_sim:=true
 See [am_bringup/README.md](am_bringup/README.md) for topic checks, the start-pose
 handoff, and the current Robotnik UR velocity-controller caveat.
 
+### Coupled base-progress sweep
+
+The reproducible 18-case `doubleCurvedTElement` campaign is driven by
+`scripts/run_base_progress_sweep.py`. It starts a fresh simulator and separate
+base and TCP/deposition trajectory monitors for every desired-speed/override
+combination, publishes each override continuously, and writes per-case CSV/JSON
+plus `campaign_results.json` under `/tmp/base_progress_sweep`.
+
+```bash
+python3 scripts/run_base_progress_sweep.py
+```
+
+The script sources the Robotnik simulator underlay internally and puts this
+workspace's AM package prefixes first, preventing an older simulator overlay
+from masking the follower and monitoring changes. Use `--dry-run` to print a
+case's exact commands or `--speed 0.15 --override 2.5` for an isolated case.
+
 ## Reproducible Development Setup
 
 Use [dependencies/print_system.jazzy.repos](dependencies/print_system.jazzy.repos)

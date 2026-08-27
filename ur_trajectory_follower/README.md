@@ -44,6 +44,12 @@ components separately on `/ur_twist_world_feedforward` and
 The twist combiner subscribes to both topics. The legacy `/ur_twist_world`
 topic remains available as their combined value for monitoring.
 
+Each combiner input is fresh only for `input_timeout` seconds after local receipt
+(0.5 seconds by default). A missing or stale input contributes a zero twist;
+the combiner warns once for each input that becomes stale and warns again only
+after that input becomes fresh and later expires. `sideways_arm_control.launch.py` exposes this as
+`combined_twist_input_timeout`.
+
 The feedforward follows the active segment. Along-track, lateral, and spray-axis
 terms use measured deposition-pose error and are independently bounded before a
 global Cartesian velocity limit. The defaults are:

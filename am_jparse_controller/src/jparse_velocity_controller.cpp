@@ -173,6 +173,8 @@ public:
     rate_hz_ = std::max(1.0, declare_parameter<double>("rate_hz", 500.0));
     command_timeout_ = declare_parameter<double>("command_timeout", 0.12);
     joint_state_timeout_ = declare_parameter<double>("joint_state_timeout", 0.5);
+    readiness_heartbeat_period_ = std::max(
+      0.1, declare_parameter<double>("readiness_heartbeat_period", 1.0));
     gamma_ = std::clamp(declare_parameter<double>("gamma", 0.1), 1.0e-4, 0.999);
     singular_gain_position_ = declare_parameter<double>("singular_gain_position", 1.0);
     singular_gain_angular_ = declare_parameter<double>("singular_gain_angular", 1.0);
@@ -232,6 +234,7 @@ public:
     timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
       [this]() { update(); });
+    publishReadiness(false);
   }
 
 private:
@@ -341,9 +344,19 @@ private:
 
   void publishReadiness(const bool ready)
   {
+    const auto current_time = now();
+    if (
+      ready == ready_ && readiness_published_ &&
+      (current_time - last_readiness_publish_time_).seconds() < readiness_heartbeat_period_)
+    {
+      return;
+    }
     std_msgs::msg::Bool message;
     message.data = ready;
     readiness_pub_->publish(message);
+    ready_ = ready;
+    readiness_published_ = true;
+    last_readiness_publish_time_ = current_time;
   }
 
   void publishCommand(const std::vector<double> & velocities)
@@ -460,6 +473,7 @@ private:
   double rate_hz_;
   double command_timeout_;
   double joint_state_timeout_;
+  double readiness_heartbeat_period_;
   double gamma_;
   double singular_gain_position_;
   double singular_gain_angular_;
@@ -472,6 +486,8 @@ private:
   double spray_distance_{0.0};
   bool chain_ready_{false};
   bool have_twist_{false};
+  bool ready_{false};
+  bool readiness_published_{false};
   KDL::Chain chain_;
   std::vector<std::string> chain_joint_names_;
   std::vector<std::string> command_joint_names_;
@@ -481,6 +497,7 @@ private:
   std::map<std::string, rclcpp::Time> joint_state_times_;
   Eigen::Matrix<double, 6, 1> target_twist_{Eigen::Matrix<double, 6, 1>::Zero()};
   rclcpp::Time last_twist_time_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time last_readiness_publish_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr command_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr singular_values_pub_;
   rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr debug_twist_pub_;
@@ -492,6 +509,7 @@ private:
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
+#ifndef JPARSE_VELOCITY_CONTROLLER_NO_MAIN
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
@@ -499,3 +517,4 @@ int main(int argc, char ** argv)
   rclcpp::shutdown();
   return 0;
 }
+#endif
