@@ -68,6 +68,82 @@ ONE_SHOT_ACTIONS = {
     'check_hardware_topics': ('check_hardware_topics', 'Check Hardware Topics', 'Checking Hardware Topics'),
 }
 
+# These descriptions are returned with every action state and become the
+# browser button tooltips.  Keep them operational so hovering explains the
+# action in addition to reporting its current process state.
+ACTION_DESCRIPTIONS = {
+    'simulation': (
+        'Startet ausschließlich die Simulation des gewählten Bunker- oder '
+        'Robotnik-Profils; Show simulator window steuert das Gazebo-Fenster.'
+    ),
+    'publish_path': (
+        'Lädt die exportierten Arm-, Base- und Normalenpfade und publiziert sie nach '
+        'Anwendung der gespeicherten Translation und Gierrotation.'
+    ),
+    'path_index': (
+        'Resampelt den gekoppelten Arm-/Base-Pfad auf 5 mm und publiziert Trackingpfade, '
+        'Referenzposen und den gemeinsamen /path_index.'
+    ),
+    'base_follower': (
+        'Folgt /base_path_tracking mit /robot_pose und dem plattformspezifischen '
+        'cmd_vel-Topic; Bewegung beginnt erst mit /start_condition=true.'
+    ),
+    'arm_follower': (
+        'Regelt den Arm entlang von /ur_path_transformed mit Normalen, /path_index und '
+        'Arm-Referenzpose und sendet Welt-Twist-Kommandos.'
+    ),
+    'controllers': (
+        'Transformiert Arm-Welt-Twist in den Controller-Rahmen und schaltet vom '
+        'Trajectory- auf den passenden Velocity-Controller.'
+    ),
+    'base_accuracy': (
+        'Zeichnet die Abweichung von /robot_pose zu Base-Pfad und Base-Referenzpose '
+        'ab /start_pose_reached nach /tmp/am_trajectory_runs auf.'
+    ),
+    'tcp_accuracy': (
+        'Zeichnet die Abweichung von /current_deposition_pose zum Tracking-Armpfad '
+        'und zur Arm-Referenzpose ab /start_condition auf.'
+    ),
+    'sync_workspace': 'Synchronisiert den Quellbaum per rsync auf das konfigurierte Zielsystem.',
+    'move_base': (
+        'Fährt die Base einmalig zur Pose des interpolierten Indexes mit Plattformpfad, '
+        '/robot_pose und plattformspezifischem cmd_vel-Topic.'
+    ),
+    'move_arm': (
+        'Fährt den Arm einmalig zur Pose des nicht-resampelten Indexes in '
+        '/ur_path_transformed und sendet Welt-Twist an den Arm.'
+    ),
+    'switch_arm_velocity': (
+        'Deaktiviert per ros2 control den Joint-Trajectory-Controller und aktiviert '
+        'den passenden Velocity-Controller für Simulation oder Hardware.'
+    ),
+    'accuracy_report': (
+        'Erstellt aus den Läufen in /tmp/am_trajectory_runs einen Genauigkeitsbericht '
+        'für das ausgewählte Pfadverzeichnis.'
+    ),
+    'check_hardware_topics': (
+        'Prüft die ROS-Graph-Verträge der externen Hardware-Eingänge und Kommando-Endpunkte; '
+        'dies ist kein Frische-, Controllerzustands- oder Sicherheitstest.'
+    ),
+    'transformations': (
+        'Simulation: leitet TCP-/Nozzle-Pose aus Robot-TF, Werkzeugoffset und '
+        'Sprühabstand ab. Hardware: startet die Vicon-/Odometrie-Posekette.'
+    ),
+    'pose_adapters': (
+        'Erzeugt auf Hardware Base- und Nozzle-Pose aus Vicon, Odometry oder Tool-TF '
+        'und publiziert die standardisierten Pose-Topics.'
+    ),
+    'rviz': 'Öffnet RViz mit der zum Plattformprofil passenden Konfiguration.',
+    'capture_tool_offset': (
+        'Liest den TF robot_arm_tool0 → robot_arm_tool0_controller und speichert ihn '
+        'als Flansch-zu-Nozzle-Offset.'
+    ),
+    'calculate_path_transform': (
+        'Berechnet aus /robot_pose und /base_path am gewählten Index die starre '
+        'Pfadtranslation und Gierrotation.'
+    ),
+}
+
 
 class OperatorService:
     """Configuration, process lifecycle and ROS command construction.
@@ -244,28 +320,42 @@ class OperatorService:
                 'logs': list(self.logs), 'ros_error': self.ros_error,
                 'hardware_topic_results': self._hardware_topic_results}
 
-    def _process_state(self, names: tuple[str, ...], start_label: str, stop_label: str, one_shot: bool = False) -> dict[str, str]:
+    def _process_state(
+        self,
+        names: tuple[str, ...],
+        start_label: str,
+        stop_label: str,
+        description: str,
+        one_shot: bool = False,
+    ) -> dict[str, str]:
         managed = [self.processes.get(name) for name in names]
         present = [process for process in managed if process is not None]
         running = any(process.is_running() for process in present)
         if running:
-            return {'label': stop_label, 'state': 'progress' if one_shot else 'running', 'detail': 'Prozess läuft'}
+            return {'label': stop_label, 'state': 'progress' if one_shot else 'running',
+                    'detail': f'{description}\n\nStatus: aktiv.'}
         if not present:
-            return {'label': start_label, 'state': 'idle', 'detail': 'Noch nicht gestartet'}
+            return {'label': start_label, 'state': 'idle',
+                    'detail': f'{description}\n\nStatus: noch nicht gestartet.'}
         return_codes = [process.poll() for process in present]
         if any(code not in (None, 0) for code in return_codes):
-            return {'label': start_label, 'state': 'error', 'detail': 'Letzter Prozess endete mit Fehler'}
+            return {'label': start_label, 'state': 'error',
+                    'detail': f'{description}\n\nStatus: letzter Prozess endete mit Fehler; Details stehen in der Konsole.'}
         if one_shot:
-            return {'label': start_label, 'state': 'success', 'detail': 'Letzte Aktion erfolgreich beendet'}
-        return {'label': start_label, 'state': 'success', 'detail': 'Letzter Prozess erfolgreich beendet'}
+            return {'label': start_label, 'state': 'success',
+                    'detail': f'{description}\n\nStatus: letzte Ausführung erfolgreich beendet.'}
+        return {'label': start_label, 'state': 'success',
+                'detail': f'{description}\n\nStatus: Prozess wurde erfolgreich beendet.'}
 
     def _action_states(self) -> dict[str, dict[str, str]]:
         states = {
-            action: self._process_state((process,), start, stop)
+            action: self._process_state((process,), start, stop, ACTION_DESCRIPTIONS[action])
             for action, (process, start, stop) in TOGGLE_ACTIONS.items()
         }
         states.update({
-            action: self._process_state((process,), start, stop, one_shot=True)
+            action: self._process_state(
+                (process,), start, stop, ACTION_DESCRIPTIONS[action], one_shot=True
+            )
             for action, (process, start, stop) in ONE_SHOT_ACTIONS.items()
         })
         launch_processes = tuple(self.processes.get(name) for name in self._launch_all_process_names())
@@ -273,33 +363,74 @@ class OperatorService:
         states['launch_all'] = {
             'label': 'Stop All' if launch_running else 'Launch All',
             'state': 'running' if launch_running else 'idle',
-            'detail': 'Verwalteter Komponentensatz aktiv' if launch_running else 'Komponentensatz nicht gestartet',
+            'detail': (
+                'Simulation: startet Simulator, Transformation, Pfad-Publisher, Index, '
+                'Follower und Velocity-Stack. Hardware: startet die externe Posekette statt '
+                'des Simulators.\n\nStatus: aktiv.'
+                if launch_running else
+                'Simulation: startet Simulator, Transformation, Pfad-Publisher, Index, '
+                'Follower und Velocity-Stack. Hardware: startet die externe Posekette statt '
+                'des Simulators.\n\nStatus: noch nicht gestartet.'
+            ),
         }
-        states['stop_all'] = {'label': 'Stop All', 'state': 'danger', 'detail': 'Alle verwalteten Prozesse stoppen'}
+        states['stop_all'] = {
+            'label': 'Stop All', 'state': 'danger',
+            'detail': 'Stoppt alle von der GUI verwalteten Prozesse und publiziert Stop-Kommandos an Base und Arm.',
+        }
         transformations = self._process_state(
             POSE_ADAPTER_PROCESSES if not bool(self._setting('simulation', False)) else ('transformations',),
             'Launch Transformations',
             'Stop Transformations',
+            ACTION_DESCRIPTIONS['transformations'],
         )
         if bool(self._setting('simulation', False)) and self._is_running('simulation'):
-            transformations = {'label': 'TCP Pose from Sim', 'state': 'running', 'detail': 'Simulation publiziert die TCP-Pose'}
+            transformations = {
+                'label': 'TCP Pose from Sim', 'state': 'running',
+                'detail': f"{ACTION_DESCRIPTIONS['transformations']}\n\nStatus: Die Simulation publiziert die TCP-Pose.",
+            }
         states['transformations'] = transformations
-        states['pose_adapters'] = self._process_state(POSE_ADAPTER_PROCESSES, 'Pose Adapters', 'Stop Pose Adapters')
-        states['rviz'] = self._process_state(('rviz',), 'Open RViz', 'Open RViz')
-        states['capture_tool_offset'] = self._message_state('capture_tool_offset', 'Capture UR TCP Offset')
-        states['calculate_path_transform'] = self._message_state('calculate_path_transform', 'Calculate Path Transform')
-        states['check_hardware_topics'] = self._message_state('check_hardware_topics', 'Check Hardware Topics')
+        states['pose_adapters'] = self._process_state(
+            POSE_ADAPTER_PROCESSES, 'Pose Adapters', 'Stop Pose Adapters', ACTION_DESCRIPTIONS['pose_adapters']
+        )
+        states['rviz'] = self._process_state(
+            ('rviz',), 'Open RViz', 'Open RViz', ACTION_DESCRIPTIONS['rviz']
+        )
+        states['capture_tool_offset'] = self._message_state(
+            'capture_tool_offset', 'Capture UR TCP Offset', ACTION_DESCRIPTIONS['capture_tool_offset']
+        )
+        states['calculate_path_transform'] = self._message_state(
+            'calculate_path_transform', 'Calculate Path Transform', ACTION_DESCRIPTIONS['calculate_path_transform']
+        )
+        states['check_hardware_topics'] = self._message_state(
+            'check_hardware_topics', 'Check Hardware Topics', ACTION_DESCRIPTIONS['check_hardware_topics']
+        )
         ready = all(self._status.values())
         controls = all(self._is_running(name) for name in ('path_index', 'base_follower', 'arm_follower'))
         states['start_following'] = {
             'label': 'Following active' if self._following_active else 'Start Following',
             'state': 'running' if self._following_active else ('ready' if ready and controls else 'warning'),
-            'detail': 'Following aktiv' if self._following_active else ('Bereit für Following' if ready and controls else 'Wartet auf ROS-Status oder Steuerprozesse'),
+            'detail': (
+                'Publiziert /path_index_command und mehrfach /start_condition=true; dadurch '
+                'starten Fortschritt sowie Base- und Armfolger.\n\nStatus: Following aktiv.'
+                if self._following_active else (
+                    'Publiziert /path_index_command und mehrfach /start_condition=true; dadurch '
+                    'starten Fortschritt sowie Base- und Armfolger.\n\nStatus: bereit.'
+                    if ready and controls else
+                    'Publiziert /path_index_command und mehrfach /start_condition=true; dadurch '
+                    'starten Fortschritt sowie Base- und Armfolger.\n\nStatus: wartet auf ROS-Status oder Steuerprozesse.'
+                )
+            ),
         }
         states['stop_following'] = {
             'label': 'Stop Following',
             'state': 'danger' if self._following_active else 'idle',
-            'detail': 'Following stoppen' if self._following_active else 'Following ist nicht aktiv',
+            'detail': (
+                'Publiziert mehrfach /start_condition=false und wiederholt Null-Kommandos an '
+                'Base und Arm.\n\nStatus: Following wird gestoppt.'
+                if self._following_active else
+                'Publiziert mehrfach /start_condition=false und wiederholt Null-Kommandos an '
+                'Base und Arm.\n\nStatus: Following ist nicht aktiv.'
+            ),
         }
         return states
 
@@ -307,12 +438,12 @@ class OperatorService:
         process = self.processes.get(name)
         return process is not None and process.is_running()
 
-    def _message_state(self, action: str, label: str) -> dict[str, str]:
+    def _message_state(self, action: str, label: str, description: str) -> dict[str, str]:
         message = self._last_action_messages.get(action)
         return {
             'label': label,
             'state': ('success' if self._last_action_success.get(action, True) else 'error') if message else 'idle',
-            'detail': message or 'Noch nicht ausgeführt',
+            'detail': f'{description}\n\nStatus: {message}' if message else f'{description}\n\nStatus: noch nicht ausgeführt.',
         }
 
     def _setting(self, name: str, default: Any) -> Any:
