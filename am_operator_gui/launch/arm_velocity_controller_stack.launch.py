@@ -30,6 +30,9 @@ def generate_launch_description() -> LaunchDescription:
         DeclareLaunchArgument('activate_controller', default_value='forward_velocity_controller'),
         DeclareLaunchArgument('jparse_readiness_topic', default_value='/am/jparse_ready'),
         DeclareLaunchArgument('controller_readiness_topic', default_value='/am/arm_controller_ready'),
+        DeclareLaunchArgument('jparse_max_joint_velocity', default_value='1.5'),
+        DeclareLaunchArgument('jparse_max_cartesian_linear_velocity', default_value='0.25'),
+        DeclareLaunchArgument('jparse_max_cartesian_angular_velocity', default_value='0.8'),
         DeclareLaunchArgument(
             'command_joint_names_csv',
             default_value='robot_arm_shoulder_pan_joint,robot_arm_shoulder_lift_joint,'
@@ -72,6 +75,11 @@ def generate_launch_description() -> LaunchDescription:
                 'joint_states_topic': LaunchConfiguration('joint_states_topic'),
                 'readiness_topic': LaunchConfiguration('jparse_readiness_topic'),
                 'command_joint_names_csv': LaunchConfiguration('command_joint_names_csv'),
+                'max_joint_velocity': LaunchConfiguration('jparse_max_joint_velocity'),
+                'max_cartesian_linear_velocity': LaunchConfiguration(
+                    'jparse_max_cartesian_linear_velocity'),
+                'max_cartesian_angular_velocity': LaunchConfiguration(
+                    'jparse_max_cartesian_angular_velocity'),
             }.items(),
         ),
         Node(

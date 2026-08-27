@@ -114,6 +114,15 @@ def test_start_script_renders_and_saves_settings(tmp_path: Path) -> None:
             page.reload(wait_until='networkidle')
             expect(page.locator('[data-setting="path_index"]')).to_have_value('12')
             assert json.loads(config_path.read_text(encoding='utf-8')) == {'path_index': 12}
+            page.locator('.advanced-card > details > summary').click()
+            expect(page.get_by_role('button', name='Plattform-Tuning speichern')).to_be_visible()
+            base_vx = page.locator('[data-platform-section="pid_gains"][data-platform-key="base_follower.max_vx"]')
+            expect(base_vx).to_have_count(1)
+            base_vx.fill('0.42')
+            page.get_by_role('button', name='Plattform-Tuning speichern').click()
+            expect(page.locator('#action-feedback')).to_contain_text('Plattform-Tuning für robotnik gespeichert')
+            saved_config = json.loads(config_path.read_text(encoding='utf-8'))
+            assert saved_config['platform_control_settings']['robotnik']['pid_gains']['base_follower.max_vx'] == 0.42
             page.set_viewport_size({'width': 1024, 'height': 768})
             expect(page.get_by_alt_text('MATCH')).to_be_visible()
             assert 32 <= page.get_by_alt_text('MATCH').bounding_box()['width'] <= 48

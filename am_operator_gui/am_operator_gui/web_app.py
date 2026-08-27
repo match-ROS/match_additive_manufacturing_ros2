@@ -36,6 +36,11 @@ class SettingsPayload(BaseModel):
     values: dict[str, Any]
 
 
+class PlatformSettingsPayload(BaseModel):
+    platform: str
+    values: dict[str, Any]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.operator = OperatorService()
@@ -68,7 +73,19 @@ async def state(request: Request):
 
 @app.put('/api/settings')
 async def settings(payload: SettingsPayload, request: Request):
-    return {'config': operator(request).update_config(payload.values)}
+    try:
+        return {'config': operator(request).update_config(payload.values)}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.put('/api/platform-settings')
+async def platform_settings(payload: PlatformSettingsPayload, request: Request):
+    try:
+        settings = operator(request).update_platform_settings(payload.platform, payload.values)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {'platform': payload.platform, 'settings': settings}
 
 
 async def _run_action(request: Request, action: str):

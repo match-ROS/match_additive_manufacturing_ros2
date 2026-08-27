@@ -1,6 +1,8 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from am_operator_gui.operator_service import OperatorService
 
 
@@ -135,6 +137,71 @@ def test_arm_and_index_commands_include_selected_speed_mode(tmp_path: Path) -> N
     assert 'progress_mode:=desired_speed' in arm_command
     assert 'default_velocity:=0.050000' in arm_command
     assert 'desired_arm_speed:=0.050000' in index_command
+
+
+def test_platform_tuning_overrides_global_values_and_reaches_each_controller(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.update_config({
+        'platform': 'robotnik',
+        'trajectory_directory': str(tmp_path / 'trajectory'),
+        'pid_gains': {'base_follower.max_vx': 0.1},
+    })
+    settings = service.update_platform_settings('robotnik', {
+        'pid_gains': {
+            'base_follower.max_vx': 0.42,
+            'base_follower.max_vy': 0.31,
+            'base_follower.max_wz': 0.73,
+            'arm_direction.max_tracking_linear_velocity': 0.18,
+            'arm_move.max_linear_velocity': 0.16,
+        },
+        'base_smoothing': {
+            'enabled': True, 'method': 'accel_limit', 'max_accel_x': 0.7,
+            'max_accel_y': 0.6, 'max_accel_wz': 1.1,
+            'moving_average_window_size': 7, 'external_path_index_stride': 3,
+        },
+        'jparse_limits': {
+            'max_joint_velocity': 1.2,
+            'max_cartesian_linear_velocity': 0.33,
+            'max_cartesian_angular_velocity': 0.66,
+        },
+        'path_transform': {'x': 1.0, 'y': -2.0, 'z': 0.3, 'yaw_deg': 45.0},
+    })
+
+    assert settings['pid_gains']['base_follower.max_vx'] == 0.42
+    assert settings['path_transform']['yaw_deg'] == 45.0
+    assert 'max_vx:=0.420000' in service.command_for('base_follower')
+    assert 'max_vy:=0.310000' in service.command_for('base_follower')
+    assert 'max_wz:=0.730000' in service.command_for('base_follower')
+    assert 'velocity_smoothing_method:=accel_limit' in service.command_for('base_follower')
+    assert 'max_tracking_linear_velocity:=0.180000' in service.command_for('arm_follower')
+    assert 'max_linear_velocity:=0.160000' in service.command_for('move_arm')
+    assert 'jparse_max_joint_velocity:=1.200000' in service.command_for('controllers')
+    assert 'jparse_max_cartesian_linear_velocity:=0.330000' in service.command_for('controllers')
+    assert 'jparse_max_cartesian_angular_velocity:=0.660000' in service.command_for('controllers')
+    assert 'path_transform_xyz:=[1.000000, -2.000000, 0.300000]' in service.command_for('publish_path')
+
+
+def test_platform_tuning_keeps_path_transforms_separate_per_platform(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.update_config({'platform': 'robotnik', 'trajectory_directory': str(tmp_path / 'trajectory')})
+    service.update_platform_settings('robotnik', {'path_transform': {'x': 1, 'y': 0, 'z': 0, 'yaw_deg': 0}})
+    service.update_platform_settings('bunker', {'path_transform': {'x': 2, 'y': 0, 'z': 0, 'yaw_deg': 0}})
+
+    assert 'path_transform_xyz:=[1.000000, 0.000000, 0.000000]' in service.command_for('publish_path')
+    service.update_config({'platform': 'bunker'})
+    assert 'path_transform_xyz:=[2.000000, 0.000000, 0.000000]' in service.command_for('publish_path')
+
+
+def test_platform_tuning_rejects_invalid_values_without_persisting(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+
+    with pytest.raises(ValueError, match='max_vx'):
+        service.update_platform_settings('robotnik', {'pid_gains': {'base_follower.max_vx': -0.1}})
+    with pytest.raises(ValueError, match='method'):
+        service.update_platform_settings('robotnik', {'base_smoothing': {'method': 'invalid'}})
+    with pytest.raises(ValueError, match='Unknown platform'):
+        service.update_platform_settings('mur620_sim', {})
+    assert 'platform_control_settings' not in service.config
 
 
 def test_every_web_action_has_a_dry_run_service_path(tmp_path: Path) -> None:

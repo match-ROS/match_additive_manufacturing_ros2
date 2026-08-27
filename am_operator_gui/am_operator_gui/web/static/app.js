@@ -17,6 +17,61 @@ const toolOffsetElements = {
 };
 const defaultFixedToolOffset = {xyz: [-0.25, 0, 0.015], quaternion_xyzw: [0, -0.7071067812, 0, 0.7071067812]};
 let toolOffsetDisplayedMode = 'quaternion';
+const platformSettingsElement = document.querySelector('#platform-settings');
+let renderedPlatformSettingsSignature = null;
+const platformTuningGroups = [
+  {title: 'Maximale Base-Geschwindigkeiten', fields: [
+    ['pid_gains', 'base_follower.max_vx', 'Follower X (m/s)', 'number', 0, 0.001],
+    ['pid_gains', 'base_follower.max_vy', 'Follower Y (m/s)', 'number', 0, 0.001],
+    ['pid_gains', 'base_follower.max_wz', 'Follower Yaw (rad/s)', 'number', 0, 0.001],
+    ['pid_gains', 'base_move.max_linear_velocity', 'Move-to-start linear (m/s)', 'number', 0, 0.001],
+    ['pid_gains', 'base_move.max_lateral_velocity', 'Move-to-start lateral (m/s)', 'number', 0, 0.001],
+    ['pid_gains', 'base_move.max_angular_velocity', 'Move-to-start angular (rad/s)', 'number', 0, 0.001],
+  ]},
+  {title: 'Base smoothing', fields: [
+    ['base_smoothing', 'enabled', 'Geschwindigkeitsglättung aktiv', 'checkbox'],
+    ['base_smoothing', 'method', 'Methode', 'select', ['moving_average', 'accel_limit']],
+    ['base_smoothing', 'max_accel_x', 'Max. Beschleunigung X (m/s²)', 'number', 0, 0.001],
+    ['base_smoothing', 'max_accel_y', 'Max. Beschleunigung Y (m/s²)', 'number', 0, 0.001],
+    ['base_smoothing', 'max_accel_wz', 'Max. Winkelbeschleunigung (rad/s²)', 'number', 0, 0.001],
+    ['base_smoothing', 'moving_average_window_size', 'Moving-average Fenster', 'number', 1, 1],
+    ['base_smoothing', 'external_path_index_stride', 'External path-index stride', 'number', 1, 1],
+  ]},
+  {title: 'Maximale Arm-Geschwindigkeiten', fields: [
+    ['pid_gains', 'arm_direction.max_tracking_linear_velocity', 'Tracking linear (m/s)', 'number', 0, 0.001],
+    ['pid_gains', 'arm_direction.max_along_track_correction', 'Along-track Korrektur (m/s)', 'number', 0, 0.001],
+    ['pid_gains', 'arm_direction.max_spray_axis_correction', 'Spray-axis Korrektur (m/s)', 'number', 0, 0.001],
+    ['pid_gains', 'arm_move.max_linear_velocity', 'Move-to-start linear (m/s)', 'number', 0, 0.001],
+    ['pid_gains', 'arm_move.max_angular_velocity', 'Move-to-start angular (rad/s)', 'number', 0, 0.001],
+    ['jparse_limits', 'max_joint_velocity', 'J-PARSE Gelenk (rad/s)', 'number', 0.000001, 0.001],
+    ['jparse_limits', 'max_cartesian_linear_velocity', 'J-PARSE kartesisch linear (m/s)', 'number', 0.000001, 0.001],
+    ['jparse_limits', 'max_cartesian_angular_velocity', 'J-PARSE kartesisch angular (rad/s)', 'number', 0.000001, 0.001],
+  ]},
+  {title: 'PID gains', fields: [
+    ['pid_gains', 'base_follower.kp_x', 'Base follower Kp X', 'number', 0, 0.001],
+    ['pid_gains', 'base_follower.kp_y', 'Base follower Kp Y', 'number', 0, 0.001],
+    ['pid_gains', 'base_follower.kp_yaw', 'Base follower Kp Yaw', 'number', 0, 0.001],
+    ['pid_gains', 'base_move.kp_linear', 'Base move Kp linear', 'number', 0, 0.001],
+    ['pid_gains', 'base_move.kp_lateral', 'Base move Kp lateral', 'number', 0, 0.001],
+    ['pid_gains', 'base_move.kp_angular_to_point', 'Base move Kp angular-to-point', 'number', 0, 0.001],
+    ['pid_gains', 'base_move.kp_angular_reorient', 'Base move Kp angular-reorient', 'number', 0, 0.001],
+    ['pid_gains', 'arm_direction.kp_z', 'Arm direction Kp Z', 'number', 0, 0.001],
+    ['pid_gains', 'arm_direction.along_track_kp', 'Arm direction along-track Kp', 'number', 0, 0.001],
+    ['pid_gains', 'arm_direction.orthogonal_kp', 'Arm direction orthogonal Kp', 'number', 0, 0.001],
+    ['pid_gains', 'arm_direction.final_position_tolerance', 'Arm final position tolerance (m)', 'number', 0, 0.001],
+    ['pid_gains', 'arm_orientation.kp_orientation', 'Arm orientation Kp', 'number', 0, 0.001],
+    ['pid_gains', 'arm_orientation.ki_orientation', 'Arm orientation Ki', 'number', 0, 0.001],
+    ['pid_gains', 'arm_orientation.kd_orientation', 'Arm orientation Kd', 'number', 0, 0.001],
+    ['pid_gains', 'arm_move.kp_linear', 'Arm move Kp linear', 'number', 0, 0.001],
+    ['pid_gains', 'arm_move.kp_angular', 'Arm move Kp angular', 'number', 0, 0.001],
+  ]},
+  {title: 'Pfadtransformation', fields: [
+    ['path_transform', 'x', 'X (m)', 'number', undefined, 0.001],
+    ['path_transform', 'y', 'Y (m)', 'number', undefined, 0.001],
+    ['path_transform', 'z', 'Z (m)', 'number', undefined, 0.001],
+    ['path_transform', 'yaw_deg', 'Yaw (Grad)', 'number', undefined, 0.1],
+  ]},
+];
 
 function normalizeQuaternion(values) {
   const norm = Math.sqrt(values.reduce((sum, value) => sum + value * value, 0));
@@ -94,6 +149,89 @@ function renderToolOffset(config) {
   toolOffsetElements.mode.value = mode;
   toolOffsetDisplayedMode = mode;
   updateToolOffsetMode();
+}
+
+function platformSettingsFocused() {
+  return platformSettingsElement?.contains(document.activeElement);
+}
+function platformSettingInput(section, key, label, type, minimum, step, value) {
+  const wrapper = document.createElement('label');
+  wrapper.textContent = label;
+  const input = document.createElement(type === 'select' ? 'select' : 'input');
+  input.dataset.platformSection = section;
+  input.dataset.platformKey = key;
+  if (type === 'checkbox') {
+    input.type = 'checkbox';
+    input.checked = Boolean(value);
+    wrapper.prepend(input);
+  } else if (type === 'select') {
+    minimum.forEach(option => input.add(new Option(option.replace('_', ' '), option, false, option === value)));
+    wrapper.append(input);
+  } else {
+    input.type = 'number';
+    if (minimum !== undefined) input.min = String(minimum);
+    input.step = String(step ?? 0.001);
+    input.value = Number(value);
+    wrapper.append(input);
+  }
+  return wrapper;
+}
+function renderPlatformSettings(state, config) {
+  if (!platformSettingsElement || platformSettingsFocused()) return;
+  const platform = config.platform || 'robotnik';
+  const settings = state.platform_settings?.[platform];
+  const signature = JSON.stringify({platform, settings});
+  if (signature === renderedPlatformSettingsSignature) return;
+  if (!settings) {
+    const message = document.createElement('p');
+    message.className = 'platform-settings-unavailable';
+    message.textContent = 'Die laufende Web-Serverinstanz liefert noch keine Plattform-Tuning-Daten. Web-GUI neu starten und diese Seite anschließend neu laden.';
+    platformSettingsElement.replaceChildren(message);
+    const saveButton = document.querySelector('#save-platform-settings');
+    saveButton.disabled = true;
+    saveButton.title = 'Web-GUI neu starten, damit die Plattform-Tuning-API verfügbar ist';
+    renderedPlatformSettingsSignature = signature;
+    return;
+  }
+  const saveButton = document.querySelector('#save-platform-settings');
+  saveButton.disabled = false;
+  saveButton.title = '';
+  const groups = platformTuningGroups.map((group, index) => {
+    const details = document.createElement('details');
+    details.className = 'platform-tuning-group';
+    details.open = index === 0;
+    const summary = document.createElement('summary');
+    const title = document.createElement('strong');
+    title.textContent = group.title;
+    summary.append(title);
+    const fields = document.createElement('div');
+    fields.className = 'fields platform-tuning-fields';
+    group.fields.forEach(([section, key, label, type, minimum, step]) => {
+      fields.append(platformSettingInput(section, key, label, type, minimum, step, settings[section]?.[key]));
+    });
+    details.append(summary, fields);
+    return details;
+  });
+  platformSettingsElement.replaceChildren(...groups);
+  renderedPlatformSettingsSignature = signature;
+}
+function collectPlatformSettings() {
+  const values = {};
+  platformSettingsElement.querySelectorAll('[data-platform-section]').forEach(input => {
+    const section = input.dataset.platformSection;
+    const key = input.dataset.platformKey;
+    values[section] ||= {};
+    values[section][key] = input.type === 'checkbox' ? input.checked
+      : (input.tagName === 'SELECT' ? input.value : Number(input.value));
+  });
+  for (const [section, entries] of Object.entries(values)) {
+    for (const [key, value] of Object.entries(entries)) {
+      if (typeof value === 'number' && !Number.isFinite(value)) {
+        throw new Error(`${key} muss eine gültige Zahl sein`);
+      }
+    }
+  }
+  return values;
 }
 
 function setField(field, value) { if (field.type === 'checkbox') field.checked = Boolean(value); else field.value = value ?? defaults[field.dataset.setting] ?? ''; }
@@ -192,6 +330,7 @@ function render(state) {
   const active = document.activeElement;
   fields.forEach(field => { if (active !== field) setField(field, config[field.dataset.setting]); });
   if (!toolOffsetFocused()) renderToolOffset(config);
+  renderPlatformSettings(state, config);
   if (active !== document.querySelector('#advanced-json')) document.querySelector('#advanced-json').value = JSON.stringify(config, null, 2);
   const labels = {path:'Pfad', robot_pose:'Roboterpose', arm_pose:'Deposition pose', jparse_ready:'J-PARSE', controller_ready:'Controller'};
   document.querySelector('#status').innerHTML = Object.entries(labels).map(([key, label]) => `<span class="${state.status[key] ? 'ok' : 'wait'}">${label}: ${state.status[key] ? 'bereit' : 'wartet'}</span>`).join('');
@@ -221,7 +360,11 @@ async function save() {
   await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values})}).then(jsonResponse);
   dirtyFields.clear();
 }
-fields.forEach(field => field.addEventListener('change', async () => { dirtyFields.add(field.dataset.setting); await save(); await refresh(); }));
+fields.forEach(field => field.addEventListener('change', async () => {
+  dirtyFields.add(field.dataset.setting);
+  try { await save(); await refresh(); }
+  catch (error) { showFeedback(`Einstellung konnte nicht gespeichert werden: ${error.message}`, true); }
+}));
 document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', async () => {
   button.classList.add('action-state-progress'); button.disabled = true;
   showFeedback('');
@@ -234,11 +377,23 @@ document.querySelectorAll('[data-action]').forEach(button => button.addEventList
   finally { button.disabled = false; await refresh(); }
 }));
 document.querySelector('#save-advanced').addEventListener('click', async () => {
-  const button = document.querySelector('#save-advanced');
   try {
     const values = JSON.parse(document.querySelector('#advanced-json').value);
-    await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values})}).then(jsonResponse); await refresh();
-  } catch (error) { button.textContent = `Ungültiges JSON: ${error.message}`; }
+    if (!values || Array.isArray(values) || typeof values !== 'object') throw new Error('Die oberste Ebene muss ein JSON-Objekt sein');
+    await fetch('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({values})}).then(jsonResponse);
+    showFeedback('Advanced settings gespeichert.');
+    await refresh();
+  } catch (error) { showFeedback(`Advanced settings konnten nicht gespeichert werden: ${error.message}`, true); }
+});
+document.querySelector('#save-platform-settings').addEventListener('click', async () => {
+  try {
+    const platform = latestState?.config?.platform;
+    if (!platform) throw new Error('Keine Plattform ausgewählt');
+    const values = collectPlatformSettings();
+    await fetch('/api/platform-settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({platform, values})}).then(jsonResponse);
+    showFeedback(`Plattform-Tuning für ${platform} gespeichert. Follower und Controller bei Bedarf neu starten.`);
+    await refresh();
+  } catch (error) { showFeedback(`Plattform-Tuning konnte nicht gespeichert werden: ${error.message}`, true); }
 });
 toolOffsetElements.mode.addEventListener('change', convertToolOffsetMode);
 document.querySelector('#save-tool-offset').addEventListener('click', async () => {

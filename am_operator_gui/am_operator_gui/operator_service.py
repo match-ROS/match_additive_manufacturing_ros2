@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import os
 from collections import deque
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock, Timer
@@ -42,6 +43,54 @@ PROFILES = {
     'bunker': {'cmd_vel': '/diff_drive_controller/cmd_vel', 'stamped': True,
                'frame': 'base_footprint', 'odom': '/odom', 'robot_pose': '/robot_pose', 'path': '/base_path'},
 }
+
+DEFAULT_PID_GAINS = {
+    'base_follower.kp_x': 0.8,
+    'base_follower.kp_y': 0.8,
+    'base_follower.kp_yaw': 1.2,
+    'base_follower.max_vx': 0.25,
+    'base_follower.max_vy': 0.25,
+    'base_follower.max_wz': 0.5,
+    'base_move.kp_linear': 0.6,
+    'base_move.kp_lateral': 0.6,
+    'base_move.kp_angular_to_point': 1.5,
+    'base_move.kp_angular_reorient': 1.2,
+    'base_move.max_linear_velocity': 0.2,
+    'base_move.max_lateral_velocity': 0.2,
+    'base_move.max_angular_velocity': 0.5,
+    'arm_direction.kp_z': 0.7,
+    'arm_direction.along_track_kp': 2.0,
+    'arm_direction.orthogonal_kp': 1.0,
+    'arm_direction.max_along_track_correction': 0.03,
+    'arm_direction.max_spray_axis_correction': 0.03,
+    'arm_direction.max_tracking_linear_velocity': 0.12,
+    'arm_direction.final_position_tolerance': 0.005,
+    'arm_orientation.kp_orientation': 1.0,
+    'arm_orientation.ki_orientation': 0.0,
+    'arm_orientation.kd_orientation': 0.0,
+    'arm_move.kp_linear': 0.8,
+    'arm_move.kp_angular': 1.0,
+    'arm_move.max_linear_velocity': 0.12,
+    'arm_move.max_angular_velocity': 0.5,
+}
+
+DEFAULT_BASE_SMOOTHING = {
+    'enabled': True,
+    'method': 'moving_average',
+    'max_accel_x': 0.25,
+    'max_accel_y': 0.25,
+    'max_accel_wz': 0.5,
+    'moving_average_window_size': 5,
+    'external_path_index_stride': 10,
+}
+
+DEFAULT_JPARSE_LIMITS = {
+    'max_joint_velocity': 1.5,
+    'max_cartesian_linear_velocity': 0.25,
+    'max_cartesian_angular_velocity': 0.8,
+}
+
+DEFAULT_PATH_TRANSFORM = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw_deg': 0.0}
 
 POSE_ADAPTER_PROCESSES = (
     'vicon_base_static_tf', 'vicon_ee_static_tf', 'base_pose_adapter',
@@ -261,24 +310,159 @@ class OperatorService:
                    'fixed_tool_offset_input_mode', 'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
                    'direction_mode', 'accuracy_phase'}
-        self.config.update({key: value for key, value in values.items() if key in allowed})
-        if 'path_index' in values:
-            self._live_path_index = max(0, int(values['path_index']))
-        if 'original_arm_index' in values:
-            self._live_original_arm_index = max(0, int(values['original_arm_index']))
+        accepted = {key: value for key, value in values.items() if key in allowed}
+        try:
+            if 'path_index' in accepted:
+                accepted['path_index'] = max(0, int(accepted['path_index']))
+            if 'original_arm_index' in accepted:
+                accepted['original_arm_index'] = max(0, int(accepted['original_arm_index']))
+            for key in ('default_velocity', 'velocity_override', 'spray_distance_mm', 'nozzle_offset_mm'):
+                if key in accepted:
+                    accepted[key] = self._finite_number(key, accepted[key])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'Invalid setting: {exc}') from exc
+        self.config.update(accepted)
+        if 'path_index' in accepted:
+            self._live_path_index = accepted['path_index']
+        if 'original_arm_index' in accepted:
+            self._live_original_arm_index = accepted['original_arm_index']
         self.store.save(self.config)
         if self.ros_bridge is not None:
-            if 'path_index' in values:
+            if 'path_index' in accepted:
                 self.ros_bridge.publish_path_index(int(self._setting('path_index', 0)))
-            if 'velocity_override' in values:
+            if 'velocity_override' in accepted:
                 self.ros_bridge.publish_velocity_override(float(self._setting('velocity_override', 100.0)) / 100.0)
-            if 'spray_distance_mm' in values or 'nozzle_offset_mm' in values:
+            if 'spray_distance_mm' in accepted or 'nozzle_offset_mm' in accepted:
                 effective = float(self._setting('spray_distance_mm', 100.0)) + float(self._setting('nozzle_offset_mm', 0.0))
                 self.ros_bridge.publish_spray_distance(effective / 1000.0)
-            if 'default_velocity' in values or 'default_velocity_enabled' in values:
+            if 'default_velocity' in accepted or 'default_velocity_enabled' in accepted:
                 desired = float(self._setting('default_velocity', 0.1)) if self._setting('default_velocity_enabled', False) else 0.0
                 self.ros_bridge.publish_desired_arm_speed(desired)
         return self.config
+
+    @staticmethod
+    def _finite_number(name: str, value: Any, *, minimum: float | None = None) -> float:
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f'{name} must be a number') from exc
+        if not math.isfinite(number):
+            raise ValueError(f'{name} must be finite')
+        if minimum is not None and number < minimum:
+            raise ValueError(f'{name} must be at least {minimum}')
+        return number
+
+    @staticmethod
+    def _platform_name(value: str) -> str:
+        platform = str(value).strip().lower()
+        if platform not in PROFILES:
+            raise ValueError(f'Unknown platform: {value}')
+        return platform
+
+    def update_platform_settings(self, platform: str, values: dict[str, Any]) -> dict[str, Any]:
+        """Persist validated tuning settings for exactly one platform.
+
+        This intentionally merges only the named platform block, so selecting
+        Robotnik in one browser cannot overwrite Bunker's tuning values.
+        """
+        platform = self._platform_name(platform)
+        if not isinstance(values, dict):
+            raise ValueError('Platform settings must be a JSON object')
+        configured = self.config.get('platform_control_settings', {})
+        configured = configured if isinstance(configured, dict) else {}
+        current = configured.get(platform, {})
+        current = deepcopy(current) if isinstance(current, dict) else {}
+
+        if 'pid_gains' in values:
+            gains = values['pid_gains']
+            if not isinstance(gains, dict):
+                raise ValueError('pid_gains must be an object')
+            target = current.setdefault('pid_gains', {})
+            if not isinstance(target, dict):
+                target = {}
+                current['pid_gains'] = target
+            for key, value in gains.items():
+                if key not in DEFAULT_PID_GAINS:
+                    raise ValueError(f'Unknown PID setting: {key}')
+                target[key] = self._finite_number(key, value, minimum=0.0)
+
+        if 'base_smoothing' in values:
+            smoothing = values['base_smoothing']
+            if not isinstance(smoothing, dict):
+                raise ValueError('base_smoothing must be an object')
+            target = current.setdefault('base_smoothing', {})
+            if not isinstance(target, dict):
+                target = {}
+                current['base_smoothing'] = target
+            allowed = set(DEFAULT_BASE_SMOOTHING)
+            unknown = set(smoothing) - allowed
+            if unknown:
+                raise ValueError(f'Unknown smoothing setting: {sorted(unknown)[0]}')
+            if 'enabled' in smoothing:
+                if not isinstance(smoothing['enabled'], bool):
+                    raise ValueError('base_smoothing.enabled must be a boolean')
+                target['enabled'] = bool(smoothing['enabled'])
+            if 'method' in smoothing:
+                method = str(smoothing['method']).strip().lower()
+                if method not in {'moving_average', 'accel_limit'}:
+                    raise ValueError('base_smoothing.method must be moving_average or accel_limit')
+                target['method'] = method
+            for key in ('max_accel_x', 'max_accel_y', 'max_accel_wz'):
+                if key in smoothing:
+                    target[key] = self._finite_number(key, smoothing[key], minimum=0.0)
+            for key, maximum in (('moving_average_window_size', 100), ('external_path_index_stride', 1000)):
+                if key in smoothing:
+                    try:
+                        number = self._finite_number(key, smoothing[key])
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(f'{key} must be an integer') from exc
+                    if not number.is_integer():
+                        raise ValueError(f'{key} must be an integer')
+                    integer = int(number)
+                    if integer < 1 or integer > maximum:
+                        raise ValueError(f'{key} must be between 1 and {maximum}')
+                    target[key] = integer
+
+        if 'jparse_limits' in values:
+            limits = values['jparse_limits']
+            if not isinstance(limits, dict):
+                raise ValueError('jparse_limits must be an object')
+            target = current.setdefault('jparse_limits', {})
+            if not isinstance(target, dict):
+                target = {}
+                current['jparse_limits'] = target
+            unknown = set(limits) - set(DEFAULT_JPARSE_LIMITS)
+            if unknown:
+                raise ValueError(f'Unknown J-PARSE setting: {sorted(unknown)[0]}')
+            for key, value in limits.items():
+                target[key] = self._finite_number(key, value, minimum=0.000001)
+
+        if 'path_transform' in values:
+            transform = values['path_transform']
+            if not isinstance(transform, dict):
+                raise ValueError('path_transform must be an object')
+            unknown = set(transform) - set(DEFAULT_PATH_TRANSFORM)
+            if unknown:
+                raise ValueError(f'Unknown path transform setting: {sorted(unknown)[0]}')
+            target = current.setdefault('path_transforms_by_directory', {})
+            if not isinstance(target, dict):
+                target = {}
+                current['path_transforms_by_directory'] = target
+            trajectory = str(self._setting('trajectory_directory', ''))
+            if not trajectory:
+                raise ValueError('A trajectory directory is required for the path transform')
+            directory = str(Path(trajectory).expanduser().resolve())
+            existing = target.get(directory, {})
+            existing = existing if isinstance(existing, dict) else {}
+            target[directory] = {
+                key: self._finite_number(key, transform.get(key, existing.get(key, default)))
+                for key, default in DEFAULT_PATH_TRANSFORM.items()
+            }
+
+        configured[platform] = current
+        self.config['platform_control_settings'] = configured
+        self.store.save(self.config)
+        return self.platform_settings_snapshot(platform)
 
     def snapshot(self) -> dict[str, Any]:
         processes = {}
@@ -315,7 +499,11 @@ class OperatorService:
         config.setdefault('velocity_override', 100)
         config.setdefault('nozzle_offset_mm', 0)
         config.setdefault('fixed_tool_offset_input_mode', 'quaternion')
-        return {'config': config, 'status': self._status, 'processes': processes,
+        platform_settings = {
+            platform: self.platform_settings_snapshot(platform)
+            for platform in PROFILES
+        }
+        return {'config': config, 'platform_settings': platform_settings, 'status': self._status, 'processes': processes,
                 'actions': self._action_states(),
                 'logs': list(self.logs), 'ros_error': self.ros_error,
                 'hardware_topic_results': self._hardware_topic_results}
@@ -459,27 +647,87 @@ class OperatorService:
         """Return the canonical key for platform-scoped operator settings."""
         return str(self._setting('platform', 'robotnik')).strip().lower() or 'robotnik'
 
+    def _platform_settings(self, platform: str | None = None) -> dict[str, Any]:
+        key = self._platform_key() if platform is None else str(platform).strip().lower()
+        configured = self._setting('platform_control_settings', {})
+        if not isinstance(configured, dict):
+            return {}
+        settings = configured.get(key, {})
+        return settings if isinstance(settings, dict) else {}
+
     def _control_setting(self, name: str, default: Any) -> Any:
         # The web form stores an explicit current value; the older Qt GUI stores
         # values per platform. Honour both representations during migration.
         if name in self.config:
             return self.config[name]
-        settings = self._setting('platform_control_settings', {})
-        platform = str(self._setting('platform', 'robotnik')).lower()
-        if isinstance(settings, dict) and isinstance(settings.get(platform), dict):
-            return settings[platform].get(name, self._setting(name, default))
+        settings = self._platform_settings()
+        if settings:
+            return settings.get(name, self._setting(name, default))
         return self._setting(name, default)
 
-    def _pid(self, name: str, default: float) -> float:
-        gains = self._setting('pid_gains', {})
+    def _pid(self, name: str, default: float, platform: str | None = None) -> float:
+        platform_settings = self._platform_settings(platform)
+        gains = platform_settings.get('pid_gains', {})
+        if not isinstance(gains, dict) or name not in gains:
+            gains = self._setting('pid_gains', {})
         try:
             return float(gains.get(name, default)) if isinstance(gains, dict) else default
         except (TypeError, ValueError):
             return default
 
-    def _smoothing(self, name: str, default: Any) -> Any:
-        settings = self._setting('base_smoothing', {})
+    def _smoothing(self, name: str, default: Any, platform: str | None = None) -> Any:
+        platform_settings = self._platform_settings(platform)
+        settings = platform_settings.get('base_smoothing', {})
+        if not isinstance(settings, dict) or name not in settings:
+            settings = self._setting('base_smoothing', {})
         return settings.get(name, default) if isinstance(settings, dict) else default
+
+    def _jparse_limit(self, name: str, default: float, platform: str | None = None) -> float:
+        platform_settings = self._platform_settings(platform)
+        limits = platform_settings.get('jparse_limits', {})
+        try:
+            return float(limits.get(name, default)) if isinstance(limits, dict) else default
+        except (TypeError, ValueError):
+            return default
+
+    def _path_transform(self, trajectory: str, platform: str | None = None) -> dict[str, float]:
+        directory = str(Path(trajectory).expanduser().resolve())
+        platform_settings = self._platform_settings(platform)
+        by_directory = platform_settings.get('path_transforms_by_directory', {})
+        transform = by_directory.get(directory, {}) if isinstance(by_directory, dict) else {}
+        if not isinstance(transform, dict) or not transform:
+            by_directory = self._setting('path_transforms_by_directory', {})
+            transform = by_directory.get(directory, {}) if isinstance(by_directory, dict) else {}
+        if not isinstance(transform, dict) or not transform:
+            transform = self._setting('path_transform', {})
+        transform = transform if isinstance(transform, dict) else {}
+        result = {}
+        for key, default in DEFAULT_PATH_TRANSFORM.items():
+            try:
+                result[key] = float(transform.get(key, default))
+            except (TypeError, ValueError):
+                result[key] = default
+        return result
+
+    def platform_settings_snapshot(self, platform: str) -> dict[str, Any]:
+        """Return all effective tuning values used by the selected platform."""
+        platform = self._platform_name(platform)
+        trajectory = str(self._setting('trajectory_directory', ''))
+        return {
+            'pid_gains': {
+                key: self._pid(key, default, platform)
+                for key, default in DEFAULT_PID_GAINS.items()
+            },
+            'base_smoothing': {
+                key: self._smoothing(key, default, platform)
+                for key, default in DEFAULT_BASE_SMOOTHING.items()
+            },
+            'jparse_limits': {
+                key: self._jparse_limit(key, default, platform)
+                for key, default in DEFAULT_JPARSE_LIMITS.items()
+            },
+            'path_transform': self._path_transform(trajectory, platform),
+        }
 
     def _default_velocity_parameter(self) -> float:
         if not bool(self._setting('default_velocity_enabled', False)):
@@ -507,18 +755,11 @@ class OperatorService:
         return [f'fixed_tool_offset_xyz:=[{xyz}]', f'fixed_tool_offset_quaternion_xyzw:=[{quat}]']
 
     def _path_transform_arguments(self, trajectory: str) -> list[str]:
-        transform = self._setting('path_transform', {})
-        by_directory = self._setting('path_transforms_by_directory', {})
-        if isinstance(by_directory, dict):
-            try:
-                transform = by_directory.get(str(Path(trajectory).expanduser().resolve()), transform)
-            except OSError:
-                pass
-        transform = transform if isinstance(transform, dict) else {}
-        x = float(transform.get('x', 0.0))
-        y = float(transform.get('y', 0.0))
-        z = float(transform.get('z', 0.0))
-        yaw = float(transform.get('yaw_deg', 0.0))
+        transform = self._path_transform(trajectory)
+        x = transform['x']
+        y = transform['y']
+        z = transform['z']
+        yaw = transform['yaw_deg']
         return [f'path_transform_xyz:=[{x:.6f}, {y:.6f}, {z:.6f}]', f'path_transform_yaw_deg:={yaw:.6f}']
 
     def _toggle(self, name: str, command: list[str]) -> None:
@@ -781,6 +1022,9 @@ class OperatorService:
                     'deactivate_controller:=joint_trajectory_controller', f'activate_controller:={active_controller}',
                     'jparse_readiness_topic:=/am/jparse_ready', 'controller_readiness_topic:=/am/arm_controller_ready',
                     'command_joint_names_csv:=robot_arm_shoulder_pan_joint,robot_arm_shoulder_lift_joint,robot_arm_elbow_joint,robot_arm_wrist_1_joint,robot_arm_wrist_2_joint,robot_arm_wrist_3_joint',
+                    f'jparse_max_joint_velocity:={self._jparse_limit("max_joint_velocity", 1.5):.6f}',
+                    f'jparse_max_cartesian_linear_velocity:={self._jparse_limit("max_cartesian_linear_velocity", 0.25):.6f}',
+                    f'jparse_max_cartesian_angular_velocity:={self._jparse_limit("max_cartesian_angular_velocity", 0.8):.6f}',
                     *self._fixed_tool_arguments()]
         if name == 'transformations':
             return ['ros2', 'run', 'ur_trajectory_follower', 'current_pose_from_tf', '--ros-args',
@@ -888,9 +1132,8 @@ class OperatorService:
         if path_pose is None or robot_pose is None:
             self.log('calibration', 'path transform requires /base_path at the selected index and a fresh /robot_pose')
             return
-        current = self._setting('path_transform', {})
-        if not isinstance(current, dict):
-            current = {}
+        trajectory = str(self._setting('trajectory_directory', ''))
+        current = self._path_transform(trajectory)
         path, robot = path_pose.pose, robot_pose.pose
         delta_yaw = self._yaw(robot.orientation) - self._yaw(path.orientation)
         cos_yaw, sin_yaw = math.cos(delta_yaw), math.sin(delta_yaw)
@@ -903,12 +1146,16 @@ class OperatorService:
             'z': float(current.get('z', 0.0)) + robot.position.z - path.position.z,
             'yaw_deg': math.degrees(math.atan2(math.sin(math.radians(float(current.get('yaw_deg', 0.0))) + delta_yaw), math.cos(math.radians(float(current.get('yaw_deg', 0.0))) + delta_yaw))),
         }
-        self.config['path_transform'] = transform
-        trajectory = str(self._setting('trajectory_directory', ''))
+        self.config['path_transform'] = transform  # Legacy fallback.
         if trajectory:
-            transforms = self.config.setdefault('path_transforms_by_directory', {})
-            if isinstance(transforms, dict):
-                transforms[str(Path(trajectory).expanduser().resolve())] = transform
+            settings = self._platform_settings()
+            # _platform_settings returns the mutable nested dictionary from
+            # self.config, so this preserves the transform per platform.
+            transforms = settings.setdefault('path_transforms_by_directory', {})
+            if not isinstance(transforms, dict):
+                transforms = {}
+                settings['path_transforms_by_directory'] = transforms
+            transforms[str(Path(trajectory).expanduser().resolve())] = transform
         self.store.save(self.config)
         self._last_action_messages['calculate_path_transform'] = (
             f'Path transform calculated at index {index}'

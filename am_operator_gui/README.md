@@ -41,6 +41,15 @@ For a non-default local port or to suppress automatic browser opening, set
 `AM_OPERATOR_WEB_PORT` and `AM_OPERATOR_WEB_NO_BROWSER=1` before invoking the
 start script.
 
+When launching through ROS, select the browser UI explicitly:
+
+```bash
+ros2 launch am_operator_gui am_operator_gui.launch.py ui:=web
+```
+
+The default `ui:=qt` continues to start the reference Qt application. Do not run
+both interfaces as active controllers at the same time.
+
 The existing PyQt GUI remains available through `ros2 launch am_operator_gui
 am_operator_gui.launch.py`. It now uses the same toolkit-neutral configuration,
 process registry, ROS bridge, and command service as the web interface. Do not run
