@@ -23,7 +23,10 @@ class TransformTwistStamped(Node):
         self.pub = self.create_publisher(
             TwistStamped,
             str(self.get_parameter('output_topic').value),
-            QoSProfile(depth=10, reliability=QoSReliabilityPolicy.BEST_EFFORT),
+            # The AM J-PARSE controller subscribes reliably.  A best-effort
+            # publisher is incompatible and leaves J-PARSE timing out with
+            # zero joint commands even while the transformed twist is non-zero.
+            QoSProfile(depth=10, reliability=QoSReliabilityPolicy.RELIABLE),
         )
         self.create_subscription(
             TwistStamped,
