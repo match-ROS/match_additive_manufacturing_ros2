@@ -6,6 +6,56 @@ This repository should stay platform-agnostic where practical. Robot description
 Gazebo worlds, hardware drivers, platform-specific controllers, and vendor simulation
 imports belong in platform repositories such as `bunker_manipulator`.
 
+## Workspace Setup
+
+The supported development environment is Ubuntu 24.04 with ROS 2 Jazzy. Install ROS 2
+Jazzy first, then install the workspace tools:
+
+```bash
+sudo apt update
+sudo apt install -y \
+  git \
+  python3-rosdep \
+  python3-vcstool \
+  python3-colcon-common-extensions \
+  python3-venv
+```
+
+Initialize `rosdep` once per computer if it has not been initialized already:
+
+```bash
+sudo rosdep init
+rosdep update
+```
+
+Create a workspace, clone this repository, and import the pinned RB-VOGUI and UR
+simulation repositories:
+
+```bash
+mkdir -p ~/wattle_daub_ros2_ws/src
+cd ~/wattle_daub_ros2_ws/src
+git clone https://github.com/match-ROS/match_additive_manufacturing_ros2.git
+
+cd ~/wattle_daub_ros2_ws
+source /opt/ros/jazzy/setup.bash
+vcs import src < src/match_additive_manufacturing_ros2/dependencies/robotnik_rbvogui_tum.jazzy.repos
+rosdep install --from-paths src --ignore-src -r -y
+colcon build --symlink-install
+source install/setup.bash
+```
+
+The `.repos` manifest downloads source repositories into `src`; it does not install
+their system dependencies. `rosdep install` resolves the dependencies declared by
+all packages in the workspace. Run it again after adding or changing source
+repositories.
+
+The workspace does not include site-specific hardware drivers, Vicon bridges, safety
+systems, or robot hardware interfaces. For the RB-VOGUI simulator, see the
+[RB-VOGUI package README](../robotnik/robotnik_rbvogui_tum/README.md). For hardware
+operation and the operator GUI, see the [AM Operator GUI README](am_operator_gui/README.md).
+For the generic simulation demos, see [am_bringup/README.md](am_bringup/README.md)
+and the [workspace architecture](docs/architecture.md).
+
 ## Current Packages
 
 - `parse_paths`: Generates simple test/reference paths as `nav_msgs/msg/Path`.
