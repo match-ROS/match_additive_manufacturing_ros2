@@ -884,6 +884,13 @@ class OperatorWindow(QMainWindow):
         motion_layout = QGridLayout(motion_group)
         self.move_base_button = QPushButton('Move Base To Start')
         self.move_arm_button = QPushButton('Move Arm To Start')
+        self.move_base_button.setToolTip(
+            'Fährt /base_path_tracking am gemeinsamen Trackingindex an.'
+        )
+        self.move_arm_button.setToolTip(
+            'Fährt /ur_path_tracking am gemeinsamen Trackingindex an; '
+            'dies entspricht der angezeigten /next_goal-Pose.'
+        )
         self.start_following_button = QPushButton('Start Following')
         self.stop_following_button = QPushButton('Stop Following')
 
@@ -2119,7 +2126,8 @@ class OperatorWindow(QMainWindow):
             '-r', f'__node:={ODOMETRY_POSE_ADAPTER_NAME}',
             '-p', f'use_sim_time:={self._use_sim_time()}',
             '-p', f"odom_topic:={profile['odom_topic']}",
-            '-p', f"path_topic:={profile['path_topic']}",
+            # The shared GUI index addresses the resampled tracking paths.
+            '-p', 'path_topic:=/base_path_tracking',
             '-p', 'output_topic:=/robot_pose',
             '-p', f'initial_path_index:={self.index_spin.value()}',
             '-p', f'map_frame:={self.external_map_frame.text().strip()}',
@@ -2236,9 +2244,12 @@ class OperatorWindow(QMainWindow):
             'move_to_path_idx',
             'move_ur_to_path_idx.launch.py',
             f'use_sim_time:={self._use_sim_time()}',
-            'path_topic:=/ur_path_transformed',
+            # Match /next_goal exactly: it is published from this tracking
+            # path at the shared index, whereas the original arm path has a
+            # different index space.
+            'path_topic:=/ur_path_tracking',
             'current_pose_topic:=/current_deposition_pose',
-            f'path_index:={OperatorWindow._original_arm_path_index(self)}',
+            f'path_index:={self.index_spin.value()}',
             f'wait_for_start_condition:={str(wait_for_start_condition).lower()}',
             'start_condition_topic:=/start_pose_reached',
             'cmd_vel_topic:=/jparse_velocity_controller_ur/twist_cmd_world',

@@ -67,6 +67,9 @@ class FakeRosBridge:
     def original_arm_index_for_tracking_index(self, index):
         return index // 2
 
+    def tracking_arm_index_for_original_index(self, index):
+        return index * 2
+
     def publish_velocity_override(self, _value):
         pass
 
@@ -92,6 +95,31 @@ def test_service_persists_explicit_web_settings_only(tmp_path: Path) -> None:
     assert config['path_index'] == 7
     assert 'ignored' not in config
     assert 'cmd_vel_topic:=/diff_drive_controller/cmd_vel' in service.command_for('move_base')
+
+
+def test_one_shot_moves_share_the_tracking_index_space(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.update_config({'path_index': 100, 'original_arm_index': 28})
+
+    base_command = service.command_for('move_base')
+    arm_command = service.command_for('move_arm')
+
+    assert 'path_topic:=/base_path_tracking' in base_command
+    assert 'path_index:=100' in base_command
+    assert 'path_topic:=/ur_path_tracking' in arm_command
+    assert 'path_index:=100' in arm_command
+    assert 'path_index:=28' not in arm_command
+
+
+def test_original_arm_index_selects_its_matching_tracking_index_for_web_gui(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.ros_bridge = FakeRosBridge()
+
+    service.update_config({'original_arm_index': 28})
+
+    assert service.config['original_arm_index'] == 28
+    assert service.config['path_index'] == 56
+    assert ('path_index', 56) in service.ros_bridge.calls
 
 
 def test_hardware_launch_all_uses_pose_adapters_not_simulator(tmp_path: Path) -> None:

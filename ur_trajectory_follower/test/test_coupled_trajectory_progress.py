@@ -1,4 +1,6 @@
 import math
+import json
+from pathlib import Path as FilePath
 
 from geometry_msgs.msg import PoseStamped
 
@@ -89,3 +91,45 @@ def test_resampling_keeps_zero_displacement_intervals_for_dwell_semantics():
 
     assert [round(stamp_seconds(p), 3) for p in result.poses] == [0.0, 1.0, 2.0, 3.0]
     assert [round(p.pose.position.x, 3) for p in result.poses] == [0.0, 0.0, 0.01, 0.02]
+
+
+def test_david_original_index_28_maps_to_a_tracking_target_within_2cm():
+    """The source-index GUI selector must lead to the shared tracking target."""
+    trajectory_file = (
+        FilePath(__file__).resolve().parents[2]
+        / 'components' / 'david_path' / 'arm_path.json'
+    )
+    data = json.loads(trajectory_file.read_text(encoding='utf-8'))
+    original = Path()
+    original.header.frame_id = data['frame_id']
+    for item in data['poses']:
+        pose = PoseStamped()
+        pose.header.frame_id = data['frame_id']
+        pose.pose.position.x = item['position']['x']
+        pose.pose.position.y = item['position']['y']
+        pose.pose.position.z = item['position']['z']
+        pose.pose.orientation.x = item['orientation']['x']
+        pose.pose.orientation.y = item['orientation']['y']
+        pose.pose.orientation.z = item['orientation']['z']
+        pose.pose.orientation.w = item['orientation']['w']
+        original.poses.append(pose)
+
+    tracking, _ = resample_coupled_paths(original, None, 0.005)
+    source_lengths = [0.0]
+    for previous, current in zip(original.poses, original.poses[1:]):
+        source_lengths.append(source_lengths[-1] + position_distance(previous, current))
+    tracking_lengths = [0.0]
+    for previous, current in zip(tracking.poses, tracking.poses[1:]):
+        tracking_lengths.append(tracking_lengths[-1] + position_distance(previous, current))
+    tracking_index = min(
+        range(len(tracking_lengths)),
+        key=lambda candidate: abs(tracking_lengths[candidate] - source_lengths[28]),
+    )
+    target = tracking.poses[tracking_index].pose.position
+    source = original.poses[28].pose.position
+
+    assert tracking_index == 103
+    assert math.dist(
+        (source.x, source.y, source.z),
+        (target.x, target.y, target.z),
+    ) < 0.02

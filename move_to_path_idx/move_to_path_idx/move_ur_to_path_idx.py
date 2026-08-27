@@ -194,6 +194,11 @@ class MoveUrToPathIdx(Node):
         )
 
     def _publish_stop(self) -> None:
+        # A completed move shuts down rclpy from its timer callback.  The
+        # ``finally`` block in main() still owns the node at that point, but
+        # its publisher context is already invalid.
+        if not rclpy.ok():
+            return
         stop = TwistStamped()
         stop.header.frame_id = self.command_frame
         stop.header.stamp = self.get_clock().now().to_msg()

@@ -155,12 +155,12 @@ ACTION_DESCRIPTIONS = {
     ),
     'sync_workspace': 'Synchronisiert den Quellbaum per rsync auf das konfigurierte Zielsystem.',
     'move_base': (
-        'Fährt die Base einmalig zur Pose des interpolierten Indexes mit Plattformpfad, '
+        'Fährt die Base einmalig zur Pose des gemeinsamen Trackingindex in /base_path_tracking mit '
         '/robot_pose und plattformspezifischem cmd_vel-Topic.'
     ),
     'move_arm': (
-        'Fährt den Arm einmalig zur Pose des nicht-resampelten Indexes in '
-        '/ur_path_transformed und sendet Welt-Twist an den Arm.'
+        'Fährt den Arm einmalig zur Pose des gemeinsamen Trackingindex in '
+        '/ur_path_tracking; dies ist dieselbe Quelle wie /next_goal.'
     ),
     'switch_arm_velocity': (
         'Deaktiviert per ros2 control den Joint-Trajectory-Controller und aktiviert '
@@ -321,6 +321,15 @@ class OperatorService:
                     accepted[key] = self._finite_number(key, accepted[key])
         except (TypeError, ValueError) as exc:
             raise ValueError(f'Invalid setting: {exc}') from exc
+        if 'original_arm_index' in accepted and 'path_index' not in accepted:
+            # The manual source-path field is a selection aid.  All managed
+            # motions use the resampled tracking paths, so convert it before
+            # launching a mover or publishing the shared progress index.
+            mapper = getattr(self.ros_bridge, 'tracking_arm_index_for_original_index', None)
+            try:
+                accepted['path_index'] = max(0, int(mapper(accepted['original_arm_index']))) if mapper else accepted['original_arm_index']
+            except Exception:
+                accepted['path_index'] = accepted['original_arm_index']
         self.config.update(accepted)
         if 'path_index' in accepted:
             self._live_path_index = accepted['path_index']
@@ -1049,7 +1058,7 @@ class OperatorService:
         if name == 'move_base':
             diff_drive = bool(self._control_setting('diff_drive_mode', False)) or str(self._setting('platform', 'robotnik')) == 'bunker'
             return ['ros2', 'run', 'move_to_path_idx', 'move_to_path_idx', '--ros-args',
-                    '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"path_topic:={profile['path']}",
+                    '-p', f'use_sim_time:={self._use_sim_time()}', '-p', 'path_topic:=/base_path_tracking',
                     '-p', f"robot_pose_topic:={profile['robot_pose']}", '-p', 'robot_pose_type:=pose_stamped',
                     '-p', f"cmd_vel_topic:={profile['cmd_vel']}", '-p', f"output_stamped:={str(profile['stamped']).lower()}",
                     '-p', f"command_frame_id:={profile['frame']}", '-p', f'diff_drive_mode:={str(diff_drive).lower()}',
@@ -1060,10 +1069,9 @@ class OperatorService:
                     '-p', f'max_linear_velocity:={self._pid("base_move.max_linear_velocity", 0.2):.6f}', '-p', f'max_lateral_velocity:={self._pid("base_move.max_lateral_velocity", 0.2):.6f}',
                     '-p', f'max_angular_velocity:={self._pid("base_move.max_angular_velocity", 0.5):.6f}']
         if name == 'move_arm':
-            original_index = int(self._setting('original_arm_index', index))
             return ['ros2', 'launch', 'move_to_path_idx', 'move_ur_to_path_idx.launch.py',
-                    f'use_sim_time:={self._use_sim_time()}', 'path_topic:=/ur_path_transformed',
-                    'current_pose_topic:=/current_deposition_pose', f'path_index:={original_index}',
+                    f'use_sim_time:={self._use_sim_time()}', 'path_topic:=/ur_path_tracking',
+                    'current_pose_topic:=/current_deposition_pose', f'path_index:={index}',
                     'wait_for_start_condition:=false', 'start_condition_topic:=/start_pose_reached',
                     'cmd_vel_topic:=/jparse_velocity_controller_ur/twist_cmd_world', f'path_frame:={frame}',
                     f'kp_linear:={self._pid("arm_move.kp_linear", 0.8):.6f}', f'kp_angular:={self._pid("arm_move.kp_angular", 1.0):.6f}',

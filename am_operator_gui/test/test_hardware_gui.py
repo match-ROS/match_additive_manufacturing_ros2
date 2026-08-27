@@ -545,7 +545,7 @@ def test_move_base_to_start_uses_configured_velocity_limits() -> None:
     assert 'max_angular_velocity:=0.340000' in command
 
 
-def test_move_arm_to_start_uses_non_interpolated_arm_index() -> None:
+def test_move_arm_to_start_uses_the_shared_tracking_index() -> None:
     processes = FakeProcesses()
     fake = SimpleNamespace(
         processes=processes,
@@ -560,8 +560,9 @@ def test_move_arm_to_start_uses_non_interpolated_arm_index() -> None:
     OperatorWindow._start_move_arm_to_start(fake)
 
     command = processes.started[0][1]
-    assert 'path_index:=12' in command
-    assert 'path_index:=120' not in command
+    assert 'path_topic:=/ur_path_tracking' in command
+    assert 'path_index:=120' in command
+    assert 'path_index:=12' not in command
 
 
 def test_interpolated_and_original_arm_indices_stay_linked() -> None:

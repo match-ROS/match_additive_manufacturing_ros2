@@ -20,8 +20,8 @@
   "fixed_tool_offset_input_mode": "quaternion",
   "follower_type": "pid",
   "nozzle_offset_mm": 0,
-  "original_arm_index": 1,
-  "path_index": 2000,
+  "original_arm_index": 100,
+  "path_index": 100,
   "path_transforms_by_directory": {
     "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/bunker_paired_demo": {
       "x": 1,
