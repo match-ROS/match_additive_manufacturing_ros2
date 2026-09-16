@@ -9,6 +9,21 @@ The robot-side Ethernet transport profile was then tested both synchronously
 and asynchronously. Both mitigated the observed base stalls, but neither
 eliminated overruns or discovery losses; see [ETHERNET_TEST.md](ETHERNET_TEST.md).
 
+Latest validation: nine rotated-order GUI startup trials, including three
+original-environment controls, are documented in
+[REPEATED_LAUNCH_ALL.md](REPEATED_LAUNCH_ALL.md). They confirm the Ethernet
+profile's mitigation and do not establish a clear asynchronous advantage.
+
+Subsequent robot-wide test using `./bringup.sh`: the synchronous Ethernet
+profile mitigated base stalls but worsened the observed arm overrun counts
+and did not repair its UDP losses. See [FULL_BRINGUP_TEST.md](FULL_BRINGUP_TEST.md).
+
+Missing-description follow-up: the full publisher had aborted on an invalid
+Lift/Arm URDF attachment. Both controlled normal and base-profile starts
+delivered `/robot/robot_description` to the workstation. Different installed
+Lift Xacro versions were identified; see
+[DESCRIPTION_START_COMPARISON.md](DESCRIPTION_START_COMPARISON.md).
+
 ## Result and limits
 
 Starting a ROS participant in domain 38 reproducibly disrupts the running
