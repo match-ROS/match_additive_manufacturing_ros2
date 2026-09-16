@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from copy import deepcopy
+import math
 from typing import Optional
+
+import numpy as np
 
 from geometry_msgs.msg import PoseStamped, TransformStamped
 import rclpy
@@ -79,6 +83,15 @@ class ExternalBaseReference(Node):
         self._set_ready(False)
 
     def _pose_cb(self, msg: PoseStamped) -> None:
+        try:
+            msg = self._validated_pose(msg)
+        except ValueError as exc:
+            self.get_logger().warn(
+                f'Ignoring invalid external base pose: {exc}',
+                throttle_duration_sec=2.0,
+            )
+            self._set_ready(False)
+            return
         source_frame = _clean_frame(msg.header.frame_id)
         if not source_frame:
             self.get_logger().warn(
@@ -92,6 +105,7 @@ class ExternalBaseReference(Node):
             map_base = self._pose_in_map(msg, source_frame)
             if self.input_pose_frame:
                 map_base = self._reference_pose_to_base_pose(map_base)
+            map_base = self._validated_pose(map_base)
             self._publish_map_to_robot_tree(map_base)
             self.pose_pub.publish(map_base)
         except TransformException as exc:
@@ -102,8 +116,33 @@ class ExternalBaseReference(Node):
             self._set_ready(False)
             return
 
+        except (ValueError, np.linalg.LinAlgError) as exc:
+            self.get_logger().warn(
+                f'Ignoring invalid external base transformation: {exc}',
+                throttle_duration_sec=2.0,
+            )
+            self._set_ready(False)
+            return
+
         self.last_output_time = self.get_clock().now()
         self._set_ready(True)
+
+    @staticmethod
+    def _validated_pose(msg: PoseStamped) -> PoseStamped:
+        p = msg.pose.position
+        q = msg.pose.orientation
+        values = (p.x, p.y, p.z, q.x, q.y, q.z, q.w)
+        norm = math.hypot(q.x, q.y, q.z, q.w)
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError('position and quaternion must be finite')
+        if not math.isfinite(norm) or norm < 1e-9:
+            raise ValueError('quaternion must have nonzero finite norm')
+        result = deepcopy(msg)
+        result.pose.orientation.x = q.x / norm
+        result.pose.orientation.y = q.y / norm
+        result.pose.orientation.z = q.z / norm
+        result.pose.orientation.w = q.w / norm
+        return result
 
     def _pose_in_map(self, msg: PoseStamped, source_frame: str) -> PoseStamped:
         if source_frame == self.map_frame:
