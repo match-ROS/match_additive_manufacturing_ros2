@@ -6,6 +6,12 @@
   "control_frame": "map",
   "base_pose_topic": "/vicon/Base_RB/Base_RB",
   "arm_pose_topic": "/vicon/tool_transformed",
+  "vicon_input_topic": "/vicon/Tool_Flange/Tool_Flange",
+  "vicon_nozzle_transform": {
+    "xyz": [0.184687295, -0.501541068, -0.126693390],
+    "quaternion_xyzw": [0.0014631726632651522, -0.003424541244486294, 0.8435437871654295, 0.5370474939682958]
+  },
+  "vicon_nozzle_transform_input_mode": "quaternion",
   "external_map_frame": "map",
   "robot_base_frame": "base_link",
   "robot_tree_root_frame": "odom",

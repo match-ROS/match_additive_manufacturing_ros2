@@ -37,7 +37,8 @@ from PyQt5.QtWidgets import (
 from am_operator_gui.process_manager import ProcessRegistry
 from am_operator_gui.ros_bridge import RosBridge
 from am_operator_gui.config_store import ConfigStore
-from am_operator_gui.operator_service import OperatorService
+from am_operator_gui.operator_service import OperatorService, SYNC_REMOTE_TARGET
+from am_operator_gui.robot_debug import format_debug_info
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -110,7 +111,6 @@ MOVE_ARM_NAME = 'move_arm_to_start'
 SWITCH_ARM_VELOCITY_NAME = 'switch_arm_velocity_controller'
 RVIZ_NAME = 'rviz'
 SYNC_WORKSPACE_NAME = 'sync_workspace'
-SYNC_REMOTE_TARGET = 'ite-dcs@192.168.0.222:~/workspaces/print_wattle_daub/src/'
 
 DEFAULT_PID_GAINS = {
     'base_follower.kp_x': 0.8,
@@ -777,6 +777,8 @@ class OperatorWindow(QMainWindow):
 
         self.launch_button = QPushButton('Launch All')
         self.launch_sim_button = QPushButton('Launch Sim')
+        self.vicon_button = QPushButton('Start Vicon')
+        self.vicon_button.setToolTip('Start the Vicon receiver at 192.168.0.30:8802 using Control frame as world_frame. Stop and restart to apply frame changes.')
         self.publish_path_button = QPushButton('Publish Path')
         self.rviz_button = QPushButton('Open RViz')
         self.pid_gains_button = QPushButton('PID Gains...')
@@ -784,6 +786,8 @@ class OperatorWindow(QMainWindow):
         self.hardware_guide_button = QPushButton('Hardware Guide...')
         self.check_hardware_topics_button = QPushButton('Check Hardware Topics')
         self.sync_workspace_button = QPushButton('Sync Workspace')
+        self.sync_workspace_button.setToolTip(
+            f'Copy workspace sources to {SYNC_REMOTE_TARGET}. Build and launch on the robot separately.')
 
         launch_layout.addWidget(self.simulation_checkbox, 0, 0)
         launch_layout.addWidget(QLabel('Platform'), 0, 1)
@@ -835,6 +839,7 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.pid_gains_button, 8, 3)
         launch_layout.addWidget(self.base_smoothing_button, 8, 4)
         launch_layout.addWidget(self.hardware_guide_button, 8, 5)
+        launch_layout.addWidget(self.vicon_button, 9, 1)
         launch_layout.addWidget(self.check_hardware_topics_button, 9, 4)
         launch_layout.addWidget(self.sync_workspace_button, 9, 5)
 
@@ -842,6 +847,9 @@ class OperatorWindow(QMainWindow):
         component_layout = QGridLayout(component_group)
         self.base_follower_button = QPushButton('Launch Base Follower')
         self.arm_follower_button = QPushButton('Launch Arm Follower')
+        self.index_pose_preview_button = QPushButton('Show Index Poses')
+        self.index_pose_preview_button.setToolTip(
+            'Publish selected base and arm index poses for RViz; requires Publish Path.')
         self.path_index_button = QPushButton('Launch Path Index')
         self.current_tcp_pose_button = QPushButton('Launch Transformations')
         self.arm_controllers_button = QPushButton('Start Controllers')
@@ -866,6 +874,7 @@ class OperatorWindow(QMainWindow):
 
         component_layout.addWidget(self.publish_path_button, 0, 0)
         component_layout.addWidget(self.path_index_button, 0, 1)
+        component_layout.addWidget(self.index_pose_preview_button, 0, 2)
         component_layout.addWidget(self.base_follower_button, 1, 0)
         component_layout.addWidget(self.arm_follower_button, 1, 1)
         component_layout.addWidget(self.current_tcp_pose_button, 2, 0)
@@ -884,6 +893,8 @@ class OperatorWindow(QMainWindow):
         motion_layout = QGridLayout(motion_group)
         self.move_base_button = QPushButton('Move Base To Start')
         self.move_arm_button = QPushButton('Move Arm To Start')
+        self.move_base_distance = QLabel('Abstand: — cm (XY)')
+        self.move_arm_distance = QLabel('Abstand: — cm (XYZ)')
         self.move_base_button.setToolTip(
             'Fährt /base_path_tracking am gemeinsamen Trackingindex an.'
         )
@@ -896,8 +907,10 @@ class OperatorWindow(QMainWindow):
 
         motion_layout.addWidget(self.move_base_button, 0, 0)
         motion_layout.addWidget(self.move_arm_button, 0, 1)
-        motion_layout.addWidget(self.start_following_button, 1, 0)
-        motion_layout.addWidget(self.stop_following_button, 1, 1)
+        motion_layout.addWidget(self.move_base_distance, 1, 0)
+        motion_layout.addWidget(self.move_arm_distance, 1, 1)
+        motion_layout.addWidget(self.start_following_button, 2, 0)
+        motion_layout.addWidget(self.stop_following_button, 2, 1)
 
         override_group = QGroupBox('Overrides')
         override_layout = QGridLayout(override_group)
@@ -953,6 +966,19 @@ class OperatorWindow(QMainWindow):
         controls_layout.addWidget(motion_group)
         controls_layout.addWidget(override_group)
         controls_layout.addWidget(status_group)
+        self.debug_toggle = QCheckBox('Debugging info')
+        self.debug_info = QLabel('Noch nicht geprüft.')
+        self.debug_info.setWordWrap(True)
+        self.debug_info.setTextFormat(Qt.PlainText)
+        self.debug_info.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.debug_info.setVisible(False)
+        self.debug_toggle.toggled.connect(self.debug_info.setVisible)
+        self.debug_toggle.toggled.connect(self._refresh_robot_debug)
+        controls_layout.addWidget(self.debug_toggle)
+        controls_layout.addWidget(self.debug_info)
+        self.debug_timer = QTimer(self)
+        self.debug_timer.timeout.connect(self._refresh_robot_debug)
+        self.debug_timer.start(1000)
         controls_layout.addStretch(1)
 
         splitter.addWidget(controls_panel)
@@ -982,6 +1008,7 @@ class OperatorWindow(QMainWindow):
         )
         self.launch_button.clicked.connect(lambda: self._invoke_service_action('launch_all'))
         self.launch_sim_button.clicked.connect(lambda: self._invoke_service_action('simulation'))
+        self.vicon_button.clicked.connect(lambda: self._invoke_service_action('vicon'))
         self.pid_gains_button.clicked.connect(self._open_pid_gains_window)
         self.base_smoothing_button.clicked.connect(self._open_base_smoothing_window)
         self.hardware_guide_button.clicked.connect(self._show_hardware_guide)
@@ -992,6 +1019,8 @@ class OperatorWindow(QMainWindow):
         self.publish_path_button.clicked.connect(lambda: self._invoke_service_action('publish_path'))
         self.base_follower_button.clicked.connect(lambda: self._invoke_service_action('base_follower'))
         self.arm_follower_button.clicked.connect(lambda: self._invoke_service_action('arm_follower'))
+        self.index_pose_preview_button.clicked.connect(
+            lambda: self._invoke_service_action('index_pose_preview'))
         self.path_index_button.clicked.connect(lambda: self._invoke_service_action('path_index'))
         self.current_tcp_pose_button.clicked.connect(lambda: self._invoke_service_action('transformations'))
         self.arm_controllers_button.clicked.connect(lambda: self._invoke_service_action('controllers'))
@@ -2482,10 +2511,23 @@ class OperatorWindow(QMainWindow):
         if hasattr(self, 'original_arm_index_spin'):
             self._set_original_arm_index_from_tracking(value)
 
+    def _refresh_robot_debug(self) -> None:
+        if self.debug_toggle.isChecked():
+            self.debug_info.setText(format_debug_info(self.service.robot_debug.snapshot()))
+
     def _refresh_process_states(self) -> None:
+        distances = self.service.move_start_distances_cm()
+        for name, label, axes in (('base', self.move_base_distance, 'XY'),
+                                  ('arm', self.move_arm_distance, 'XYZ')):
+            value = distances[name]
+            text = f'{value:.1f}' if value is not None else '—'
+            label.setText(f'Abstand: {text} cm ({axes})')
         self._set_launch_button_state()
         self._set_sim_button_state()
+        self._set_process_toggle_button(self.vicon_button, 'vicon', 'Stop Vicon', 'Start Vicon')
         self._set_publish_path_state()
+        self._set_process_toggle_button(
+            self.index_pose_preview_button, 'index_pose_preview', 'Stop Index Poses', 'Show Index Poses')
         self._set_path_index_button_state()
         self._set_current_tcp_pose_button_state()
         self._set_accuracy_monitor_button_states()

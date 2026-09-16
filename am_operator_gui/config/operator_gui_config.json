@@ -1,7 +1,7 @@
 {
   "accuracy_phase": "baseline",
   "arm_pose_topic": "/vicon/tool_transformed",
-  "base_pose_topic": "/vicon/Base_RB/Base_RB",
+  "base_pose_topic": "/vicon/Base/root",
   "base_smoothing": {
     "enabled": false,
     "external_path_index_stride": 1,
@@ -11,17 +11,38 @@
     "method": "moving_average",
     "moving_average_window_size": 5
   },
-  "control_frame": "map",
+  "control_frame": "vicon_world",
   "default_velocity": 0.15,
   "default_velocity_enabled": true,
   "diff_drive_mode": false,
   "direction_mode": "goal_direction",
-  "external_map_frame": "map",
+  "external_map_frame": "vicon_world",
   "fixed_tool_offset_input_mode": "quaternion",
+  "fixed_tool_offsets_by_platform": {
+    "robotnik": {
+      "quaternion_xyzw": [
+        -0.0009413761436218027,
+        0.004966326633333367,
+        -0.8485563651403607,
+        0.5290808488222819
+      ],
+      "xyz": [
+        0.06024778624735416,
+        -0.034761582103755684,
+        0.21201083581464725
+      ]
+    }
+  },
   "follower_type": "pid",
   "nozzle_offset_mm": 0,
-  "original_arm_index": 100,
-  "path_index": 100,
+  "original_arm_index": 1,
+  "path_index": 5,
+  "path_transform": {
+    "x": 2.211214166215158,
+    "y": 3.672752973473191,
+    "yaw_deg": -90.9305556923864,
+    "z": 0.008663449832553405
+  },
   "path_transforms_by_directory": {
     "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/bunker_paired_demo": {
       "x": 1,
@@ -52,19 +73,85 @@
       "robot_tree_root_frame": "odom"
     },
     "robotnik": {
+      "base_smoothing": {
+        "enabled": false,
+        "external_path_index_stride": 1,
+        "max_accel_wz": 0.5,
+        "max_accel_x": 0.25,
+        "max_accel_y": 0.25,
+        "method": "moving_average",
+        "moving_average_window_size": 5
+      },
       "diff_drive_mode": false,
       "follower_type": "pid",
+      "jparse_limits": {
+        "max_cartesian_angular_velocity": 0.8,
+        "max_cartesian_linear_velocity": 0.25,
+        "max_joint_velocity": 1.5
+      },
+      "path_transforms_by_directory": {
+        "/home/afab/b04_gui_ws/src/match_additive_manufacturing_ros2/components/david_path": {
+          "x": 2.211214166215158,
+          "y": 3.672752973473191,
+          "yaw_deg": -90.9305556923864,
+          "z": 0.008663449832553405
+        }
+      },
+      "pid_gains": {
+        "arm_direction.along_track_kp": 2.0,
+        "arm_direction.final_position_tolerance": 0.005,
+        "arm_direction.kp_z": 0.7,
+        "arm_direction.max_along_track_correction": 0.03,
+        "arm_direction.max_spray_axis_correction": 0.03,
+        "arm_direction.max_tracking_linear_velocity": 0.12,
+        "arm_direction.orthogonal_kp": 1.0,
+        "arm_move.kp_angular": 1.0,
+        "arm_move.kp_linear": 0.8,
+        "arm_move.max_angular_velocity": 0.2,
+        "arm_move.max_linear_velocity": 0.08,
+        "arm_orientation.kd_orientation": 0.0,
+        "arm_orientation.ki_orientation": 0.0,
+        "arm_orientation.kp_orientation": 1.0,
+        "base_follower.kp_x": 0.8,
+        "base_follower.kp_y": 0.8,
+        "base_follower.kp_yaw": 1.2,
+        "base_follower.max_vx": 0.1,
+        "base_follower.max_vy": 0.1,
+        "base_follower.max_wz": 0.5,
+        "base_move.kp_angular_reorient": 1.2,
+        "base_move.kp_angular_to_point": 1.5,
+        "base_move.kp_lateral": 0.6,
+        "base_move.kp_linear": 0.6,
+        "base_move.max_angular_velocity": 0.2,
+        "base_move.max_lateral_velocity": 0.1,
+        "base_move.max_linear_velocity": 0.1
+      },
       "robot_base_frame": "robot_base_footprint",
       "robot_tree_root_frame": "robot_odom"
     }
   },
-  "robot_base_frame": "base_link",
-  "robot_tree_root_frame": "odom",
-  "simulation": true,
+  "robot_base_frame": "robot_base_footprint",
+  "robot_tree_root_frame": "robot_odom",
+  "simulation": false,
   "simulation_gui": false,
   "spray_distance_mm": 100,
-  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path",
+  "trajectory_directory": "/home/afab/b04_gui_ws/src/match_additive_manufacturing_ros2/components/david_path",
   "use_odometry_robot_pose": false,
   "use_vicon_tcp_base_pose_fallback": false,
-  "velocity_override": 50
+  "velocity_override": 50,
+  "vicon_input_topic": "/vicon/EE/root",
+  "vicon_nozzle_transform": {
+    "quaternion_xyzw": [
+      0.5,
+      0.5,
+      0.5,
+      0.5
+    ],
+    "xyz": [
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "vicon_nozzle_transform_input_mode": "quaternion"
 }

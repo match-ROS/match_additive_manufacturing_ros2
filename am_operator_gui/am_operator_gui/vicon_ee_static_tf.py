@@ -5,6 +5,8 @@ from rclpy.node import Node
 from scipy.spatial.transform import Rotation as R
 from tf2_ros import TransformBroadcaster
 
+from .tool_transforms import DEFAULT_VICON_NOZZLE_TRANSFORM, validated_transform
+
 
 class ViconToolTransform(Node):
     def __init__(self):
@@ -20,13 +22,18 @@ class ViconToolTransform(Node):
         self.marker_frame = str(self.get_parameter("marker_frame").value)
         self.tcp_frame = str(self.get_parameter("tcp_frame").value)
 
-        # Local homogeneous transform: marker cluster -> TCP.
-        self.T_marker_tcp = np.array([
-            [-0.423156, -0.906056, -0.001210, 0.184687295],
-            [0.906036, -0.423136, -0.007349, -0.501541068],
-            [0.006147, -0.004206, 0.999972, -0.126693390],
-            [0.0, 0.0, 0.0, 1.0],
-        ])
+        # Nozzle pose relative to the measured marker/EE frame; independent
+        # from the robot flange-to-nozzle kinematic calibration.
+        self.declare_parameter('marker_to_nozzle_xyz', DEFAULT_VICON_NOZZLE_TRANSFORM['xyz'])
+        self.declare_parameter('marker_to_nozzle_quaternion_xyzw',
+                               DEFAULT_VICON_NOZZLE_TRANSFORM['quaternion_xyzw'])
+        offset = validated_transform({
+            'xyz': list(self.get_parameter('marker_to_nozzle_xyz').value),
+            'quaternion_xyzw': list(self.get_parameter('marker_to_nozzle_quaternion_xyzw').value),
+        })
+        self.T_marker_tcp = np.eye(4)
+        self.T_marker_tcp[:3, :3] = R.from_quat(offset['quaternion_xyzw']).as_matrix()
+        self.T_marker_tcp[:3, 3] = offset['xyz']
 
         self.pub = self.create_publisher(PoseStamped, self.output_topic, 10)
         self.tf_broadcaster = TransformBroadcaster(self)

@@ -11,7 +11,8 @@ from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool
 
-from move_to_path_idx.move_to_path_idx import as_bool, clamp
+from move_to_path_idx.move_to_path_idx import as_bool
+from move_to_path_idx.velocity_smoother import VelocitySmoother
 
 
 class ControlState(Enum):
@@ -19,6 +20,8 @@ class ControlState(Enum):
     DRIVE_TO_POINT = 1
     ALIGN_ORIENTATION = 2
     DONE = 3
+    BRAKE_TRANSLATION = 4
+    SETTLING = 5
 
 
 def vector_norm(x: float, y: float, z: float) -> float:
@@ -85,7 +88,7 @@ class MoveUrToPathIdx(Node):
         self.declare_parameter('path_topic', '/ur_path_transformed')
         self.declare_parameter('current_pose_topic', '/current_tcp_pose')
         self.declare_parameter('path_index', 0)
-        self.declare_parameter('publish_rate', 20.0)
+        self.declare_parameter('publish_rate', 100.0)
         self.declare_parameter('distance_tolerance', 0.005)
         self.declare_parameter('orientation_tolerance', 0.06)
         self.declare_parameter('yaw_tolerance', 0.06)
@@ -95,6 +98,10 @@ class MoveUrToPathIdx(Node):
         self.declare_parameter('kp_angular_reorient', 1.0)
         self.declare_parameter('max_linear_velocity', 0.12)
         self.declare_parameter('max_angular_velocity', 0.5)
+        self.declare_parameter('max_linear_acceleration', 0.10)
+        self.declare_parameter('max_linear_jerk', 0.40)
+        self.declare_parameter('max_angular_acceleration', 0.30)
+        self.declare_parameter('max_angular_jerk', 1.20)
         self.declare_parameter('drive_heading_threshold', 0.6)
         self.declare_parameter('publish_stop_count', 3)
         self.declare_parameter('wait_for_start_condition', True)
@@ -141,6 +148,13 @@ class MoveUrToPathIdx(Node):
             self.create_publisher(Bool, completion_topic, 10) if completion_topic else None
         )
         self.completion_published = False
+        self.linear_smoother = VelocitySmoother(
+            float(self.get_parameter('max_linear_acceleration').value),
+            float(self.get_parameter('max_linear_jerk').value))
+        self.angular_smoother = VelocitySmoother(
+            float(self.get_parameter('max_angular_acceleration').value),
+            float(self.get_parameter('max_angular_jerk').value))
+        self.last_command_time = self.get_clock().now()
 
         rate = max(1.0, float(self.get_parameter('publish_rate').value))
         self.create_timer(1.0 / rate, self._tick)
@@ -189,6 +203,7 @@ class MoveUrToPathIdx(Node):
 
         self.target_pose = self.path.poses[self.path_index].pose
         self.state = ControlState.DRIVE_TO_POINT
+        self.last_command_time = self.get_clock().now()
         self.get_logger().info(
             f"Received path and TCP pose. Moving to path index {self.path_index}."
         )
@@ -203,6 +218,21 @@ class MoveUrToPathIdx(Node):
         stop.header.frame_id = self.command_frame
         stop.header.stamp = self.get_clock().now().to_msg()
         self.cmd_vel_pub.publish(stop)
+
+    def _publish_smooth(self, cmd: TwistStamped) -> bool:
+        now = self.get_clock().now()
+        dt = (now - self.last_command_time).nanoseconds * 1e-9
+        self.last_command_time = now
+        if dt <= 0.0:
+            return False
+        linear = cmd.twist.linear
+        angular = cmd.twist.angular
+        linear.x, linear.y, linear.z = self.linear_smoother.step(
+            (linear.x, linear.y, linear.z), dt)
+        angular.x, angular.y, angular.z = self.angular_smoother.step(
+            (angular.x, angular.y, angular.z), dt)
+        self.cmd_vel_pub.publish(cmd)
+        return self.linear_smoother.stopped and self.angular_smoother.stopped
 
     def _publish_completion(self) -> None:
         if self.completion_pub is not None and not self.completion_published:
@@ -243,8 +273,8 @@ class MoveUrToPathIdx(Node):
 
         if self.state == ControlState.DRIVE_TO_POINT:
             if dist <= float(self.get_parameter('distance_tolerance').value):
-                self.state = ControlState.ALIGN_ORIENTATION
-                self._publish_stop()
+                self.state = ControlState.BRAKE_TRANSLATION
+                self._publish_smooth(cmd)
                 return
 
             max_linear = float(self.get_parameter('max_linear_velocity').value)
@@ -255,21 +285,15 @@ class MoveUrToPathIdx(Node):
             cmd.twist.linear.x = float(vx)
             cmd.twist.linear.y = float(vy)
             cmd.twist.linear.z = float(vz)
-            self.cmd_vel_pub.publish(cmd)
+            self._publish_smooth(cmd)
             return
 
         if self.state == ControlState.ALIGN_ORIENTATION:
             distance_tolerance = float(self.get_parameter('distance_tolerance').value)
             orientation_tolerance = self._orientation_tolerance()
             if dist <= distance_tolerance and orientation_error <= orientation_tolerance:
-                self.state = ControlState.DONE
-                self.stop_count_remaining = max(1, int(self.get_parameter('publish_stop_count').value))
-                self._publish_stop()
-                self.get_logger().info(
-                    f"Reached TCP target index {self.path_index}: dist={dist:.3f}, "
-                    f"orientation_error={orientation_error:.3f}. Shutting down."
-                )
-                self._publish_completion()
+                self.state = ControlState.SETTLING
+                self._publish_smooth(cmd)
             else:
                 max_linear = float(self.get_parameter('max_linear_velocity').value)
                 kp_linear = float(self.get_parameter('kp_linear').value)
@@ -293,7 +317,24 @@ class MoveUrToPathIdx(Node):
                 cmd.twist.angular.x = float(wx)
                 cmd.twist.angular.y = float(wy)
                 cmd.twist.angular.z = float(wz)
-                self.cmd_vel_pub.publish(cmd)
+                self._publish_smooth(cmd)
+            return
+
+        if self.state in (ControlState.BRAKE_TRANSLATION, ControlState.SETTLING):
+            if not self._publish_smooth(cmd):
+                return
+            if self.state == ControlState.BRAKE_TRANSLATION:
+                self.state = ControlState.ALIGN_ORIENTATION
+            elif (dist <= float(self.get_parameter('distance_tolerance').value)
+                  and orientation_error <= self._orientation_tolerance()):
+                self.state = ControlState.DONE
+                self.stop_count_remaining = max(1, int(self.get_parameter('publish_stop_count').value))
+                self.get_logger().info(
+                    f'Reached TCP target index {self.path_index} and settled. Shutting down.')
+                self._publish_completion()
+            else:
+                # Braking can change the pose; correct it before declaring success.
+                self.state = ControlState.ALIGN_ORIENTATION
             return
 
         self._publish_stop()

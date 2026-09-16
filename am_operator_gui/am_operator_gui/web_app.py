@@ -13,6 +13,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from .operator_service import OperatorService
+from .robot_debug import format_debug_info
 
 WEB_ROOT = Path(__file__).parent / 'web'
 
@@ -79,6 +80,12 @@ async def settings(payload: SettingsPayload, request: Request):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+@app.get('/api/debug/robot')
+def robot_debug(request: Request):
+    info = operator(request).robot_debug.snapshot()
+    return dict(info, text=format_debug_info(info))
+
+
 @app.put('/api/platform-settings')
 async def platform_settings(payload: PlatformSettingsPayload, request: Request):
     try:
@@ -99,8 +106,8 @@ async def _run_action(request: Request, action: str):
 # Keep every potentially safety-relevant GUI command visible in the HTTP API
 # rather than using an unconstrained command endpoint.
 ACTION_ENDPOINTS = (
-    'launch_all', 'stop_all', 'simulation', 'pose_adapters', 'publish_path',
-    'path_index', 'base_follower', 'arm_follower', 'transformations', 'controllers',
+    'launch_all', 'stop_all', 'simulation', 'vicon', 'pose_adapters', 'publish_path',
+    'index_pose_preview', 'path_index', 'base_follower', 'arm_follower', 'transformations', 'controllers',
     'switch_arm_velocity', 'capture_tool_offset', 'base_accuracy', 'tcp_accuracy',
     'accuracy_report', 'move_base', 'move_arm', 'start_following', 'stop_following',
     'calculate_path_transform', 'check_hardware_topics', 'rviz', 'sync_workspace',

@@ -17,6 +17,19 @@ const toolOffsetElements = {
 };
 const defaultFixedToolOffset = {xyz: [-0.25, 0, 0.015], quaternion_xyzw: [0, -0.7071067812, 0, 0.7071067812]};
 let toolOffsetDisplayedMode = 'quaternion';
+const viconOffsetElements = {
+  mode: document.querySelector('#vicon-offset-mode'),
+  xyz: ['x', 'y', 'z'].map(axis => document.querySelector(`#vicon-offset-${axis}`)),
+  rotation: [0, 1, 2, 3].map(index => document.querySelector(`#vicon-offset-r${index}`)),
+  labels: [0, 1, 2, 3].map(index => document.querySelector(`#vicon-offset-label-${index}`)),
+};
+const defaultViconOffset = {xyz: [0.184687295, -0.501541068, -0.126693390], quaternion_xyzw: [0.0014631726632651522, -0.003424541244486294, 0.8435437871654295, 0.5370474939682958]};
+let viconOffsetDisplayedMode = 'quaternion';
+let toolOffsetPlatform = null;
+let toolOffsetDirty = false;
+let viconOffsetDirty = false;
+[...toolOffsetElements.xyz, ...toolOffsetElements.rotation, toolOffsetElements.mode].forEach(input => input.addEventListener('input', () => { toolOffsetDirty = true; }));
+[...viconOffsetElements.xyz, ...viconOffsetElements.rotation, viconOffsetElements.mode].forEach(input => input.addEventListener('input', () => { viconOffsetDirty = true; }));
 const platformSettingsElement = document.querySelector('#platform-settings');
 let renderedPlatformSettingsSignature = null;
 const platformTuningGroups = [
@@ -149,6 +162,58 @@ function renderToolOffset(config) {
   toolOffsetElements.mode.value = mode;
   toolOffsetDisplayedMode = mode;
   updateToolOffsetMode();
+}
+function viconOffsetFocused() {
+  return [...viconOffsetElements.xyz, ...viconOffsetElements.rotation, viconOffsetElements.mode]
+    .includes(document.activeElement);
+}
+function updateViconOffsetMode() {
+  const rpy = viconOffsetElements.mode.value === 'rpy';
+  const labels = rpy ? ['Roll (deg)', 'Pitch (deg)', 'Yaw (deg)', 'Qw'] : ['Qx', 'Qy', 'Qz', 'Qw'];
+  viconOffsetElements.labels.forEach((label, index) => label.textContent = labels[index]);
+  viconOffsetElements.rotation.forEach((input, index) => {
+    input.disabled = rpy && index === 3;
+    input.step = rpy && index < 3 ? '0.1' : '0.000001';
+  });
+}
+function convertViconOffsetMode() {
+  const targetMode = viconOffsetElements.mode.value;
+  if (targetMode === viconOffsetDisplayedMode) {
+    updateViconOffsetMode();
+    return;
+  }
+  try {
+    if (targetMode === 'rpy') {
+      const quaternion = normalizeQuaternion(viconOffsetElements.rotation.map(input => Number(input.value)));
+      const rpy = quaternionToRpyDegrees(quaternion);
+      viconOffsetElements.rotation.slice(0, 3).forEach((input, index) => input.value = rpy[index]);
+      viconOffsetElements.rotation[3].value = quaternion[3];
+    } else {
+      const quaternion = rpyDegreesToQuaternion(
+        viconOffsetElements.rotation.slice(0, 3).map(input => Number(input.value))
+      );
+      viconOffsetElements.rotation.forEach((input, index) => input.value = quaternion[index]);
+    }
+    viconOffsetDisplayedMode = targetMode;
+    updateViconOffsetMode();
+  } catch (error) {
+    showFeedback(`Rotation could not be converted: ${error.message}`, true);
+    viconOffsetElements.mode.value = viconOffsetDisplayedMode;
+    updateViconOffsetMode();
+  }
+}
+function renderViconOffset(config) {
+  const offset = config.vicon_nozzle_transform || defaultViconOffset;
+  let quaternion;
+  try { quaternion = normalizeQuaternion((offset.quaternion_xyzw || defaultViconOffset.quaternion_xyzw).map(Number)); }
+  catch (_) { quaternion = defaultViconOffset.quaternion_xyzw; }
+  viconOffsetElements.xyz.forEach((input, index) => input.value = Number(offset.xyz?.[index] ?? defaultViconOffset.xyz[index]));
+  const mode = config.vicon_nozzle_transform_input_mode === 'rpy' ? 'rpy' : 'quaternion';
+  const rotation = mode === 'rpy' ? [...quaternionToRpyDegrees(quaternion), quaternion[3]] : quaternion;
+  viconOffsetElements.rotation.forEach((input, index) => input.value = rotation[index]);
+  viconOffsetElements.mode.value = mode;
+  viconOffsetDisplayedMode = mode;
+  updateViconOffsetMode();
 }
 
 function platformSettingsFocused() {
@@ -328,14 +393,25 @@ function render(state) {
   latestState = state;
   const config = state.config || {};
   const active = document.activeElement;
+  if (toolOffsetPlatform !== config.platform) {
+    toolOffsetDirty = false;
+    toolOffsetPlatform = config.platform;
+    renderToolOffset(config);
+  }
   fields.forEach(field => { if (active !== field) setField(field, config[field.dataset.setting]); });
-  if (!toolOffsetFocused()) renderToolOffset(config);
+  if (!toolOffsetFocused() && !toolOffsetDirty) renderToolOffset(config);
+  if (!viconOffsetFocused() && !viconOffsetDirty) renderViconOffset(config);
   renderPlatformSettings(state, config);
   if (active !== document.querySelector('#advanced-json')) document.querySelector('#advanced-json').value = JSON.stringify(config, null, 2);
   const labels = {path:'Pfad', robot_pose:'Roboterpose', arm_pose:'Deposition pose', jparse_ready:'J-PARSE', controller_ready:'Controller'};
   document.querySelector('#status').innerHTML = Object.entries(labels).map(([key, label]) => `<span class="${state.status[key] ? 'ok' : 'wait'}">${label}: ${state.status[key] ? 'bereit' : 'wartet'}</span>`).join('');
   document.querySelector('#ros-state').textContent = state.ros_error ? `ROS nicht verbunden: ${state.ros_error}` : 'ROS Bridge aktiv';
   renderActionButtons(state.actions);
+  for (const name of ['base', 'arm']) {
+    const distance = state.move_start_distances_cm?.[name];
+    document.querySelector(`#move-${name}-distance`).textContent =
+      `Abstand: ${Number.isFinite(distance) ? distance.toFixed(1) : '—'} cm`;
+  }
   renderHardwareTopicCheck(state.hardware_topic_results || []);
   renderConsole(state.logs || []);
 }
@@ -410,11 +486,45 @@ document.querySelector('#save-tool-offset').addEventListener('click', async () =
       fixed_tool_offsets_by_platform: platformOffsets,
       fixed_tool_offset_input_mode: toolOffsetElements.mode.value,
     }})}).then(jsonResponse);
+    toolOffsetDirty = false;
     showFeedback('Flange-to-nozzle transform saved; restart arm controllers and follower to apply.');
     await refresh();
   } catch (error) { showFeedback(`Tool transform could not be saved: ${error.message}`, true); }
 });
+viconOffsetElements.mode.addEventListener('change', convertViconOffsetMode);
+document.querySelector('#save-vicon-offset').addEventListener('click', async () => {
+  try {
+    const xyz = viconOffsetElements.xyz.map(input => Number(input.value));
+    const quaternion = viconOffsetElements.mode.value === 'rpy'
+      ? rpyDegreesToQuaternion(viconOffsetElements.rotation.slice(0, 3).map(input => Number(input.value)))
+      : normalizeQuaternion(viconOffsetElements.rotation.map(input => Number(input.value)));
+    if (![...xyz, ...quaternion].every(Number.isFinite)) throw new Error('All transform values must be numbers');
+    await fetch('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({values: {
+      vicon_nozzle_transform: {xyz, quaternion_xyzw: quaternion},
+      vicon_nozzle_transform_input_mode: viconOffsetElements.mode.value,
+    }})}).then(jsonResponse);
+    viconOffsetDirty = false;
+    showFeedback('Vicon-to-nozzle transform saved; restart Pose Adapters to apply.');
+    await refresh();
+  } catch (error) { showFeedback(`Vicon transform could not be saved: ${error.message}`, true); }
+});
 [consoleElements.source, ...consoleElements.levels, consoleElements.search, consoleElements.autoScroll].forEach(element => element.addEventListener(element === consoleElements.search ? 'input' : 'change', () => { saveConsolePreferences(); if (latestState) renderConsole(latestState.logs || []); }));
 consoleElements.clear.addEventListener('click', () => { clearedAfter = Date.now(); if (latestState) renderConsole(latestState.logs || []); });
 loadConsolePreferences();
+const robotDebugDetails = document.querySelector('#robot-debug');
+let robotDebugPending = false;
+async function refreshRobotDebug() {
+  if (!robotDebugDetails.open || robotDebugPending) return;
+  robotDebugPending = true;
+  try {
+    const info = await fetch('/api/debug/robot').then(jsonResponse);
+    document.querySelector('#robot-debug-info').textContent = info.text;
+  } catch (error) {
+    document.querySelector('#robot-debug-info').textContent = `Prüfung fehlgeschlagen: ${error.message}`;
+  } finally {
+    robotDebugPending = false;
+  }
+}
+robotDebugDetails.addEventListener('toggle', refreshRobotDebug);
+setInterval(refreshRobotDebug, 1000);
 refresh(); setInterval(refresh, 1000);

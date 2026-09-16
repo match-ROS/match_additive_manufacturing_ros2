@@ -151,7 +151,7 @@ def generate_launch_description():
             'path_topic': LaunchConfiguration('arm_path_topic'),
             'current_pose_topic': LaunchConfiguration('current_arm_pose_topic'),
             'path_index': LaunchConfiguration('initial_path_index'),
-            'publish_rate': 20.0,
+            'publish_rate': 100.0,
             'distance_tolerance': 0.03,
             'orientation_tolerance': 0.06,
             'kp_linear': 0.8,

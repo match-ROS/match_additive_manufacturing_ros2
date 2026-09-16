@@ -1,0 +1,1275 @@
+{
+  "restore_restart": {
+    "mode": "restore",
+    "active": true,
+    "controller": {
+      "pid": 1474495,
+      "environment": [
+        "ROS_DOMAIN_ID=38",
+        "RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
+      ]
+    }
+  },
+  "ethernet_async_connectivity": {
+    "joint_samples": {
+      "base": {
+        "count": 605,
+        "max_age_s": 0.8739306339685059,
+        "max_velocity": 0.0019153670699446888
+      },
+      "arm": {
+        "count": 3573,
+        "max_age_s": 0.7085485421333008,
+        "max_velocity": 0
+      }
+    },
+    "tf_samples": {
+      "robot_odom -> robot_base_footprint": {
+        "count": 502,
+        "max_age_s": 0.6970422203306885
+      }
+    },
+    "services": {
+      "/robot": [
+        {
+          "name": "robotnik_io_controller",
+          "state": "active"
+        },
+        {
+          "name": "joint_state_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "robotnik_base_control",
+          "state": "active"
+        }
+      ],
+      "/robot/arm": [
+        {
+          "name": "joint_trajectory_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "forward_velocity_controller",
+          "state": "active"
+        },
+        {
+          "name": "forward_position_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "scaled_joint_trajectory_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "passthrough_trajectory_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "force_mode_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "tcp_pose_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "tool_contact_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "io_and_status_controller",
+          "state": "active"
+        },
+        {
+          "name": "speed_scaling_state_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "freedrive_mode_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "joint_state_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "force_torque_sensor_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "ur_configuration_controller",
+          "state": "active"
+        }
+      ]
+    }
+  },
+  "clock_offset_samples": [
+    {
+      "round_trip_s": 0.31477952003479004,
+      "robot_minus_pc_midpoint_s": -0.516568660736084
+    },
+    {
+      "round_trip_s": 0.28946948051452637,
+      "robot_minus_pc_midpoint_s": -0.5294780731201172
+    },
+    {
+      "round_trip_s": 0.2860250473022461,
+      "robot_minus_pc_midpoint_s": -0.5311851501464844
+    }
+  ],
+  "ethernet_sync_connectivity": {
+    "joint_samples": {
+      "base": {
+        "count": 588,
+        "max_age_s": 0.7192865265782471,
+        "max_velocity": 0.0019172578967712936
+      },
+      "arm": {
+        "count": 4029,
+        "max_age_s": 0.709678077427002,
+        "max_velocity": 0
+      }
+    },
+    "tf_samples": {
+      "robot_odom -> robot_base_footprint": {
+        "count": 500,
+        "max_age_s": 0.6753820385700684
+      }
+    },
+    "services": {
+      "/robot": [
+        {
+          "name": "robotnik_io_controller",
+          "state": "active"
+        },
+        {
+          "name": "joint_state_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "robotnik_base_control",
+          "state": "active"
+        }
+      ],
+      "/robot/arm": [
+        {
+          "name": "joint_trajectory_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "forward_velocity_controller",
+          "state": "active"
+        },
+        {
+          "name": "forward_position_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "scaled_joint_trajectory_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "passthrough_trajectory_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "force_mode_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "tcp_pose_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "tool_contact_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "io_and_status_controller",
+          "state": "active"
+        },
+        {
+          "name": "speed_scaling_state_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "freedrive_mode_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "joint_state_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "force_torque_sensor_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "ur_configuration_controller",
+          "state": "active"
+        }
+      ]
+    }
+  },
+  "restore_connectivity": {
+    "joint_samples": {
+      "base": {
+        "count": 445,
+        "max_age_s": 1.1211773713948974,
+        "max_velocity": 0.000627299272389758
+      },
+      "arm": {
+        "count": 2771,
+        "max_age_s": 0.8396272049536133,
+        "max_velocity": 0
+      }
+    },
+    "tf_samples": {
+      "robot_odom -> robot_base_footprint": {
+        "count": 342,
+        "max_age_s": 0.6796322401795654
+      }
+    },
+    "services": {
+      "/robot": [
+        {
+          "name": "robotnik_io_controller",
+          "state": "active"
+        },
+        {
+          "name": "joint_state_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "robotnik_base_control",
+          "state": "active"
+        }
+      ],
+      "/robot/arm": [
+        {
+          "name": "joint_trajectory_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "forward_velocity_controller",
+          "state": "active"
+        },
+        {
+          "name": "forward_position_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "scaled_joint_trajectory_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "passthrough_trajectory_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "force_mode_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "tcp_pose_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "tool_contact_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "io_and_status_controller",
+          "state": "active"
+        },
+        {
+          "name": "speed_scaling_state_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "freedrive_mode_controller",
+          "state": "inactive"
+        },
+        {
+          "name": "joint_state_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "force_torque_sensor_broadcaster",
+          "state": "active"
+        },
+        {
+          "name": "ur_configuration_controller",
+          "state": "active"
+        }
+      ]
+    }
+  },
+  "ethernet_sync_restart": {
+    "mode": "ethernet_sync",
+    "active": true,
+    "controller": {
+      "pid": 1432234,
+      "environment": [
+        "FASTRTPS_DEFAULT_PROFILES_FILE=/tmp/fastdds_robot_diagnostic_candidate.xml",
+        "ROS_DOMAIN_ID=38",
+        "RMW_FASTRTPS_PUBLICATION_MODE=SYNCHRONOUS",
+        "RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
+      ]
+    }
+  },
+  "ethernet_async_restart": {
+    "mode": "ethernet_async",
+    "active": true,
+    "controller": {
+      "pid": 1453188,
+      "environment": [
+        "FASTRTPS_DEFAULT_PROFILES_FILE=/tmp/fastdds_robot_diagnostic_candidate.xml",
+        "ROS_DOMAIN_ID=38",
+        "RMW_FASTRTPS_PUBLICATION_MODE=ASYNCHRONOUS",
+        "RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
+      ]
+    }
+  },
+  "ethernet_sync_gui_metrics": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 8016987.3,
+        "tx_bytes": 4407478.9,
+        "rx_packets": 31363.7,
+        "tx_packets": 18939.2
+      },
+      "wlp4s0": {
+        "rx_bytes": 1031085.3,
+        "tx_bytes": 681087.3,
+        "rx_packets": 5069.4,
+        "tx_packets": 2942.3
+      },
+      "lo": {
+        "rx_bytes": 6943672.0,
+        "tx_bytes": 6943672.0,
+        "rx_packets": 47229.1,
+        "tx_packets": 47229.1
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 26.2
+          },
+          {
+            "port": 17002,
+            "drops": 1590.6
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 2,
+        "overrun_max_ms": 2.641307,
+        "overrun_mean_ms": 2.38,
+        "other_logs": []
+      },
+      "1432234": {
+        "udp_drops_per_second": [
+          {
+            "port": 7009,
+            "drops": 0.0
+          },
+          {
+            "port": 7009,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16928,
+            "drops": 0.0
+          },
+          {
+            "port": 16928,
+            "drops": 25.2
+          },
+          {
+            "port": 16929,
+            "drops": 0.0
+          },
+          {
+            "port": 16929,
+            "drops": 0.0
+          },
+          {
+            "port": 35498,
+            "drops": 0.0
+          },
+          {
+            "port": 35498,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 31.203812,
+        "overrun_mean_ms": 31.2,
+        "other_logs": []
+      }
+    }
+  },
+  "ethernet_async_gui_metrics": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 7906496.6,
+        "tx_bytes": 4440861.3,
+        "rx_packets": 30568.5,
+        "tx_packets": 18942.7
+      },
+      "wlp4s0": {
+        "rx_bytes": 849471.5,
+        "tx_bytes": 723845.1,
+        "rx_packets": 4161.0,
+        "tx_packets": 3100.0
+      },
+      "lo": {
+        "rx_bytes": 7290945.2,
+        "tx_bytes": 7290945.2,
+        "rx_packets": 49602.7,
+        "tx_packets": 49602.7
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 35.2
+          },
+          {
+            "port": 17002,
+            "drops": 1550.1
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 3,
+        "overrun_max_ms": 5.379459,
+        "overrun_mean_ms": 3.6,
+        "other_logs": []
+      },
+      "1453188": {
+        "udp_drops_per_second": [
+          {
+            "port": 7003,
+            "drops": 0.0
+          },
+          {
+            "port": 7003,
+            "drops": 0.0
+          },
+          {
+            "port": 33148,
+            "drops": 0.0
+          },
+          {
+            "port": 33148,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 81.6
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 76.331642,
+        "overrun_mean_ms": 76.33,
+        "other_logs": []
+      }
+    }
+  },
+  "ethernet_sync1": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2419193.0,
+        "tx_bytes": 653973.0,
+        "rx_packets": 3073.3,
+        "tx_packets": 2820.4
+      },
+      "wlp4s0": {
+        "rx_bytes": 79215.4,
+        "tx_bytes": 394638.5,
+        "rx_packets": 337.1,
+        "tx_packets": 1371.8
+      },
+      "lo": {
+        "rx_bytes": 1258418.1,
+        "tx_bytes": 1258418.1,
+        "rx_packets": 6517.2,
+        "tx_packets": 6517.2
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 125.8
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 5.268901,
+        "overrun_mean_ms": 5.27,
+        "other_logs": []
+      },
+      "1432234": {
+        "udp_drops_per_second": [
+          {
+            "port": 7009,
+            "drops": 0.0
+          },
+          {
+            "port": 7009,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16928,
+            "drops": 0.0
+          },
+          {
+            "port": 16928,
+            "drops": 61.4
+          },
+          {
+            "port": 16929,
+            "drops": 0.0
+          },
+          {
+            "port": 16929,
+            "drops": 0.0
+          },
+          {
+            "port": 35498,
+            "drops": 0.0
+          },
+          {
+            "port": 35498,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 58.09508,
+        "overrun_mean_ms": 58.1,
+        "other_logs": []
+      }
+    },
+    "probe_output": "PROBE READY\nDISCOVERED [('controller_manager', '/robot/arm'), ('ur20', '/robot/arm'), ('scaled_joint_trajectory_controller', '/robot/arm'), ('forward_velocity_controller', '/robot/arm'), ('forward_position_controller', '/robot/arm'), ('force_mode_controller', '/robot/arm'), ('transform_listener_impl_63a150a1ca10', '/robot/arm'), ('passthrough_trajectory_controller', '/robot/arm'), ('freedrive_mode_controller', '/robot/arm'), ('tool_contact_controller', '/robot/arm'), ('joint_state_broadcaster', '/robot/arm'), ('io_and_status_controller', '/robot/arm'), ('speed_scaling_state_broadcaster', '/robot/arm'), ('force_torque_sensor_broadcaster', '/robot/arm'), ('tcp_pose_broadcaster', '/robot/arm'), ('ur_configuration_controller', '/robot/arm'), ('joint_trajectory_controller', '/robot/arm'), ('ur_robot_state_helper', '/robot/arm'), ('controller_stopper', '/robot/arm'), ('urscript_interface', '/robot/arm'), ('robot_state_publisher_ros2_control', '/robot/arm'), ('move', '/robot'), ('transform_listener_impl_5cbb991ad260', '/robot'), ('omni_dock_law_charging_dock', '/robot'), ('transform_listener_impl_61a4466b51d0', '/robot'), ('robotnik_locator', '/robot'), ('pose_filter', '/robot'), ('transform_listener_impl_5baf809fb4f0', '/robot'), ('controller_server', '/robot'), ('local_costmap', '/robot/local_costmap'), ('transform_listener_impl_5e91cbf17e40', '/robot'), ('smoother_server', '/robot'), ('planner_server', '/robot'), ('global_costmap', '/robot/global_costmap'), ('transform_listener_impl_59c05a83a920', '/robot'), ('behavior_server', '/robot'), ('bt_navigator', '/robot'), ('bt_navigator_navigate_to_pose_rclcpp_node', '/robot'), ('bt_navigator_navigate_through_poses_rclcpp_node', '/robot'), ('waypoint_follower', '/robot'), ('velocity_smoother', '/robot'), ('lifecycle_manager_navigation', '/robot'), ('front_laser_filter', '/robot'), ('rear_laser_filter', '/robot'), ('laser_filter_relay', '/robot'), ('rear_laser_filter_relay', '/robot'), ('robotnik_charge', '/robot'), ('transform_listener_impl_5ef5065acae0', '/robot'), ('amcl', '/robot'), ('lifecycle_manager_localization', '/robot'), ('map_server', '/robot'), ('lifecycle_manager_map_server', '/robot'), ('launch_ros_313739', '/'), ('_ros2cli_daemon_38_ca04a946b9834ede9c54187e26eb888e', '/'), ('dashboard_client', '/robot/arm'), ('corrected_tool0_controller_tf', '/robot/arm'), ('dashboard_monitor_node', '/robot/arm'), ('lift', '/robot'), ('robot_state_publisher_ros2_control', '/robot'), ('controller_manager', '/robot'), ('rbvogui_xl', '/robot'), ('robotnik_base_control', '/robot'), ('joint_state_broadcaster', '/robot'), ('robotnik_io_controller', '/robot'), ('robotnik_base_hw_monitor', '/robot'), ('robotnik_brakes_supervisor', '/robot'), ('robot_state_publisher', '/robot'), ('joy_node', '/robot'), ('robotnik_pad', '/robot'), ('battery_estimator', '/robot'), ('imu', '/robot'), ('twist_mux', '/robot'), ('charge_manager', '/robot'), ('front_rgbd_camera', '/robot'), ('param_handle', '/robot/rslidar_sdk'), ('rslidar_points_destination_0', '/robot/rslidar_sdk'), ('pointcloud_to_laserscan', '/robot'), ('transform_listener_impl_5b4f73b05320', '/robot'), ('_ros2cli_daemon_38_418ec494f3514542bbbb8d66c0265f9d', '/'), ('am_operator_gui', '/'), ('empty_discovery_probe', '/')]\n",
+    "base_discovered": true
+  },
+  "ethernet_sync2": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2418777.1,
+        "tx_bytes": 650270.1,
+        "rx_packets": 3072.9,
+        "tx_packets": 2809.2
+      },
+      "wlp4s0": {
+        "rx_bytes": 76792.5,
+        "tx_bytes": 387026.4,
+        "rx_packets": 343.4,
+        "tx_packets": 1350.6
+      },
+      "lo": {
+        "rx_bytes": 1221433.8,
+        "tx_bytes": 1221433.8,
+        "rx_packets": 6243.6,
+        "tx_packets": 6243.6
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 99.3
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 11.781003,
+        "overrun_mean_ms": 11.78,
+        "other_logs": []
+      },
+      "1432234": {
+        "udp_drops_per_second": [
+          {
+            "port": 7009,
+            "drops": 0.0
+          },
+          {
+            "port": 7009,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16928,
+            "drops": 0.0
+          },
+          {
+            "port": 16928,
+            "drops": 30.9
+          },
+          {
+            "port": 16929,
+            "drops": 0.0
+          },
+          {
+            "port": 16929,
+            "drops": 0.0
+          },
+          {
+            "port": 35498,
+            "drops": 0.0
+          },
+          {
+            "port": 35498,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 30.58397,
+        "overrun_mean_ms": 30.58,
+        "other_logs": []
+      }
+    },
+    "probe_output": "PROBE READY\nDISCOVERED [('controller_manager', '/robot/arm'), ('ur20', '/robot/arm'), ('scaled_joint_trajectory_controller', '/robot/arm'), ('forward_velocity_controller', '/robot/arm'), ('forward_position_controller', '/robot/arm'), ('force_mode_controller', '/robot/arm'), ('transform_listener_impl_63a150a1ca10', '/robot/arm'), ('passthrough_trajectory_controller', '/robot/arm'), ('freedrive_mode_controller', '/robot/arm'), ('tool_contact_controller', '/robot/arm'), ('joint_state_broadcaster', '/robot/arm'), ('io_and_status_controller', '/robot/arm'), ('speed_scaling_state_broadcaster', '/robot/arm'), ('force_torque_sensor_broadcaster', '/robot/arm'), ('tcp_pose_broadcaster', '/robot/arm'), ('ur_configuration_controller', '/robot/arm'), ('joint_trajectory_controller', '/robot/arm'), ('ur_robot_state_helper', '/robot/arm'), ('controller_stopper', '/robot/arm'), ('urscript_interface', '/robot/arm'), ('robot_state_publisher_ros2_control', '/robot/arm'), ('move', '/robot'), ('transform_listener_impl_5cbb991ad260', '/robot'), ('omni_dock_law_charging_dock', '/robot'), ('transform_listener_impl_61a4466b51d0', '/robot'), ('robotnik_locator', '/robot'), ('pose_filter', '/robot'), ('transform_listener_impl_5baf809fb4f0', '/robot'), ('controller_server', '/robot'), ('local_costmap', '/robot/local_costmap'), ('transform_listener_impl_5e91cbf17e40', '/robot'), ('smoother_server', '/robot'), ('planner_server', '/robot'), ('global_costmap', '/robot/global_costmap'), ('transform_listener_impl_59c05a83a920', '/robot'), ('behavior_server', '/robot'), ('bt_navigator', '/robot'), ('bt_navigator_navigate_to_pose_rclcpp_node', '/robot'), ('bt_navigator_navigate_through_poses_rclcpp_node', '/robot'), ('waypoint_follower', '/robot'), ('velocity_smoother', '/robot'), ('lifecycle_manager_navigation', '/robot'), ('front_laser_filter', '/robot'), ('rear_laser_filter', '/robot'), ('laser_filter_relay', '/robot'), ('rear_laser_filter_relay', '/robot'), ('robotnik_charge', '/robot'), ('transform_listener_impl_5ef5065acae0', '/robot'), ('amcl', '/robot'), ('lifecycle_manager_localization', '/robot'), ('map_server', '/robot'), ('lifecycle_manager_map_server', '/robot'), ('launch_ros_313739', '/'), ('_ros2cli_daemon_38_ca04a946b9834ede9c54187e26eb888e', '/'), ('dashboard_client', '/robot/arm'), ('corrected_tool0_controller_tf', '/robot/arm'), ('dashboard_monitor_node', '/robot/arm'), ('lift', '/robot'), ('robot_state_publisher_ros2_control', '/robot'), ('controller_manager', '/robot'), ('rbvogui_xl', '/robot'), ('robotnik_base_control', '/robot'), ('joint_state_broadcaster', '/robot'), ('robotnik_io_controller', '/robot'), ('robotnik_base_hw_monitor', '/robot'), ('robotnik_brakes_supervisor', '/robot'), ('robot_state_publisher', '/robot'), ('joy_node', '/robot'), ('robotnik_pad', '/robot'), ('battery_estimator', '/robot'), ('imu', '/robot'), ('twist_mux', '/robot'), ('charge_manager', '/robot'), ('front_rgbd_camera', '/robot'), ('param_handle', '/robot/rslidar_sdk'), ('rslidar_points_destination_0', '/robot/rslidar_sdk'), ('pointcloud_to_laserscan', '/robot'), ('transform_listener_impl_5b4f73b05320', '/robot'), ('_ros2cli_daemon_38_418ec494f3514542bbbb8d66c0265f9d', '/'), ('am_operator_gui', '/'), ('empty_discovery_probe', '/')]\n",
+    "base_discovered": true
+  },
+  "ethernet_sync3": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2435872.4,
+        "tx_bytes": 730011.5,
+        "rx_packets": 3174.8,
+        "tx_packets": 3086.2
+      },
+      "wlp4s0": {
+        "rx_bytes": 86669.7,
+        "tx_bytes": 367960.8,
+        "rx_packets": 385.2,
+        "tx_packets": 1327.8
+      },
+      "lo": {
+        "rx_bytes": 1748157.0,
+        "tx_bytes": 1748157.0,
+        "rx_packets": 9997.1,
+        "tx_packets": 9997.1
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 203.4
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 2,
+        "overrun_max_ms": 2.386567,
+        "overrun_mean_ms": 2.28,
+        "other_logs": []
+      },
+      "1432234": {
+        "udp_drops_per_second": [
+          {
+            "port": 7009,
+            "drops": 0.0
+          },
+          {
+            "port": 7009,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16928,
+            "drops": 0.0
+          },
+          {
+            "port": 16928,
+            "drops": 33.1
+          },
+          {
+            "port": 16929,
+            "drops": 0.0
+          },
+          {
+            "port": 16929,
+            "drops": 0.0
+          },
+          {
+            "port": 35498,
+            "drops": 0.0
+          },
+          {
+            "port": 35498,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 41.873836,
+        "overrun_mean_ms": 41.87,
+        "other_logs": []
+      }
+    },
+    "probe_output": "PROBE READY\nDISCOVERED [('controller_manager', '/robot/arm'), ('ur20', '/robot/arm'), ('scaled_joint_trajectory_controller', '/robot/arm'), ('forward_velocity_controller', '/robot/arm'), ('forward_position_controller', '/robot/arm'), ('force_mode_controller', '/robot/arm'), ('transform_listener_impl_63a150a1ca10', '/robot/arm'), ('passthrough_trajectory_controller', '/robot/arm'), ('freedrive_mode_controller', '/robot/arm'), ('tool_contact_controller', '/robot/arm'), ('joint_state_broadcaster', '/robot/arm'), ('io_and_status_controller', '/robot/arm'), ('speed_scaling_state_broadcaster', '/robot/arm'), ('force_torque_sensor_broadcaster', '/robot/arm'), ('tcp_pose_broadcaster', '/robot/arm'), ('ur_configuration_controller', '/robot/arm'), ('joint_trajectory_controller', '/robot/arm'), ('ur_robot_state_helper', '/robot/arm'), ('controller_stopper', '/robot/arm'), ('urscript_interface', '/robot/arm'), ('robot_state_publisher_ros2_control', '/robot/arm'), ('move', '/robot'), ('transform_listener_impl_5cbb991ad260', '/robot'), ('omni_dock_law_charging_dock', '/robot'), ('transform_listener_impl_61a4466b51d0', '/robot'), ('robotnik_locator', '/robot'), ('pose_filter', '/robot'), ('transform_listener_impl_5baf809fb4f0', '/robot'), ('controller_server', '/robot'), ('local_costmap', '/robot/local_costmap'), ('transform_listener_impl_5e91cbf17e40', '/robot'), ('smoother_server', '/robot'), ('planner_server', '/robot'), ('global_costmap', '/robot/global_costmap'), ('transform_listener_impl_59c05a83a920', '/robot'), ('behavior_server', '/robot'), ('bt_navigator', '/robot'), ('bt_navigator_navigate_to_pose_rclcpp_node', '/robot'), ('bt_navigator_navigate_through_poses_rclcpp_node', '/robot'), ('waypoint_follower', '/robot'), ('velocity_smoother', '/robot'), ('lifecycle_manager_navigation', '/robot'), ('front_laser_filter', '/robot'), ('rear_laser_filter', '/robot'), ('laser_filter_relay', '/robot'), ('rear_laser_filter_relay', '/robot'), ('robotnik_charge', '/robot'), ('transform_listener_impl_5ef5065acae0', '/robot'), ('amcl', '/robot'), ('lifecycle_manager_localization', '/robot'), ('map_server', '/robot'), ('lifecycle_manager_map_server', '/robot'), ('launch_ros_313739', '/'), ('_ros2cli_daemon_38_ca04a946b9834ede9c54187e26eb888e', '/'), ('dashboard_client', '/robot/arm'), ('corrected_tool0_controller_tf', '/robot/arm'), ('dashboard_monitor_node', '/robot/arm'), ('lift', '/robot'), ('robot_state_publisher_ros2_control', '/robot'), ('controller_manager', '/robot'), ('rbvogui_xl', '/robot'), ('robotnik_base_control', '/robot'), ('joint_state_broadcaster', '/robot'), ('robotnik_io_controller', '/robot'), ('robotnik_base_hw_monitor', '/robot'), ('robotnik_brakes_supervisor', '/robot'), ('robot_state_publisher', '/robot'), ('joy_node', '/robot'), ('robotnik_pad', '/robot'), ('battery_estimator', '/robot'), ('imu', '/robot'), ('twist_mux', '/robot'), ('charge_manager', '/robot'), ('front_rgbd_camera', '/robot'), ('param_handle', '/robot/rslidar_sdk'), ('rslidar_points_destination_0', '/robot/rslidar_sdk'), ('pointcloud_to_laserscan', '/robot'), ('transform_listener_impl_5b4f73b05320', '/robot'), ('_ros2cli_daemon_38_418ec494f3514542bbbb8d66c0265f9d', '/'), ('am_operator_gui', '/'), ('empty_discovery_probe', '/')]\n",
+    "base_discovered": true
+  },
+  "ethernet_async1": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2442571.7,
+        "tx_bytes": 657269.9,
+        "rx_packets": 3208.0,
+        "tx_packets": 2814.1
+      },
+      "wlp4s0": {
+        "rx_bytes": 72682.9,
+        "tx_bytes": 387755.2,
+        "rx_packets": 330.5,
+        "tx_packets": 1357.8
+      },
+      "lo": {
+        "rx_bytes": 1204064.8,
+        "tx_bytes": 1204064.8,
+        "rx_packets": 6162.1,
+        "tx_packets": 6162.1
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 117.4
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 2.112958,
+        "overrun_mean_ms": 2.11,
+        "other_logs": []
+      },
+      "1453188": {
+        "udp_drops_per_second": [
+          {
+            "port": 7003,
+            "drops": 0.0
+          },
+          {
+            "port": 7003,
+            "drops": 0.0
+          },
+          {
+            "port": 33148,
+            "drops": 0.0
+          },
+          {
+            "port": 33148,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 9.7
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 0,
+        "overrun_max_ms": 0,
+        "overrun_mean_ms": 0,
+        "other_logs": []
+      }
+    },
+    "probe_output": "PROBE READY\nDISCOVERED [('controller_manager', '/robot/arm'), ('ur20', '/robot/arm'), ('scaled_joint_trajectory_controller', '/robot/arm'), ('forward_velocity_controller', '/robot/arm'), ('forward_position_controller', '/robot/arm'), ('force_mode_controller', '/robot/arm'), ('transform_listener_impl_63a150a1ca10', '/robot/arm'), ('passthrough_trajectory_controller', '/robot/arm'), ('freedrive_mode_controller', '/robot/arm'), ('tool_contact_controller', '/robot/arm'), ('joint_state_broadcaster', '/robot/arm'), ('io_and_status_controller', '/robot/arm'), ('speed_scaling_state_broadcaster', '/robot/arm'), ('force_torque_sensor_broadcaster', '/robot/arm'), ('tcp_pose_broadcaster', '/robot/arm'), ('ur_configuration_controller', '/robot/arm'), ('joint_trajectory_controller', '/robot/arm'), ('ur_robot_state_helper', '/robot/arm'), ('controller_stopper', '/robot/arm'), ('urscript_interface', '/robot/arm'), ('robot_state_publisher_ros2_control', '/robot/arm'), ('move', '/robot'), ('transform_listener_impl_5cbb991ad260', '/robot'), ('omni_dock_law_charging_dock', '/robot'), ('transform_listener_impl_61a4466b51d0', '/robot'), ('robotnik_locator', '/robot'), ('pose_filter', '/robot'), ('transform_listener_impl_5baf809fb4f0', '/robot'), ('controller_server', '/robot'), ('local_costmap', '/robot/local_costmap'), ('transform_listener_impl_5e91cbf17e40', '/robot'), ('smoother_server', '/robot'), ('planner_server', '/robot'), ('global_costmap', '/robot/global_costmap'), ('transform_listener_impl_59c05a83a920', '/robot'), ('behavior_server', '/robot'), ('bt_navigator', '/robot'), ('bt_navigator_navigate_to_pose_rclcpp_node', '/robot'), ('bt_navigator_navigate_through_poses_rclcpp_node', '/robot'), ('waypoint_follower', '/robot'), ('velocity_smoother', '/robot'), ('lifecycle_manager_navigation', '/robot'), ('front_laser_filter', '/robot'), ('rear_laser_filter', '/robot'), ('laser_filter_relay', '/robot'), ('rear_laser_filter_relay', '/robot'), ('robotnik_charge', '/robot'), ('transform_listener_impl_5ef5065acae0', '/robot'), ('amcl', '/robot'), ('lifecycle_manager_localization', '/robot'), ('map_server', '/robot'), ('lifecycle_manager_map_server', '/robot'), ('robot_state_publisher_ros2_control', '/robot'), ('controller_manager', '/robot'), ('rbvogui_xl', '/robot'), ('robotnik_base_control', '/robot'), ('joint_state_broadcaster', '/robot'), ('robotnik_io_controller', '/robot'), ('robotnik_base_hw_monitor', '/robot'), ('robotnik_brakes_supervisor', '/robot'), ('robot_state_publisher', '/robot'), ('joy_node', '/robot'), ('robotnik_pad', '/robot'), ('battery_estimator', '/robot'), ('launch_ros_313739', '/'), ('imu', '/robot'), ('twist_mux', '/robot'), ('charge_manager', '/robot'), ('_ros2cli_daemon_38_ca04a946b9834ede9c54187e26eb888e', '/'), ('dashboard_client', '/robot/arm'), ('corrected_tool0_controller_tf', '/robot/arm'), ('dashboard_monitor_node', '/robot/arm'), ('lift', '/robot'), ('front_rgbd_camera', '/robot'), ('param_handle', '/robot/rslidar_sdk'), ('rslidar_points_destination_0', '/robot/rslidar_sdk'), ('pointcloud_to_laserscan', '/robot'), ('transform_listener_impl_5b4f73b05320', '/robot'), ('empty_discovery_probe', '/'), ('_ros2cli_daemon_38_418ec494f3514542bbbb8d66c0265f9d', '/'), ('am_operator_gui', '/')]\n",
+    "base_discovered": true
+  },
+  "ethernet_async2": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2440800.0,
+        "tx_bytes": 654019.9,
+        "rx_packets": 3206.2,
+        "tx_packets": 2806.5
+      },
+      "wlp4s0": {
+        "rx_bytes": 82600.4,
+        "tx_bytes": 380296.7,
+        "rx_packets": 363.3,
+        "tx_packets": 1340.8
+      },
+      "lo": {
+        "rx_bytes": 1218221.7,
+        "tx_bytes": 1218221.7,
+        "rx_packets": 6208.4,
+        "tx_packets": 6208.4
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 117.1
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 5.769479,
+        "overrun_mean_ms": 5.77,
+        "other_logs": []
+      },
+      "1453188": {
+        "udp_drops_per_second": [
+          {
+            "port": 7003,
+            "drops": 0.0
+          },
+          {
+            "port": 7003,
+            "drops": 0.0
+          },
+          {
+            "port": 33148,
+            "drops": 0.0
+          },
+          {
+            "port": 33148,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 18.2
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 34.071905,
+        "overrun_mean_ms": 34.07,
+        "other_logs": []
+      }
+    },
+    "probe_output": "PROBE READY\nDISCOVERED [('controller_manager', '/robot/arm'), ('ur20', '/robot/arm'), ('scaled_joint_trajectory_controller', '/robot/arm'), ('forward_velocity_controller', '/robot/arm'), ('forward_position_controller', '/robot/arm'), ('force_mode_controller', '/robot/arm'), ('transform_listener_impl_63a150a1ca10', '/robot/arm'), ('passthrough_trajectory_controller', '/robot/arm'), ('freedrive_mode_controller', '/robot/arm'), ('tool_contact_controller', '/robot/arm'), ('joint_state_broadcaster', '/robot/arm'), ('io_and_status_controller', '/robot/arm'), ('speed_scaling_state_broadcaster', '/robot/arm'), ('force_torque_sensor_broadcaster', '/robot/arm'), ('tcp_pose_broadcaster', '/robot/arm'), ('ur_configuration_controller', '/robot/arm'), ('joint_trajectory_controller', '/robot/arm'), ('ur_robot_state_helper', '/robot/arm'), ('controller_stopper', '/robot/arm'), ('urscript_interface', '/robot/arm'), ('robot_state_publisher_ros2_control', '/robot/arm'), ('move', '/robot'), ('transform_listener_impl_5cbb991ad260', '/robot'), ('omni_dock_law_charging_dock', '/robot'), ('transform_listener_impl_61a4466b51d0', '/robot'), ('robotnik_locator', '/robot'), ('pose_filter', '/robot'), ('transform_listener_impl_5baf809fb4f0', '/robot'), ('controller_server', '/robot'), ('local_costmap', '/robot/local_costmap'), ('transform_listener_impl_5e91cbf17e40', '/robot'), ('smoother_server', '/robot'), ('planner_server', '/robot'), ('global_costmap', '/robot/global_costmap'), ('transform_listener_impl_59c05a83a920', '/robot'), ('behavior_server', '/robot'), ('bt_navigator', '/robot'), ('bt_navigator_navigate_to_pose_rclcpp_node', '/robot'), ('bt_navigator_navigate_through_poses_rclcpp_node', '/robot'), ('waypoint_follower', '/robot'), ('velocity_smoother', '/robot'), ('lifecycle_manager_navigation', '/robot'), ('front_laser_filter', '/robot'), ('rear_laser_filter', '/robot'), ('laser_filter_relay', '/robot'), ('rear_laser_filter_relay', '/robot'), ('robotnik_charge', '/robot'), ('transform_listener_impl_5ef5065acae0', '/robot'), ('amcl', '/robot'), ('lifecycle_manager_localization', '/robot'), ('map_server', '/robot'), ('lifecycle_manager_map_server', '/robot'), ('robot_state_publisher_ros2_control', '/robot'), ('controller_manager', '/robot'), ('rbvogui_xl', '/robot'), ('robotnik_base_control', '/robot'), ('joint_state_broadcaster', '/robot'), ('robotnik_io_controller', '/robot'), ('robotnik_base_hw_monitor', '/robot'), ('robotnik_brakes_supervisor', '/robot'), ('robot_state_publisher', '/robot'), ('joy_node', '/robot'), ('robotnik_pad', '/robot'), ('battery_estimator', '/robot'), ('launch_ros_313739', '/'), ('imu', '/robot'), ('twist_mux', '/robot'), ('charge_manager', '/robot'), ('_ros2cli_daemon_38_ca04a946b9834ede9c54187e26eb888e', '/'), ('dashboard_client', '/robot/arm'), ('corrected_tool0_controller_tf', '/robot/arm'), ('dashboard_monitor_node', '/robot/arm'), ('lift', '/robot'), ('front_rgbd_camera', '/robot'), ('param_handle', '/robot/rslidar_sdk'), ('rslidar_points_destination_0', '/robot/rslidar_sdk'), ('pointcloud_to_laserscan', '/robot'), ('transform_listener_impl_5b4f73b05320', '/robot'), ('_ros2cli_daemon_38_418ec494f3514542bbbb8d66c0265f9d', '/'), ('am_operator_gui', '/'), ('empty_discovery_probe', '/')]\n",
+    "base_discovered": true
+  },
+  "ethernet_async3": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2443093.8,
+        "tx_bytes": 649045.2,
+        "rx_packets": 3213.4,
+        "tx_packets": 2786.6
+      },
+      "wlp4s0": {
+        "rx_bytes": 75211.2,
+        "tx_bytes": 371788.8,
+        "rx_packets": 326.4,
+        "tx_packets": 1303.8
+      },
+      "lo": {
+        "rx_bytes": 1234951.9,
+        "tx_bytes": 1234951.9,
+        "rx_packets": 6313.0,
+        "tx_packets": 6313.0
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 117.2
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 5.492428,
+        "overrun_mean_ms": 5.49,
+        "other_logs": []
+      },
+      "1453188": {
+        "udp_drops_per_second": [
+          {
+            "port": 7003,
+            "drops": 0.0
+          },
+          {
+            "port": 7003,
+            "drops": 0.0
+          },
+          {
+            "port": 33148,
+            "drops": 0.0
+          },
+          {
+            "port": 33148,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 12.5
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 0,
+        "overrun_max_ms": 0,
+        "overrun_mean_ms": 0,
+        "other_logs": []
+      }
+    },
+    "probe_output": "PROBE READY\nDISCOVERED [('controller_manager', '/robot/arm'), ('ur20', '/robot/arm'), ('scaled_joint_trajectory_controller', '/robot/arm'), ('forward_velocity_controller', '/robot/arm'), ('forward_position_controller', '/robot/arm'), ('force_mode_controller', '/robot/arm'), ('transform_listener_impl_63a150a1ca10', '/robot/arm'), ('passthrough_trajectory_controller', '/robot/arm'), ('freedrive_mode_controller', '/robot/arm'), ('tool_contact_controller', '/robot/arm'), ('joint_state_broadcaster', '/robot/arm'), ('io_and_status_controller', '/robot/arm'), ('speed_scaling_state_broadcaster', '/robot/arm'), ('force_torque_sensor_broadcaster', '/robot/arm'), ('tcp_pose_broadcaster', '/robot/arm'), ('ur_configuration_controller', '/robot/arm'), ('joint_trajectory_controller', '/robot/arm'), ('ur_robot_state_helper', '/robot/arm'), ('controller_stopper', '/robot/arm'), ('urscript_interface', '/robot/arm'), ('robot_state_publisher_ros2_control', '/robot/arm'), ('move', '/robot'), ('transform_listener_impl_5cbb991ad260', '/robot'), ('omni_dock_law_charging_dock', '/robot'), ('transform_listener_impl_61a4466b51d0', '/robot'), ('robotnik_locator', '/robot'), ('pose_filter', '/robot'), ('transform_listener_impl_5baf809fb4f0', '/robot'), ('controller_server', '/robot'), ('local_costmap', '/robot/local_costmap'), ('transform_listener_impl_5e91cbf17e40', '/robot'), ('smoother_server', '/robot'), ('planner_server', '/robot'), ('global_costmap', '/robot/global_costmap'), ('transform_listener_impl_59c05a83a920', '/robot'), ('behavior_server', '/robot'), ('bt_navigator', '/robot'), ('bt_navigator_navigate_to_pose_rclcpp_node', '/robot'), ('bt_navigator_navigate_through_poses_rclcpp_node', '/robot'), ('waypoint_follower', '/robot'), ('velocity_smoother', '/robot'), ('lifecycle_manager_navigation', '/robot'), ('front_laser_filter', '/robot'), ('rear_laser_filter', '/robot'), ('laser_filter_relay', '/robot'), ('rear_laser_filter_relay', '/robot'), ('robotnik_charge', '/robot'), ('transform_listener_impl_5ef5065acae0', '/robot'), ('amcl', '/robot'), ('lifecycle_manager_localization', '/robot'), ('map_server', '/robot'), ('lifecycle_manager_map_server', '/robot'), ('robot_state_publisher_ros2_control', '/robot'), ('controller_manager', '/robot'), ('rbvogui_xl', '/robot'), ('robotnik_base_control', '/robot'), ('joint_state_broadcaster', '/robot'), ('robotnik_io_controller', '/robot'), ('robotnik_base_hw_monitor', '/robot'), ('robotnik_brakes_supervisor', '/robot'), ('robot_state_publisher', '/robot'), ('joy_node', '/robot'), ('robotnik_pad', '/robot'), ('battery_estimator', '/robot'), ('launch_ros_313739', '/'), ('imu', '/robot'), ('twist_mux', '/robot'), ('charge_manager', '/robot'), ('_ros2cli_daemon_38_ca04a946b9834ede9c54187e26eb888e', '/'), ('dashboard_client', '/robot/arm'), ('corrected_tool0_controller_tf', '/robot/arm'), ('dashboard_monitor_node', '/robot/arm'), ('lift', '/robot'), ('front_rgbd_camera', '/robot'), ('param_handle', '/robot/rslidar_sdk'), ('rslidar_points_destination_0', '/robot/rslidar_sdk'), ('pointcloud_to_laserscan', '/robot'), ('transform_listener_impl_5b4f73b05320', '/robot'), ('_ros2cli_daemon_38_418ec494f3514542bbbb8d66c0265f9d', '/'), ('am_operator_gui', '/'), ('empty_discovery_probe', '/')]\n",
+    "base_discovered": true
+  }
+}

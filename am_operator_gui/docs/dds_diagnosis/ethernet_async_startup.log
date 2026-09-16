@@ -1,0 +1,740 @@
+->Loading robot_params from /home/robot/robot_settings/robot_params
+All the env variables configuration are located at /home/robot/robot_settings/robot_params
+-> Read /home/robot/robot_settings/robot_params/bringup.env
+-> Read /home/robot/robot_settings/robot_params/base/rbvogui_xl_params.env
+-> Read /home/robot/robot_settings/robot_params/common/devices_params.env
+-> Read /home/robot/robot_settings/robot_params/common/perception_params.env
+-> Read /home/robot/robot_settings/robot_params/common/localization_params.env
+-> Read /home/robot/robot_settings/robot_params/common/navigation_params.env
+-> Read /home/robot/robot_settings/robot_params/common/manipulation_params.env
+-> Read /home/robot/robot_settings/robot_params/common/behavior_params.env
+-> Read /opt/ros/jazzy/setup.bash
+-> Robot workspace is /home/robot/robot_ws
+-> Read /home/robot/robot_ws/install/setup.bash
+
+ROS_DOMAIN_ID = 38
+RMW_IMPLEMENTATION = rmw_fastrtps_cpp
+WORKSPACE = /home/robot/robot_ws/devel/setup.bash
+
+[INFO] [launch]: All log files can be found below /home/robot/.ros/log/2026-09-16-16-53-27-994606-shrxl-200102ab-1453156
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [launch.user]: robot_bringup::description: rendering xacro from path: "/home/robot/robot_settings/robot_data/shrxl-200102ab.urdf.xacro"
+[INFO] [ros2_control_node-2]: process started with pid [1453188]
+[INFO] [robotnik_base_hw_monitor-4]: process started with pid [1453190]
+[INFO] [brakes_supervisor_node-5]: process started with pid [1453191]
+[INFO] [robot_state_publisher-1]: process started with pid [1453187]
+[INFO] [spawner-3]: process started with pid [1453189]
+[INFO] [robot_state_publisher-6]: process started with pid [1453192]
+[INFO] [joy_linux_node-7]: process started with pid [1453193]
+[INFO] [robotnik_pad-8]: process started with pid [1453194]
+[INFO] [daly_bms-9]: process started with pid [1453195]
+[INFO] [vnpub-10]: process started with pid [1453196]
+[INFO] [twist_mux-11]: process started with pid [1453197]
+[INFO] [charge_manager-12]: process started with pid [1453198]
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.168118977] [robot.robotnik_base_hw_monitor]: Starting monitor for interface pcan-base
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.177936983] [robot.robotnik_base_hw_monitor]: Successfully connected to interface pcan-base
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.177977870] [robot.robotnik_base_hw_monitor]: Looking for motors on interface pcan-base
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.209907296] [robot.robotnik_base_hw_monitor]: Detected motor with ID=0x01 (AMC)
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.210026816] [robot.robotnik_base_hw_monitor]: Detected motor with ID=0x06 (AMC)
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.211849191] [robot.robotnik_base_hw_monitor]: Detected motor with ID=0x08 (AMC)
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.213365291] [robot.robotnik_base_hw_monitor]: Detected motor with ID=0x05 (AMC)
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.213805752] [robot.robotnik_base_hw_monitor]: Detected motor with ID=0x02 (AMC)
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.214110474] [robot.robotnik_base_hw_monitor]: Detected motor with ID=0x03 (AMC)
+
+[joy_linux_node-7] [ERROR] [1789570409.214432952] [robot.joy_node]: Couldn't open joystick /dev/input/js_base. Will retry every second.
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.223811332] [robot.robotnik_base_hw_monitor]: Detected motor with ID=0x07 (AMC)
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.230130056] [robot.robotnik_base_hw_monitor]: Detected motor with ID=0x04 (AMC)
+
+[robot_state_publisher-1] [INFO] [1789570409.304526028] [robot.robot_state_publisher_ros2_control]: Robot initialized
+[robotnik_pad-8] [INFO] [1789570409.367284265] [robot.robotnik_pad]: I have read 1 components:
+[robotnik_pad-8] [INFO] [1789570409.368226852] [robot.robotnik_pad]: Movement: robotnik_pad_plugins/Movement
+[twist_mux-11] [INFO] [1789570409.382857583] [robot.twist_mux]: Topic handler 'topics.dock' subscribed to topic 'dock/cmd_vel': timeout = 0.500000s , priority = 30.
+[twist_mux-11] [INFO] [1789570409.390488544] [robot.twist_mux]: Topic handler 'topics.move' subscribed to topic 'move/cmd_vel': timeout = 0.500000s , priority = 30.
+[twist_mux-11] [INFO] [1789570409.392394207] [robot.twist_mux]: Topic handler 'topics.nav' subscribed to topic 'move_base/cmd_vel': timeout = 0.500000s , priority = 20.
+[twist_mux-11] [INFO] [1789570409.393409626] [robot.twist_mux]: Topic handler 'topics.pad' subscribed to topic 'pad_teleop/cmd_vel': timeout = 0.500000s , priority = 100.
+[twist_mux-11] [INFO] [1789570409.396224383] [robot.twist_mux]: Topic handler 'locks.base_brakes_enabled' subscribed to topic 'robotnik_brake_supervisor/brakes_closed': timeout = None , priority = 250.
+[twist_mux-11] [INFO] [1789570409.398795183] [robot.twist_mux]: Topic handler 'locks.base_emergency_stop' subscribed to topic 'robotnik_base_hw/emergency_stop': timeout = None , priority = 250.
+[twist_mux-11] [INFO] [1789570409.399743531] [robot.twist_mux]: Topic handler 'locks.base_motors_enabled' subscribed to topic 'robotnik_base_hw_monitor/any_motor_disabled': timeout = 1.000000s , priority = 250.
+[twist_mux-11] [INFO] [1789570409.400656194] [robot.twist_mux]: Topic handler 'locks.safety_emergency_stop' subscribed to topic 'safety_module/emergency_stop': timeout = None , priority = 250.
+[brakes_supervisor_node-5] [INFO] [1789570409.401819720] [robot.robotnik_brakes_supervisor]: Brake input name is empty - using output command as brake status feedback
+
+[ros2_control_node-2] [INFO] [1789570409.425161305] [robot.controller_manager]: Using Steady (Monotonic) clock for triggering controller manager cycles.
+
+[brakes_supervisor_node-5] [WARN] [1789570409.426012954] [robot.robotnik_brakes_supervisor]: No feedback brake input configured, using output command as brake status
+
+[robot_state_publisher-6] [INFO] [1789570409.443656378] [robot.robot_state_publisher]: Robot initialized
+[vnpub-10] [INFO] [1789570409.593704946] [robot.imu]: Connecting to : /dev/ttyUSB_IMU @ 921600 Baud
+[vnpub-10] [INFO] [1789570409.594061449] [robot.imu]: Set port to ASYNCY_LOW_LATENCY
+[vnpub-10] [INFO] [1789570409.594412844] [robot.imu]: Connecting with default at 921600
+[vnpub-10] [INFO] [1789570409.599998525] [robot.imu]: Connected baud rate is 921600
+[vnpub-10] [INFO] [1789570409.602417927] [robot.imu]: Device connection established
+[vnpub-10] [INFO] [1789570409.622460562] [robot.imu]: Model Number: VN-100T-CR, Firmware Version: 3.0.0.0
+[vnpub-10] [INFO] [1789570409.622496592] [robot.imu]: Hardware Revision : 7, Serial Number : 100062900
+[vnpub-10] [INFO] [1789570409.622503481] [robot.imu]: Package Receive Rate: 200 Hz
+[vnpub-10] [INFO] [1789570409.622508282] [robot.imu]: General Publish Rate: 200 Hz
+[vnpub-10] [INFO] [1789570409.622512139] [robot.imu]: IMU Publish Rate: 200 Hz
+[robotnik_base_hw_monitor-4] [INFO] [1789570409.632135037] [robot.robotnik_base_hw_monitor]: Found 8 motors
+
+[vnpub-10] [INFO] [1789570409.652967998] [robot.imu]: Current rotation reference frame: [(1; 0; 0)(0; 1; 0)(0; 0; 1)]
+[ros2_control_node-2] [INFO] [1789570409.677570195] [robot.controller_manager]: Subscribing to '/robot/base/robot_description' topic for robot description.
+
+[ros2_control_node-2] [INFO] [1789570409.730806838] [robot.controller_manager]: update rate is 50 Hz
+
+[ros2_control_node-2] [INFO] [1789570409.730839733] [robot.controller_manager]: Overruns handling is : enabled
+
+[ros2_control_node-2] [INFO] [1789570409.730851269] [robot.controller_manager]: Spawning controller_manager RT thread with scheduler priority: 50
+
+[ros2_control_node-2] [WARN] [1789570409.730937337] [robot.controller_manager]: Could not enable FIFO RT scheduling policy: with error number <1>(Operation not permitted). See [https://control.ros.org/master/doc/ros2_control/controller_manager/doc/userdoc.html] for details on how to enable realtime scheduling.
+
+[spawner-3] [INFO] [1789570409.937450587] [robot.spawner_robotnik_base_control]: waiting for service /robot/controller_manager/list_controllers to become available...
+[daly_bms-9] [INFO] [1789570410.227460259] [robot.battery_estimator]: Starting Daly BMS Nodebattery_estimator
+[daly_bms-9] [INFO] [1789570410.228233153] [robot.battery_estimator]: serial port: /dev/ttyUSB_BMS
+[daly_bms-9] [INFO] [1789570410.279186049] [robot.battery_estimator]: Successfully connected to BMS.
+[ros2_control_node-2] [WARN] [1789570410.654646487] [robot.controller_manager]: Waiting for data on 'robot_description' topic to finish initialization
+
+[ros2_control_node-2] [INFO] [1789570410.689334848] [robot.controller_manager]: Received robot description from topic.
+
+[ros2_control_node-2] [INFO] [1789570410.695418902] [robot.controller_manager]: Loading hardware 'rbvogui_xl' 
+
+[ros2_control_node-2] [INFO] [1789570410.696824240] [robot.controller_manager]: Loaded hardware 'rbvogui_xl' from plugin 'robotnik_base_hw/RobotnikBaseHW'
+
+[ros2_control_node-2] [INFO] [1789570410.696898973] [robot.controller_manager]: Initialize hardware 'rbvogui_xl' 
+
+[ros2_control_node-2] [INFO] [1789570410.790414382] [RobotnikHW]: Init sync task
+
+[ros2_control_node-2] [INFO] [1789570410.792470644] [RobotnikHW]: Create motor for joint robot_front_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.792512675] [RobotnikHW]: Instantiating motor robot_front_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.792571537] [RobotnikHW]: Create motor for joint robot_front_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.792668541] [RobotnikHW]: Instantiating motor robot_front_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.792618870] [RobotnikHW]: Create motor for joint robot_back_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.792753107] [RobotnikHW]: Instantiating motor robot_back_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.792798761] [RobotnikHW]: Create motor for joint robot_back_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.792816389] [RobotnikHW]: Instantiating motor robot_back_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.793057727] [RobotnikHW]: Create motor for joint robot_front_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570410.793080239] [RobotnikHW]: Instantiating motor robot_front_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570410.793476709] [RobotnikHW]: Create motor for joint robot_back_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570410.793498695] [RobotnikHW]: Instantiating motor robot_back_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570410.793929223] [RobotnikHW]: Create motor for joint robot_front_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570410.793954937] [RobotnikHW]: Instantiating motor robot_front_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570410.794118246] [RobotnikHW]: Create motor for joint robot_back_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570410.794359015] [RobotnikHW]: Instantiating motor robot_back_right_steering_joint
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570410.802906834] [robotnik_base_hw_monitor]: NMT[0x01] - Communication transition hard reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570410.802994235] [robotnik_base_hw_monitor]: NMT[0x02] - Communication transition hard reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570410.803313486] [robotnik_base_hw_monitor]: NMT[0x03] - Communication transition hard reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570410.803751446] [robotnik_base_hw_monitor]: NMT[0x05] - Communication transition hard reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570410.803776498] [robotnik_base_hw_monitor]: NMT[0x06] - Communication transition hard reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570410.803793504] [robotnik_base_hw_monitor]: NMT[0x04] - Communication transition hard reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570410.804368050] [robotnik_base_hw_monitor]: NMT[0x07] - Communication transition hard reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570410.804882622] [robotnik_base_hw_monitor]: NMT[0x08] - Communication transition hard reset
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570410.947220210] [robotnik_base_hw_monitor]: NMT[0x01] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570410.947249133] [robotnik_base_hw_monitor]: NMT[0x02] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570410.948195596] [robotnik_base_hw_monitor]: NMT[0x03] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570410.948223910] [robotnik_base_hw_monitor]: NMT[0x04] - Device boot-up message received
+
+[ros2_control_node-2] [INFO] [1789570410.953963952] [RobotnikHW]: Setting encoder resolution for motor robot_back_left_wheel_joint with 4096 counts
+
+[ros2_control_node-2] [INFO] [1789570410.953985199] [RobotnikHW]: Setting limits for motor robot_back_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.953992040] [RobotnikHW]: Velocity limits for motor robot_back_left_wheel_joint: [-18.849500, 18.849500]
+
+[ros2_control_node-2] [INFO] [1789570410.954000498] [RobotnikHW]: Input output frequency for motor robot_back_left_wheel_joint is 5.00 Hz
+
+[ros2_control_node-2] [INFO] [1789570410.954115124] [RobotnikHW]: Setting encoder resolution for motor robot_front_left_wheel_joint with 4096 counts
+
+[ros2_control_node-2] [INFO] [1789570410.954130468] [RobotnikHW]: Setting limits for motor robot_front_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.954135928] [RobotnikHW]: Velocity limits for motor robot_front_left_wheel_joint: [-18.849500, 18.849500]
+
+[ros2_control_node-2] [INFO] [1789570410.954143386] [RobotnikHW]: Input output frequency for motor robot_front_left_wheel_joint is 5.00 Hz
+
+[ros2_control_node-2] [INFO] [1789570410.954525085] [RobotnikHW]: Setting encoder resolution for motor robot_front_right_wheel_joint with 4096 counts
+
+[ros2_control_node-2] [INFO] [1789570410.954540028] [RobotnikHW]: Setting limits for motor robot_front_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.954568993] [RobotnikHW]: Velocity limits for motor robot_front_right_wheel_joint: [-18.849500, 18.849500]
+
+[ros2_control_node-2] [INFO] [1789570410.954579399] [RobotnikHW]: Input output frequency for motor robot_front_right_wheel_joint is 5.00 Hz
+
+[ros2_control_node-2] [INFO] [1789570410.955348648] [RobotnikHW]: Setting encoder resolution for motor robot_back_right_wheel_joint with 4096 counts
+
+[ros2_control_node-2] [INFO] [1789570410.955363818] [RobotnikHW]: Setting limits for motor robot_back_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570410.955370528] [RobotnikHW]: Velocity limits for motor robot_back_right_wheel_joint: [-18.849500, 18.849500]
+
+[ros2_control_node-2] [INFO] [1789570410.955380093] [RobotnikHW]: Input output frequency for motor robot_back_right_wheel_joint is 5.00 Hz
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.371039693] [robotnik_base_hw_monitor]: NMT[0x05] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.371103897] [robotnik_base_hw_monitor]: NMT[0x06] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.371163478] [robotnik_base_hw_monitor]: NMT[0x07] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.372187949] [robotnik_base_hw_monitor]: NMT[0x08] - Device boot-up message received
+
+[ros2_control_node-2] [INFO] [1789570411.372873982] [RobotnikHW]: Setting encoder resolution for motor robot_front_right_steering_joint with 4096 counts
+
+[ros2_control_node-2] [INFO] [1789570411.372944532] [RobotnikHW]: Setting limits for motor robot_front_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570411.372954694] [RobotnikHW]: Position limits for motor robot_front_right_steering_joint: [-2.500000, 2.500000] with margin 0.050000
+
+[ros2_control_node-2] [INFO] [1789570411.372967057] [RobotnikHW]: Input output frequency for motor robot_front_right_steering_joint is 5.00 Hz
+
+[ros2_control_node-2] [INFO] [1789570411.376076552] [RobotnikHW]: Setting encoder resolution for motor robot_back_right_steering_joint with 4096 counts
+
+[ros2_control_node-2] [INFO] [1789570411.376171489] [RobotnikHW]: Setting limits for motor robot_back_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570411.376285829] [RobotnikHW]: Position limits for motor robot_back_right_steering_joint: [-2.500000, 2.500000] with margin 0.050000
+
+[ros2_control_node-2] [INFO] [1789570411.376306366] [RobotnikHW]: Input output frequency for motor robot_back_right_steering_joint is 5.00 Hz
+
+[ros2_control_node-2] [INFO] [1789570411.379455183] [RobotnikHW]: Setting encoder resolution for motor robot_front_left_steering_joint with 4096 counts
+
+[ros2_control_node-2] [INFO] [1789570411.379482182] [RobotnikHW]: Setting limits for motor robot_front_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570411.379490669] [RobotnikHW]: Position limits for motor robot_front_left_steering_joint: [-2.500000, 2.500000] with margin 0.050000
+
+[ros2_control_node-2] [INFO] [1789570411.379500820] [RobotnikHW]: Input output frequency for motor robot_front_left_steering_joint is 5.00 Hz
+
+[ros2_control_node-2] [INFO] [1789570411.379557371] [RobotnikHW]: Setting encoder resolution for motor robot_back_left_steering_joint with 4096 counts
+
+[ros2_control_node-2] [INFO] [1789570411.379603530] [RobotnikHW]: Setting limits for motor robot_back_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570411.379701922] [RobotnikHW]: Position limits for motor robot_back_left_steering_joint: [-2.500000, 2.500000] with margin 0.050000
+
+[ros2_control_node-2] [INFO] [1789570411.379886208] [RobotnikHW]: Input output frequency for motor robot_back_left_steering_joint is 5.00 Hz
+
+[ros2_control_node-2] [INFO] [1789570411.380201189] [RobotnikHW]: Configure motor for joint robot_front_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570411.380434627] [RobotnikHW]: Configure motor for joint robot_back_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570411.380466928] [RobotnikHW]: Configure motor for joint robot_front_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570411.380842041] [RobotnikHW]: Configure motor for joint robot_back_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570411.380949245] [RobotnikHW]: Configure motor for joint robot_front_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570411.381071069] [RobotnikHW]: Configure motor for joint robot_back_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570411.381116524] [RobotnikHW]: Configure motor for joint robot_front_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570411.381119478] [RobotnikHW]: Configure motor for joint robot_back_right_steering_joint
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570411.380273868] [robotnik_base_hw_monitor]: NMT[0x01] - Communication transition soft reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570411.380498661] [robotnik_base_hw_monitor]: NMT[0x02] - Communication transition soft reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570411.380773143] [robotnik_base_hw_monitor]: NMT[0x03] - Communication transition soft reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570411.380916837] [robotnik_base_hw_monitor]: NMT[0x04] - Communication transition soft reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570411.381067792] [robotnik_base_hw_monitor]: NMT[0x05] - Communication transition soft reset
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.381425256] [robotnik_base_hw_monitor]: NMT[0x01] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.381438777] [robotnik_base_hw_monitor]: NMT[0x03] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.381780538] [robotnik_base_hw_monitor]: NMT[0x02] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570411.381795182] [robotnik_base_hw_monitor]: NMT[0x06] - Communication transition soft reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570411.381807219] [robotnik_base_hw_monitor]: NMT[0x07] - Communication transition soft reset
+
+[robotnik_base_hw_monitor-4] [WARN] [1789570411.381945471] [robotnik_base_hw_monitor]: NMT[0x08] - Communication transition soft reset
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.382440476] [robotnik_base_hw_monitor]: NMT[0x04] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.382506851] [robotnik_base_hw_monitor]: NMT[0x05] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.382523930] [robotnik_base_hw_monitor]: NMT[0x06] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.383535766] [robotnik_base_hw_monitor]: NMT[0x07] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.383883626] [robotnik_base_hw_monitor]: NMT[0x08] - Device boot-up message received
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.845671404] [robotnik_base_hw_monitor]: NMT[0x03] - Communication transition operational
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.846096644] [robotnik_base_hw_monitor]: NMT[0x08] - Communication transition operational
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.846536949] [robotnik_base_hw_monitor]: NMT[0x07] - Communication transition operational
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.846833204] [robotnik_base_hw_monitor]: NMT[0x01] - Communication transition operational
+
+[ros2_control_node-2] [INFO] [1789570411.846884225] [RobotnikHW]: Motor configured for joint robot_front_right_wheel_joint
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.847254694] [robotnik_base_hw_monitor]: NMT[0x02] - Communication transition operational
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.847587684] [robotnik_base_hw_monitor]: NMT[0x04] - Communication transition operational
+
+[ros2_control_node-2] [INFO] [1789570411.847740644] [RobotnikHW]: Motor configured for joint robot_front_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570411.848005761] [RobotnikHW]: Motor configured for joint robot_front_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570411.848231701] [RobotnikHW]: Motor configured for joint robot_back_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570411.848257687] [RobotnikHW]: Motor configured for joint robot_back_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570411.849563905] [RobotnikHW]: Motor configured for joint robot_back_right_wheel_joint
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.850930037] [robotnik_base_hw_monitor]: NMT[0x05] - Communication transition operational
+
+[ros2_control_node-2] [INFO] [1789570411.852388391] [RobotnikHW]: Motor configured for joint robot_front_left_steering_joint
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.871823563] [robotnik_base_hw_monitor]: NMT[0x06] - Communication transition operational
+
+[ros2_control_node-2] [INFO] [1789570411.873933231] [RobotnikHW]: Motor configured for joint robot_back_left_steering_joint
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570411.875766123] [robotnik_base_hw_monitor]: NMT[0x06] - Communication transition operational
+
+[ros2_control_node-2] [INFO] [1789570411.876579744] [RobotnikHW]: Reading absolute encoder for joint robot_front_left_steering_joint
+
+[ros2_control_node-2] [WARN] [1789570411.876840027] [RobotnikHW]: Current value for joint robot_front_left_steering_joint is zero, indicating an error reading the absolute encoder, retrying...
+
+[ros2_control_node-2] [INFO] [1789570411.876967598] [RobotnikHW]: Reading absolute encoder for joint robot_front_right_steering_joint
+
+[ros2_control_node-2] [WARN] [1789570411.877147258] [RobotnikHW]: Current value for joint robot_front_right_steering_joint is zero, indicating an error reading the absolute encoder, retrying...
+
+[ros2_control_node-2] [INFO] [1789570411.877225505] [RobotnikHW]: Reading absolute encoder for joint robot_back_left_steering_joint
+
+[ros2_control_node-2] [WARN] [1789570411.877438389] [RobotnikHW]: Current value for joint robot_back_left_steering_joint is zero, indicating an error reading the absolute encoder, retrying...
+
+[ros2_control_node-2] [INFO] [1789570411.878207401] [RobotnikHW]: Reading absolute encoder for joint robot_back_right_steering_joint
+
+[ros2_control_node-2] [WARN] [1789570411.878257670] [RobotnikHW]: Current value for joint robot_back_right_steering_joint is zero, indicating an error reading the absolute encoder, retrying...
+
+[ros2_control_node-2] [INFO] [1789570412.377185354] [RobotnikHW]: Home offset found for joint robot_front_left_steering_joint, current_counts 13732562, offset -210.654326, current_value 0.000537
+
+[ros2_control_node-2] [INFO] [1789570412.377790842] [RobotnikHW]: Home offset found for joint robot_back_left_steering_joint, current_counts 14461553, offset 221.838012, current_value 0.000568
+
+[ros2_control_node-2] [INFO] [1789570412.379123933] [RobotnikHW]: Home offset found for joint robot_back_right_steering_joint, current_counts 2513105, offset -38.550118, current_value 0.000430
+
+[ros2_control_node-2] [INFO] [1789570412.381612955] [RobotnikHW]: Home offset found for joint robot_front_right_steering_joint, current_counts 9341045, offset 143.290373, current_value 0.000537
+
+[ros2_control_node-2] [INFO] [1789570412.381725634] [RobotnikHW]: Init reset task
+
+[ros2_control_node-2] [INFO] [1789570412.381782311] [RobotnikHW]: Reset task started
+
+[ros2_control_node-2] [INFO] [1789570412.381787842] [robot.controller_manager]: Successful initialization of hardware 'rbvogui_xl'
+
+[ros2_control_node-2] [INFO] [1789570412.381880275] [RobotnikHW]: export_state_interfaces
+
+[ros2_control_node-2] [INFO] [1789570412.382097958] [RobotnikHW]: All motors become ready, ready to operate
+
+[ros2_control_node-2] [INFO] [1789570412.382334446] [RobotnikHW]: export_command_interfaces
+
+[ros2_control_node-2] [INFO] [1789570412.382641405] [resource_manager]: 'configure' hardware 'rbvogui_xl' 
+
+[ros2_control_node-2] [INFO] [1789570412.382650358] [RobotnikHW]: on_configure
+
+[ros2_control_node-2] [INFO] [1789570412.382655131] [resource_manager]: Successful 'configure' of hardware 'rbvogui_xl'
+
+[ros2_control_node-2] [INFO] [1789570412.382678389] [resource_manager]: 'activate' hardware 'rbvogui_xl' 
+
+[ros2_control_node-2] [INFO] [1789570412.382684108] [RobotnikHW]: on_activate
+
+[ros2_control_node-2] [INFO] [1789570412.382689675] [resource_manager]: Successful 'activate' of hardware 'rbvogui_xl'
+
+[ros2_control_node-2] [INFO] [1789570412.382766553] [robot.controller_manager]: Registering statistics for : rbvogui_xl
+
+[ros2_control_node-2] [INFO] [1789570412.382869985] [robot.controller_manager]: Resource Manager has been successfully initialized. Starting Controller Manager services...
+
+[ros2_control_node-2] [INFO] [1789570412.480617297] [robot.controller_manager]: Loading controller : 'robotnik_base_control' of type 'robotnik_controllers/RBVoguiXLController'
+
+[ros2_control_node-2] [INFO] [1789570412.480688639] [robot.controller_manager]: Loading controller 'robotnik_base_control'
+
+[ros2_control_node-2] [INFO] [1789570412.491132005] [robot.controller_manager]: Controller 'robotnik_base_control' node arguments: --ros-args --params-file /tmp/launch_params_j5w1q86u --params-file /tmp/launch_params_tnhgard6 --params-file /tmp/launch_params_4cv64dtn --params-file /tmp/launch_params_4zywepck 
+
+[ros2_control_node-2] [WARN] [1789570412.568768312] [robot.controller_manager]: Overrun detected! The controller manager missed its desired rate of 50 Hz. The loop took 25.681343 ms (missed cycles : 2).
+
+[spawner-3] [INFO] [1789570412.682458972] [robot.spawner_robotnik_base_control]: Loaded robotnik_base_control
+[ros2_control_node-2] [INFO] [1789570412.694988494] [robot.controller_manager]: Configuring controller: 'robotnik_base_control'
+
+[ros2_control_node-2] [INFO] [1789570412.840070602] [robot.controller_manager]: Activating controllers: [ robotnik_base_control ]
+
+[ros2_control_node-2] [INFO] [1789570412.840474234] [RobotnikHW]: Checking if command mode switch is possible
+
+[ros2_control_node-2] [INFO] [1789570412.840512648] [RobotnikHW]: Command mode switch is possible, performing switch
+
+[ros2_control_node-2] [INFO] [1789570412.840620605] [RobotnikHW]: Switching robot_back_left_wheel_joint to velocity
+
+[ros2_control_node-2] [INFO] [1789570412.840658255] [RobotnikHW]: Switching robot_front_left_wheel_joint to velocity
+
+[ros2_control_node-2] [INFO] [1789570412.840892232] [RobotnikHW]: Switching robot_front_right_wheel_joint to velocity
+
+[ros2_control_node-2] [INFO] [1789570412.840892991] [RobotnikHW]: Switching robot_back_right_wheel_joint to velocity
+
+[ros2_control_node-2] [INFO] [1789570412.840944367] [RobotnikHW]: Switching robot_front_left_steering_joint to position
+
+[ros2_control_node-2] [INFO] [1789570412.840986531] [RobotnikHW]: Switching robot_front_right_steering_joint to position
+
+[ros2_control_node-2] [INFO] [1789570412.841009697] [RobotnikHW]: Switching robot_back_left_steering_joint to position
+
+[ros2_control_node-2] [INFO] [1789570412.841462258] [RobotnikHW]: Switching robot_back_right_steering_joint to position
+
+[ros2_control_node-2] [INFO] [1789570412.850958254] [RobotnikHW]: Switched robot_back_left_wheel_joint to velocity successfully
+
+[ros2_control_node-2] [INFO] [1789570412.851027587] [RobotnikHW]: Switched robot_front_left_wheel_joint to velocity successfully
+
+[ros2_control_node-2] [INFO] [1789570412.851300606] [RobotnikHW]: Switched robot_front_right_steering_joint to position successfully
+
+[ros2_control_node-2] [INFO] [1789570412.851390515] [RobotnikHW]: Switched robot_back_right_wheel_joint to velocity successfully
+
+[ros2_control_node-2] [INFO] [1789570412.851403049] [RobotnikHW]: Switched robot_front_left_steering_joint to position successfully
+
+[ros2_control_node-2] [INFO] [1789570412.851517846] [RobotnikHW]: Switched robot_back_left_steering_joint to position successfully
+
+[ros2_control_node-2] [INFO] [1789570412.851611808] [RobotnikHW]: Switched robot_front_right_wheel_joint to velocity successfully
+
+[ros2_control_node-2] [INFO] [1789570412.851710730] [RobotnikHW]: Switched robot_back_right_steering_joint to position successfully
+
+[ros2_control_node-2] [INFO] [1789570412.851758325] [RobotnikHW]: Command mode switch performed successfully
+
+[ros2_control_node-2] [INFO] [1789570412.863201198] [RobotnikHW]: perform_command_mode_switch
+
+[ros2_control_node-2] [INFO] [1789570412.863632125] [robot.robotnik_base_control]: robotnik_controllers -> RobotnikController::on_activate
+
+[ros2_control_node-2] [INFO] [1789570412.863780593] [robot.controller_manager]: Successfully switched controllers!
+
+[ros2_control_node-2] [WARN] [1789570412.883491618] [robotnik_base_controller]: Imu data not received, using odometry yaw instead
+
+[spawner-3] [INFO] [1789570412.887023031] [robot.spawner_robotnik_base_control]: Configured and activated robotnik_base_control
+[ros2_control_node-2] [INFO] [1789570412.896366038] [robot.controller_manager]: Loading controller : 'joint_state_broadcaster' of type 'joint_state_broadcaster/JointStateBroadcaster'
+
+[ros2_control_node-2] [INFO] [1789570412.896779645] [robot.controller_manager]: Loading controller 'joint_state_broadcaster'
+
+[ros2_control_node-2] [INFO] [1789570412.906096410] [robot.controller_manager]: Controller 'joint_state_broadcaster' node arguments: --ros-args --params-file /tmp/launch_params_j5w1q86u --params-file /tmp/launch_params_tnhgard6 --params-file /tmp/launch_params_4cv64dtn --params-file /tmp/launch_params_4zywepck 
+
+[ros2_control_node-2] [WARN] [1789570412.987775810] [robotnik_base_hw]: The following motors are not ready: robot_front_left_wheel_joint (e-stop pressed), robot_back_left_wheel_joint (e-stop pressed), robot_front_right_wheel_joint (e-stop pressed), robot_back_right_wheel_joint (e-stop pressed), robot_front_left_steering_joint (e-stop pressed), robot_back_left_steering_joint (e-stop pressed), robot_front_right_steering_joint (e-stop pressed), robot_back_right_steering_joint (e-stop pressed). (e-stop pressed or trying to enable the motor). Please check the motor status.
+
+[spawner-3] [INFO] [1789570413.057480042] [robot.spawner_robotnik_base_control]: Loaded joint_state_broadcaster
+[ros2_control_node-2] [INFO] [1789570413.058254836] [robot.controller_manager]: Configuring controller: 'joint_state_broadcaster'
+
+[ros2_control_node-2] [INFO] [1789570413.058472748] [robot.joint_state_broadcaster]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+
+[ros2_control_node-2] [INFO] [1789570413.085036962] [robot.controller_manager]: Activating controllers: [ joint_state_broadcaster ]
+
+[ros2_control_node-2] [INFO] [1789570413.103863561] [robot.controller_manager]: Successfully switched controllers!
+
+[spawner-3] [INFO] [1789570413.124862354] [robot.spawner_robotnik_base_control]: Configured and activated joint_state_broadcaster
+[ros2_control_node-2] [INFO] [1789570413.126371796] [robot.controller_manager]: Loading controller : 'robotnik_io_controller' of type 'robotnik_io_controller/RobotnikIOController'
+
+[ros2_control_node-2] [INFO] [1789570413.126455130] [robot.controller_manager]: Loading controller 'robotnik_io_controller'
+
+[ros2_control_node-2] [INFO] [1789570413.128634350] [robot.controller_manager]: Controller 'robotnik_io_controller' node arguments: --ros-args --params-file /tmp/launch_params_j5w1q86u --params-file /tmp/launch_params_tnhgard6 --params-file /tmp/launch_params_4cv64dtn --params-file /tmp/launch_params_4zywepck 
+
+[spawner-3] [INFO] [1789570413.280954977] [robot.spawner_robotnik_base_control]: Loaded robotnik_io_controller
+[ros2_control_node-2] [INFO] [1789570413.293340425] [robot.controller_manager]: Configuring controller: 'robotnik_io_controller'
+
+[ros2_control_node-2] [INFO] [1789570413.293457104] [robot.robotnik_io_controller]: RobotnikIOController::on_configure(): Configuration successful
+
+[ros2_control_node-2] [INFO] [1789570413.318021201] [robot.controller_manager]: Activating controllers: [ robotnik_io_controller ]
+
+[ros2_control_node-2] [INFO] [1789570413.318315883] [RobotnikHW]: Checking if command mode switch is possible
+
+[ros2_control_node-2] [INFO] [1789570413.318359582] [RobotnikHW]: Command mode switch is possible, performing switch
+
+[ros2_control_node-2] [INFO] [1789570413.318430547] [RobotnikHW]: robot_front_left_wheel_joint is already in velocity interface
+
+[ros2_control_node-2] [INFO] [1789570413.318515240] [RobotnikHW]: Switched robot_front_left_wheel_joint to velocity successfully
+
+[ros2_control_node-2] [INFO] [1789570413.318521292] [RobotnikHW]: robot_front_left_steering_joint is already in position interface
+
+[ros2_control_node-2] [INFO] [1789570413.318546740] [RobotnikHW]: Switched robot_front_left_steering_joint to position successfully
+
+[ros2_control_node-2] [INFO] [1789570413.318443107] [RobotnikHW]: robot_back_left_wheel_joint is already in velocity interface
+
+[ros2_control_node-2] [INFO] [1789570413.318785314] [RobotnikHW]: Switched robot_back_left_wheel_joint to velocity successfully
+
+[ros2_control_node-2] [INFO] [1789570413.318479060] [RobotnikHW]: robot_back_right_wheel_joint is already in velocity interface
+
+[ros2_control_node-2] [INFO] [1789570413.318851796] [RobotnikHW]: Switched robot_back_right_wheel_joint to velocity successfully
+
+[ros2_control_node-2] [INFO] [1789570413.318518991] [RobotnikHW]: robot_front_right_wheel_joint is already in velocity interface
+
+[ros2_control_node-2] [INFO] [1789570413.318928365] [RobotnikHW]: Switched robot_front_right_wheel_joint to velocity successfully
+
+[ros2_control_node-2] [INFO] [1789570413.318911187] [RobotnikHW]: robot_back_left_steering_joint is already in position interface
+
+[ros2_control_node-2] [INFO] [1789570413.318960521] [RobotnikHW]: Switched robot_back_left_steering_joint to position successfully
+
+[ros2_control_node-2] [INFO] [1789570413.319039374] [RobotnikHW]: robot_front_right_steering_joint is already in position interface
+
+[ros2_control_node-2] [INFO] [1789570413.319053894] [RobotnikHW]: Switched robot_front_right_steering_joint to position successfully
+
+[ros2_control_node-2] [INFO] [1789570413.319082430] [RobotnikHW]: robot_back_right_steering_joint is already in position interface
+
+[ros2_control_node-2] [INFO] [1789570413.319103585] [RobotnikHW]: Switched robot_back_right_steering_joint to position successfully
+
+[ros2_control_node-2] [INFO] [1789570413.319135839] [RobotnikHW]: Command mode switch performed successfully
+
+[ros2_control_node-2] [INFO] [1789570413.323896349] [RobotnikHW]: perform_command_mode_switch
+
+[charge_manager-12] [INFO] [1789570413.361308116] [robot.charge_manager]: service '/robot/robotnik_io_controller/set_digital_output' is available
+[ros2_control_node-2] [WARN] [1789570413.362089970] [robot.controller_manager]: Overrun might occur, Total time : 38773.134 us (Expected < 20000.000 us) --> Read time : 21.466 us, Update time : 38738.436 us (Switch time : 38169.591 us (Switch chained mode time : 0.654 us, perform mode change time : 66.905 us, Activation time : 38093.854 us, Deactivation time : 0.232 us)), Write time : 13.232 us
+
+[ros2_control_node-2] [INFO] [1789570413.363072486] [robot.controller_manager]: Successfully switched controllers!
+
+[brakes_supervisor_node-5] [INFO] [1789570413.365277235] [robot.robotnik_brakes_supervisor]: Brake supervisor status updated. Motor enabled=DISABLED, Brakes=CLOSED, Output=CLOSED_CMD, Feedback=OUTPUT
+
+[spawner-3] [INFO] [1789570413.368120188] [robot.spawner_robotnik_base_control]: Configured and activated robotnik_io_controller
+[INFO] [spawner-3]: process has finished cleanly [pid 1453189]
+[ros2_control_node-2] [INFO] [1789570413.785078792] [RobotnikHW]: All motors become ready, ready to operate
+
+[charge_manager-12] [INFO] [1789570413.862263520] [robot.charge_manager]: INIT_STATE -> STANDBY_STATE
+[brakes_supervisor_node-5] [INFO] [1789570415.330818813] [robot.robotnik_brakes_supervisor]: Motors ENABLED - commanding brakes OPEN (output command doesn't match desired brake state)
+
+[brakes_supervisor_node-5] [INFO] [1789570415.331780223] [robot.robotnik_brakes_supervisor]: Brake command SUCCESS: output set successfully
+
+[brakes_supervisor_node-5] [INFO] [1789570415.523685539] [robot.robotnik_brakes_supervisor]: Brake supervisor status updated. Motor enabled=ENABLED, Brakes=OPEN, Output=OPEN_CMD, Feedback=OUTPUT
+
+[ros2_control_node-2] [WARN] [1789570417.363908300] [robot.controller_manager]: Overrun might occur, Total time : 20763.234 us (Expected < 20000.000 us) --> Read time : 17.356 us, Update time : 20733.978 us, Write time : 11.900 us
+
+[ros2_control_node-2] [WARN] [1789570417.363960354] [robot.controller_manager]: Overrun detected! The controller manager missed its desired rate of 50 Hz. The loop took 20.873190 ms (missed cycles : 2).
+
+[charge_manager-12] [INFO] [1789570419.362268424] [robot.charge_manager]: STANDBY_STATE -> READY_STATE
+[ros2_control_node-2] [WARN] [1789570452.055228607] [robot.controller_manager]: Overrun might occur, Total time : 31962.967 us (Expected < 20000.000 us) --> Read time : 17.406 us, Update time : 31935.037 us, Write time : 10.524 us
+
+[ros2_control_node-2] [WARN] [1789570452.057159480] [robot.controller_manager]: Overrun detected! The controller manager missed its desired rate of 50 Hz. The loop took 34.071905 ms (missed cycles : 2).
+
+[ros2_control_node-2] [WARN] [1789570496.859366600] [robot.controller_manager]: Overrun might occur, Total time : 65456.151 us (Expected < 20000.000 us) --> Read time : 39.995 us, Update time : 65404.364 us, Write time : 11.792 us
+
+[ros2_control_node-2] [WARN] [1789570496.859418483] [robot.controller_manager]: Overrun detected! The controller manager missed its desired rate of 50 Hz. The loop took 76.331642 ms (missed cycles : 4).
+
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[ERROR] [charge_manager-12]: process[charge_manager-12] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [twist_mux-11]: process[twist_mux-11] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [vnpub-10]: process[vnpub-10] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [daly_bms-9]: process[daly_bms-9] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [robotnik_pad-8]: process[robotnik_pad-8] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [joy_linux_node-7]: process[joy_linux_node-7] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [robot_state_publisher-6]: process[robot_state_publisher-6] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [brakes_supervisor_node-5]: process[brakes_supervisor_node-5] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [robotnik_base_hw_monitor-4]: process[robotnik_base_hw_monitor-4] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [ros2_control_node-2]: process[ros2_control_node-2] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [robot_state_publisher-1]: process[robot_state_publisher-1] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[INFO] [charge_manager-12]: sending signal 'SIGTERM' to process[charge_manager-12]
+[INFO] [twist_mux-11]: sending signal 'SIGTERM' to process[twist_mux-11]
+[INFO] [vnpub-10]: sending signal 'SIGTERM' to process[vnpub-10]
+[INFO] [daly_bms-9]: sending signal 'SIGTERM' to process[daly_bms-9]
+[INFO] [robotnik_pad-8]: sending signal 'SIGTERM' to process[robotnik_pad-8]
+[INFO] [joy_linux_node-7]: sending signal 'SIGTERM' to process[joy_linux_node-7]
+[INFO] [robot_state_publisher-6]: sending signal 'SIGTERM' to process[robot_state_publisher-6]
+[INFO] [brakes_supervisor_node-5]: sending signal 'SIGTERM' to process[brakes_supervisor_node-5]
+[INFO] [robotnik_base_hw_monitor-4]: sending signal 'SIGTERM' to process[robotnik_base_hw_monitor-4]
+[INFO] [ros2_control_node-2]: sending signal 'SIGTERM' to process[ros2_control_node-2]
+[INFO] [robot_state_publisher-1]: sending signal 'SIGTERM' to process[robot_state_publisher-1]
+[charge_manager-12] [INFO] [1789570521.088837352] [rclcpp]: signal_handler(signum=15)
+[twist_mux-11] [INFO] [1789570521.090206826] [rclcpp]: signal_handler(signum=15)
+[vnpub-10] [INFO] [1789570521.091616753] [rclcpp]: signal_handler(signum=15)
+[vnpub-10] [INFO] [1789570521.091843917] [robot.imu]: Unregisted the packet received handler
+[robotnik_pad-8] [INFO] [1789570521.094508324] [rclcpp]: signal_handler(signum=15)
+[robotnik_pad-8] Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+[robotnik_pad-8]          at line 127 in ./src/class_loader.cpp
+[joy_linux_node-7] [INFO] [1789570521.097788898] [rclcpp]: signal_handler(signum=15)
+[joy_linux_node-7] [INFO] [1789570521.097939730] [robot.joy_node]: joy_node shut down.
+[robot_state_publisher-6] [INFO] [1789570521.098889302] [rclcpp]: signal_handler(signum=15)
+[brakes_supervisor_node-5] [INFO] [1789570521.100676609] [rclcpp]: signal_handler(signum=15)
+
+[brakes_supervisor_node-5] 
+
+[brakes_supervisor_node-5] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+
+[brakes_supervisor_node-5] This error state is being overwritten:
+
+[brakes_supervisor_node-5] 
+
+[brakes_supervisor_node-5]   'rcl node's context is invalid, at ./src/rcl/node.c:404'
+
+[brakes_supervisor_node-5] 
+
+[brakes_supervisor_node-5] with this new error message:
+
+[brakes_supervisor_node-5] 
+
+[brakes_supervisor_node-5]   'the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130'
+
+[brakes_supervisor_node-5] 
+
+[brakes_supervisor_node-5] rcutils_reset_error() should be called after error handling to avoid this.
+
+[brakes_supervisor_node-5] <<<
+
+[brakes_supervisor_node-5] terminate called after throwing an instance of 'rclcpp::exceptions::RCLError'
+
+[brakes_supervisor_node-5]   what():  failed to initialize wait set: the given context is not valid, either rcl_init() was not called or rcl_shutdown() was called., at ./src/rcl/wait.c:130
+
+[robotnik_base_hw_monitor-4] [INFO] [1789570521.102715314] [rclcpp]: signal_handler(signum=15)
+
+[ros2_control_node-2] [INFO] [1789570521.111079653] [rclcpp]: signal_handler(signum=15)
+
+[ros2_control_node-2] [INFO] [1789570521.111148149] [robot.controller_manager]: Shutdown request received....
+
+[ros2_control_node-2] [INFO] [1789570521.111201905] [robot.controller_manager]: Shutting down all controllers in the controller manager.
+
+[ros2_control_node-2] [INFO] [1789570521.111229847] [robot.controller_manager]: Deactivating controller 'robotnik_io_controller'
+
+[ros2_control_node-2] [INFO] [1789570521.111314917] [robot.controller_manager]: Shutting down controller 'robotnik_io_controller'
+
+[ros2_control_node-2] [INFO] [1789570521.112137007] [robot.controller_manager]: Deactivating controller 'joint_state_broadcaster'
+
+[ros2_control_node-2] [INFO] [1789570521.112215288] [robot.controller_manager]: Shutting down controller 'joint_state_broadcaster'
+
+[ros2_control_node-2] [INFO] [1789570521.112298350] [robot.controller_manager]: Deactivating controller 'robotnik_base_control'
+
+[ros2_control_node-2] [INFO] [1789570521.113999559] [robot.robotnik_base_control]: robotnik_controllers -> RobotnikController::on_deactivate
+
+[ros2_control_node-2] [INFO] [1789570521.114053309] [robot.controller_manager]: Shutting down controller 'robotnik_base_control'
+
+[ros2_control_node-2] [INFO] [1789570521.114072029] [robot.robotnik_base_control]: robotnik_controllers -> RobotnikController::on_shutdown
+
+[ros2_control_node-2] [INFO] [1789570521.114149396] [resource_manager]: 'deactivate' hardware 'rbvogui_xl' 
+
+[ros2_control_node-2] [INFO] [1789570521.114164299] [RobotnikHW]: on_deactivate
+
+[ros2_control_node-2] [INFO] [1789570521.114169967] [resource_manager]: Successful 'deactivate' of hardware 'rbvogui_xl'
+
+[ros2_control_node-2] [INFO] [1789570521.114177639] [resource_manager]: 'shutdown' hardware 'rbvogui_xl' 
+
+[ros2_control_node-2] [INFO] [1789570521.114182963] [RobotnikHW]: on_shutdown
+
+[ros2_control_node-2] [INFO] [1789570521.114186641] [resource_manager]: Successful 'shutdown' of hardware 'rbvogui_xl'
+
+[ros2_control_node-2] [INFO] [1789570521.114661386] [robot.controller_manager]: Shutting down the controller manager.
+
+[ros2_control_node-2] [ERROR] [1789570521.114989349] [robot.controller_manager.pal_statistics]: Exception in publisher thread: context cannot be slept with because it's invalid!. Aborting!
+
+[ros2_control_node-2] [ERROR] [1789570521.120106960] [robot.controller_manager.pal_statistics]: Exception in publisher thread: context cannot be slept with because it's invalid!. Aborting!
+
+[robot_state_publisher-1] [INFO] [1789570521.123772132] [rclcpp]: signal_handler(signum=15)
+[ros2_control_node-2] [INFO] [1789570521.149900112] [robot.controller_manager.pal_statistics]: Async messages lost 0
+
+[ros2_control_node-2] [INFO] [1789570521.150104969] [robot.controller_manager.pal_statistics]: publish_async_failures_ 0
+
+[vnpub-10] [INFO] [1789570521.194490492] [robot.imu]: VN-100T-CR is disconnected successfully
+[ros2_control_node-2] [INFO] [1789570521.208348656] [robot.controller_manager.pal_statistics]: Async messages lost 0
+
+[ros2_control_node-2] [INFO] [1789570521.208760221] [robot.controller_manager.pal_statistics]: publish_async_failures_ 0
+
+[INFO] [joy_linux_node-7]: process has finished cleanly [pid 1453193]
+[INFO] [robot_state_publisher-1]: process has finished cleanly [pid 1453187]
+[INFO] [robotnik_pad-8]: process has finished cleanly [pid 1453194]
+[INFO] [robot_state_publisher-6]: process has finished cleanly [pid 1453192]
+[INFO] [charge_manager-12]: process has finished cleanly [pid 1453198]
+[ros2_control_node-2] [INFO] [1789570521.386260827] [RobotnikHW]: Unloading RobotnikHW plugin
+
+[INFO] [twist_mux-11]: process has finished cleanly [pid 1453197]
+[INFO] [robotnik_base_hw_monitor-4]: process has finished cleanly [pid 1453190]
+[ros2_control_node-2] [INFO] [1789570521.581811083] [RobotnikHW]: Reset task stopped
+
+[ros2_control_node-2] [INFO] [1789570521.581876298] [RobotnikHW]: Disabling motors
+
+[ros2_control_node-2] [INFO] [1789570521.581930239] [RobotnikHW]: Disabling motor for joint robot_front_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570521.581974379] [RobotnikHW]: Disabling motor for joint robot_back_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570521.581988315] [RobotnikHW]: Disabling motor for joint robot_back_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570521.582021531] [RobotnikHW]: Disabling motor for joint robot_front_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570521.581961604] [RobotnikHW]: Disabling motor for joint robot_front_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570521.582089292] [RobotnikHW]: Disabling motor for joint robot_front_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570521.582111876] [RobotnikHW]: Disabling motor for joint robot_back_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570521.582147886] [RobotnikHW]: Disabling motor for joint robot_back_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570521.583585538] [RobotnikHW]: Unloading motor for joint robot_back_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570521.583590875] [RobotnikHW]: Unloading motor for joint robot_front_right_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570521.583617773] [RobotnikHW]: Unloading motor for joint robot_front_left_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570521.583628651] [RobotnikHW]: Unloading motor for joint robot_back_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570521.583636257] [RobotnikHW]: Unloading motor for joint robot_front_left_wheel_joint
+
+[ros2_control_node-2] [INFO] [1789570521.584850405] [RobotnikHW]: Unloading motor for joint robot_back_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570521.584878872] [RobotnikHW]: Unloading motor for joint robot_front_right_steering_joint
+
+[ros2_control_node-2] [INFO] [1789570521.584881070] [RobotnikHW]: Unloading motor for joint robot_back_left_steering_joint
+
+[daly_bms-9] Traceback (most recent call last):
+[daly_bms-9]   File "/home/robot/robot_ws/install/daly_bms/lib/daly_bms/daly_bms", line 33, in <module>
+[daly_bms-9]     sys.exit(load_entry_point('daly-bms==1.0.1', 'console_scripts', 'daly_bms')())
+[daly_bms-9]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[daly_bms-9]   File "/home/robot/robot_ws/install/daly_bms/lib/python3.12/site-packages/daly_bms/daly_bms_node.py", line 102, in main
+[daly_bms-9]     rclpy.spin(daly_bms)
+[daly_bms-9]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/__init__.py", line 247, in spin
+[daly_bms-9]     executor.spin_once()
+[daly_bms-9]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 845, in spin_once
+[daly_bms-9]     self._spin_once_impl(timeout_sec)
+[daly_bms-9]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 840, in _spin_once_impl
+[daly_bms-9]     raise handler.exception()
+[daly_bms-9]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/task.py", line 269, in __call__
+[daly_bms-9]     self._handler.send(None)
+[daly_bms-9]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 524, in handler
+[daly_bms-9]     await call_coroutine()
+[daly_bms-9]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 386, in _execute
+[daly_bms-9]     await await_or_execute(tmr.callback)
+[daly_bms-9]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/executors.py", line 111, in await_or_execute
+[daly_bms-9]     return callback(*args)
+[daly_bms-9]            ^^^^^^^^^^^^^^^
+[daly_bms-9]   File "/home/robot/robot_ws/install/daly_bms/lib/python3.12/site-packages/daly_bms/daly_bms.py", line 451, in read
+[daly_bms-9]     self.publish()
+[daly_bms-9]   File "/home/robot/robot_ws/install/daly_bms/lib/python3.12/site-packages/daly_bms/daly_bms.py", line 585, in publish
+[daly_bms-9]     self._battery_status_pub.publish(self._battery_status)
+[daly_bms-9]   File "/opt/ros/jazzy/lib/python3.12/site-packages/rclpy/publisher.py", line 70, in publish
+[daly_bms-9]     self.__publisher.publish(msg)
+[daly_bms-9] rclpy._rclpy_pybind11.RCLError: Failed to publish: publisher's context is invalid, at ./src/rcl/publisher.c:423
+[ERROR] [brakes_supervisor_node-5]: process has died [pid 1453191, exit code -6, cmd '/opt/ros/jazzy/lib/robotnik_base_hw/brakes_supervisor_node --ros-args -r __node:=robotnik_brakes_supervisor -r __ns:=/robot --params-file /tmp/launch_params_unjopq9m'].
+[ERROR] [daly_bms-9]: process has died [pid 1453195, exit code 1, cmd '/home/robot/robot_ws/install/daly_bms/lib/daly_bms/daly_bms --ros-args -r __node:=battery_estimator -r __ns:=/robot --params-file /tmp/launch_params_2vbmfrui'].
+[ros2_control_node-2] [INFO] [1789570522.302406873] [RobotnikHW]: Motors disabled
+
+[ros2_control_node-2] [INFO] [1789570522.302422890] [RobotnikHW]: Stopping sync task
+
+[ros2_control_node-2] [INFO] [1789570522.312584399] [RobotnikHW]: Stopped sync task
+
+[ros2_control_node-2] [INFO] [1789570522.312595061] [RobotnikHW]: RobotnikHW plugin unloaded
+
+[INFO] [ros2_control_node-2]: process has finished cleanly [pid 1453188]
+[ERROR] [vnpub-10]: process has died [pid 1453196, exit code -11, cmd '/home/robot/robot_ws/install/vectornav/lib/vectornav/vnpub --ros-args -r __node:=imu -r __ns:=/robot --params-file /tmp/launch_params_c_l1dcgr'].
+
+
+=== Command terminated normally (Wed Sep 16 16:55:23 2026) ===

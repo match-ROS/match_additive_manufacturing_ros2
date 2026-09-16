@@ -43,6 +43,9 @@ class FakeProcesses:
 
 
 class FakeRosBridge:
+    def move_start_distances_cm(self, index):
+        return {"base": None, "arm": None}
+
     def __init__(self):
         self.calls = []
 
@@ -386,3 +389,117 @@ def test_capture_tool_offset_updates_the_selected_platform_offset(tmp_path: Path
     offset = service.snapshot()['config']['fixed_tool_offsets_by_platform']['bunker']
     assert offset == {'xyz': [0.01, -0.02, 0.03], 'quaternion_xyzw': [0.0, 0.0, 0.0, 1.0]}
     assert 'fixed_tool_offset_xyz:=[0.010000, -0.020000, 0.030000]' in service.command_for('arm_follower')
+
+
+def test_vicon_calibration_wiring_and_hardware_check(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.update_config({
+        'simulation': False,
+        'use_vicon_tcp_base_pose_fallback': True,
+        'vicon_input_topic': '/vicon/EE/root',
+        'vicon_nozzle_transform': {'xyz': [0.1, 0.2, 0.3], 'quaternion_xyzw': [0, 0, 0, 2]},
+        'fixed_tool_offset': {'xyz': [0.4, 0.5, 0.6], 'quaternion_xyzw': [0, 0, 0, 1]},
+    })
+    service.start_pose_adapters()
+    commands = {name: command for name, command, _ in service.processes.started}
+    vicon = commands['vicon_ee_static_tf']
+    assert 'input_topic:=/vicon/EE/root' in vicon
+    assert 'marker_to_nozzle_xyz:=[0.1, 0.2, 0.3]' in vicon
+    assert 'marker_to_nozzle_quaternion_xyzw:=[0.0, 0.0, 0.0, 1.0]' in vicon
+    assert 'input_topic:=/vicon/tool_transformed' in commands['arm_pose_adapter']
+    assert 'input_topic:=/vicon/tool_transformed' in commands['vicon_tcp_pose_backup']
+    assert 'fixed_tool_offset_xyz:=[0.400000, 0.500000, 0.600000]' in service.command_for('controllers')
+    requirements = []
+    service.ros_bridge = SimpleNamespace(check_topic_contract=lambda items: requirements.extend(items) or [])
+    service.check_hardware_topics()
+    assert ('/vicon/EE/root', 'geometry_msgs/msg/PoseStamped', 'publisher') in requirements
+    assert not any(topic in {'/vicon/Tool_Flange/Tool_Flange', '/vicon/tool_transformed'} for topic, *_ in requirements)
+    reloaded = OperatorService(tmp_path / 'operator.json')
+    assert reloaded.config['vicon_nozzle_transform']['quaternion_xyzw'] == [0, 0, 0, 1]
+    assert reloaded.config['vicon_input_topic'] == '/vicon/EE/root'
+
+
+def test_legacy_ee_topic_becomes_vicon_input(tmp_path: Path) -> None:
+    (tmp_path / 'operator.json').write_text('{"arm_pose_topic": "/vicon/EE/root"}')
+    service = make_service(tmp_path)
+    assert service.snapshot()['config']['vicon_input_topic'] == '/vicon/EE/root'
+    assert service.snapshot()['config']['arm_pose_topic'] == '/vicon/tool_transformed'
+    service.start_pose_adapters()
+    commands = {name: command for name, command, _ in service.processes.started}
+    assert 'input_topic:=/vicon/EE/root' in commands['vicon_ee_static_tf']
+    assert 'input_topic:=/vicon/tool_transformed' in commands['arm_pose_adapter']
+
+
+@pytest.mark.parametrize('offset', [
+    {'xyz': [0, 0], 'quaternion_xyzw': [0, 0, 0, 1]},
+    {'xyz': [0, 0, float('nan')], 'quaternion_xyzw': [0, 0, 0, 1]},
+    {'xyz': [0, 0, 0], 'quaternion_xyzw': [0, 0, 0, 0]},
+])
+def test_invalid_vicon_calibration_is_rejected_before_saving(tmp_path: Path, offset) -> None:
+    service = make_service(tmp_path)
+    with pytest.raises(ValueError):
+        service.update_config({'vicon_nozzle_transform': offset})
+    assert 'vicon_nozzle_transform' not in service.config
+    assert not (tmp_path / 'operator.json').exists()
+
+
+@pytest.mark.parametrize('topic', ['', '/vicon/tool_transformed', '/current_nozzle_tip_pose', '/bad topic'])
+def test_vicon_input_rejects_local_outputs_and_invalid_topics(tmp_path: Path, topic) -> None:
+    service = make_service(tmp_path)
+    with pytest.raises(ValueError):
+        service.update_config({'vicon_input_topic': topic})
+
+
+def test_vicon_uses_control_frame_and_toggles(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    service = make_service(tmp_path)
+    service.update_config({'control_frame': 'custom_world'})
+    service.action('vicon')
+    assert service.processes.started[-1][1] == [
+        'ros2', 'launch', 'vicon_receiver', 'client.launch.py',
+        'hostname:=192.168.0.30:8802', 'topic_namespace:=vicon',
+        'world_frame:=custom_world', 'vicon_frame:=vicon',
+    ]
+    service.action('vicon')
+    assert 'vicon' in service.processes.stopped
+    service.update_config({'control_frame': 'vicon_world'})
+    service.action('vicon')
+    assert 'world_frame:=vicon_world' in service.processes.started[-1][1]
+    service.action('stop_all')
+    assert not service.processes.get('vicon').is_running()
+
+
+def test_vicon_sources_workspace_only_in_child_session(tmp_path: Path, monkeypatch) -> None:
+    import os
+    import subprocess
+
+    monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    setup = tmp_path / 'vicon_receiver_ws/install/setup.bash'
+    setup.parent.mkdir(parents=True)
+    setup.write_text('export VICON_GUI_CHILD_TEST=loaded\n')
+    monkeypatch.delenv('VICON_GUI_CHILD_TEST', raising=False)
+    service = make_service(tmp_path)
+    command = service.command_for('vicon')
+    assert command[5:9] == ['ros2', 'launch', 'vicon_receiver', 'client.launch.py']
+    # Exercise the actual sourcing wrapper, including an argument with shell syntax.
+    probe = command[:5] + ['python3', '-c',
+        'import os, sys; print(os.environ["VICON_GUI_CHILD_TEST"]); print(sys.argv[1])',
+        'frame with spaces; $HOME']
+    result = subprocess.run(probe, capture_output=True, text=True, check=True, start_new_session=True)
+    assert result.stdout.splitlines() == ['loaded', 'frame with spaces; $HOME']
+    assert 'VICON_GUI_CHILD_TEST' not in os.environ
+
+
+def test_index_pose_preview_is_manual_and_uses_selected_profile(tmp_path: Path) -> None:
+    service = make_service(tmp_path)
+    service.update_config({'platform': 'bunker', 'path_index': 7})
+    command = service.command_for('index_pose_preview')
+    import sys
+    assert command[:3] == [sys.executable, '-m', 'am_operator_gui.index_pose_preview']
+    assert 'initial_path_index:=7' in command
+    assert 'base_path_topic:=/base_path' in command
+    assert 'index_pose_preview' not in service._launch_all_process_names()
+    service.action('index_pose_preview')
+    assert service.processes.get('index_pose_preview').is_running()
+    service.action('index_pose_preview')
+    assert not service.processes.get('index_pose_preview').is_running()

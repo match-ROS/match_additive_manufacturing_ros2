@@ -31,6 +31,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'index_pose_preview = am_operator_gui.index_pose_preview:main',
             'am_operator_gui = am_operator_gui.main:main',
             'am_operator_web = am_operator_gui.web_main:main',
             'controller_switch_guard = am_operator_gui.controller_switch_guard:main',

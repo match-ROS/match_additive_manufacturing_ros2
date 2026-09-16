@@ -1,0 +1,706 @@
+{
+  "before_async1": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2419432.2,
+        "tx_bytes": 454017.5,
+        "rx_packets": 3073.9,
+        "tx_packets": 2384.5
+      },
+      "wlp4s0": {
+        "rx_bytes": 78594.7,
+        "tx_bytes": 277382.1,
+        "rx_packets": 304.2,
+        "tx_packets": 963.3
+      },
+      "lo": {
+        "rx_bytes": 1360838.4,
+        "tx_bytes": 1360838.4,
+        "rx_packets": 6976.1,
+        "tx_packets": 6976.1
+      }
+    },
+    "controllers": {
+      "312013": {
+        "udp_drops_per_second": [
+          {
+            "port": 45934,
+            "drops": 0.0
+          },
+          {
+            "port": 7006,
+            "drops": 0.0
+          },
+          {
+            "port": 41103,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16922,
+            "drops": 25.9
+          },
+          {
+            "port": 16923,
+            "drops": 0.0
+          },
+          {
+            "port": 52839,
+            "drops": 0.0
+          },
+          {
+            "port": 37289,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 2,
+        "overrun_max_ms": 1397.969449,
+        "overrun_mean_ms": 1024.92,
+        "other_logs": []
+      },
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 128.9
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 2,
+        "overrun_max_ms": 3.416837,
+        "overrun_mean_ms": 3.16,
+        "other_logs": []
+      }
+    }
+  },
+  "before_async2": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2414394.3,
+        "tx_bytes": 461553.0,
+        "rx_packets": 3044.0,
+        "tx_packets": 2382.8
+      },
+      "wlp4s0": {
+        "rx_bytes": 83439.1,
+        "tx_bytes": 262253.7,
+        "rx_packets": 317.8,
+        "tx_packets": 900.0
+      },
+      "lo": {
+        "rx_bytes": 1521603.5,
+        "tx_bytes": 1521603.5,
+        "rx_packets": 8232.9,
+        "tx_packets": 8232.9
+      }
+    },
+    "controllers": {
+      "312013": {
+        "udp_drops_per_second": [
+          {
+            "port": 45934,
+            "drops": 0.0
+          },
+          {
+            "port": 7006,
+            "drops": 0.0
+          },
+          {
+            "port": 41103,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16922,
+            "drops": 86.9
+          },
+          {
+            "port": 16923,
+            "drops": 0.0
+          },
+          {
+            "port": 52839,
+            "drops": 0.0
+          },
+          {
+            "port": 37289,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 3,
+        "overrun_max_ms": 1817.575346,
+        "overrun_mean_ms": 788.23,
+        "other_logs": []
+      },
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 136.1
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 11.017907,
+        "overrun_mean_ms": 11.02,
+        "other_logs": []
+      }
+    }
+  },
+  "base_async1": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2447748.9,
+        "tx_bytes": 605138.7,
+        "rx_packets": 3238.2,
+        "tx_packets": 2812.6
+      },
+      "wlp4s0": {
+        "rx_bytes": 120984.1,
+        "tx_bytes": 456789.5,
+        "rx_packets": 547.0,
+        "tx_packets": 1478.1
+      },
+      "lo": {
+        "rx_bytes": 1639498.8,
+        "tx_bytes": 1639498.8,
+        "rx_packets": 8934.6,
+        "tx_packets": 8934.6
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 144.6
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 3,
+        "overrun_max_ms": 7.490537,
+        "overrun_mean_ms": 4.04,
+        "other_logs": []
+      },
+      "1296952": {
+        "udp_drops_per_second": [],
+        "overrun_count": 0,
+        "overrun_max_ms": 0,
+        "overrun_mean_ms": 0,
+        "other_logs": []
+      }
+    }
+  },
+  "notes": {
+    "before_async2": "A stationary-check ROS participant was also created during this window; not an isolated identical-probe comparison.",
+    "base_async1": "INVALID timing comparison: base controller aborted during configure; zero overruns do not mean improvement."
+  },
+  "base_async_retry1": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2454952.8,
+        "tx_bytes": 739204.5,
+        "rx_packets": 3286.9,
+        "tx_packets": 3105.8
+      },
+      "wlp4s0": {
+        "rx_bytes": 139452.7,
+        "tx_bytes": 568832.0,
+        "rx_packets": 661.9,
+        "tx_packets": 1689.0
+      },
+      "lo": {
+        "rx_bytes": 1822115.2,
+        "tx_bytes": 1822115.2,
+        "rx_packets": 10375.4,
+        "tx_packets": 10375.4
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 212.0
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 2,
+        "overrun_max_ms": 2.234426,
+        "overrun_mean_ms": 2.2,
+        "other_logs": []
+      },
+      "1311841": {
+        "udp_drops_per_second": [
+          {
+            "port": 7004,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 160.7
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          },
+          {
+            "port": 33597,
+            "drops": 0.0
+          },
+          {
+            "port": 34085,
+            "drops": 0.0
+          },
+          {
+            "port": 35457,
+            "drops": 0.0
+          },
+          {
+            "port": 60754,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 2,
+        "overrun_max_ms": 380.693574,
+        "overrun_mean_ms": 258.91,
+        "other_logs": []
+      }
+    },
+    "robot_discovered": true
+  },
+  "base_async_retry2": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2460817.4,
+        "tx_bytes": 744707.3,
+        "rx_packets": 3319.1,
+        "tx_packets": 3126.9
+      },
+      "wlp4s0": {
+        "rx_bytes": 150500.3,
+        "tx_bytes": 580936.8,
+        "rx_packets": 719.3,
+        "tx_packets": 1709.9
+      },
+      "lo": {
+        "rx_bytes": 1862516.8,
+        "tx_bytes": 1862516.8,
+        "rx_packets": 10658.3,
+        "tx_packets": 10658.3
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 188.0
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 5.698395,
+        "overrun_mean_ms": 5.7,
+        "other_logs": []
+      },
+      "1311841": {
+        "udp_drops_per_second": [
+          {
+            "port": 7004,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 159.7
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          },
+          {
+            "port": 33597,
+            "drops": 0.0
+          },
+          {
+            "port": 34085,
+            "drops": 0.0
+          },
+          {
+            "port": 35457,
+            "drops": 0.0
+          },
+          {
+            "port": 60754,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 53.115789,
+        "overrun_mean_ms": 53.12,
+        "other_logs": []
+      }
+    },
+    "robot_discovered": true
+  },
+  "base_async_retry3": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 2445153.5,
+        "tx_bytes": 700152.7,
+        "rx_packets": 3241.1,
+        "tx_packets": 2964.3
+      },
+      "wlp4s0": {
+        "rx_bytes": 135336.6,
+        "tx_bytes": 575984.2,
+        "rx_packets": 641.5,
+        "tx_packets": 1650.7
+      },
+      "lo": {
+        "rx_bytes": 1608983.6,
+        "tx_bytes": 1608983.6,
+        "rx_packets": 8827.0,
+        "tx_packets": 8827.0
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 17002,
+            "drops": 172.2
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 2,
+        "overrun_max_ms": 3.522295,
+        "overrun_mean_ms": 2.78,
+        "other_logs": []
+      },
+      "1311841": {
+        "udp_drops_per_second": [
+          {
+            "port": 7004,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 143.3
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          },
+          {
+            "port": 33597,
+            "drops": 0.0
+          },
+          {
+            "port": 34085,
+            "drops": 0.0
+          },
+          {
+            "port": 35457,
+            "drops": 0.0
+          },
+          {
+            "port": 60754,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 1,
+        "overrun_max_ms": 34.870913,
+        "overrun_mean_ms": 34.87,
+        "other_logs": []
+      }
+    },
+    "robot_discovered": true
+  },
+  "async_gui": {
+    "network": {
+      "eno1": {
+        "rx_bytes": 5798217.3,
+        "tx_bytes": 2704941.2,
+        "rx_packets": 19706.8,
+        "tx_packets": 11813.2
+      },
+      "wlp4s0": {
+        "rx_bytes": 1125953.6,
+        "tx_bytes": 911972.4,
+        "rx_packets": 5492.8,
+        "tx_packets": 3752.1
+      },
+      "lo": {
+        "rx_bytes": 4933299.8,
+        "tx_bytes": 4933299.8,
+        "rx_packets": 33005.4,
+        "tx_packets": 33005.4
+      }
+    },
+    "controllers": {
+      "316435": {
+        "udp_drops_per_second": [
+          {
+            "port": 38021,
+            "drops": 0.0
+          },
+          {
+            "port": 38324,
+            "drops": 0.0
+          },
+          {
+            "port": 7045,
+            "drops": 0.0
+          },
+          {
+            "port": 33215,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 34.8
+          },
+          {
+            "port": 17002,
+            "drops": 1074.6
+          },
+          {
+            "port": 17003,
+            "drops": 0.0
+          },
+          {
+            "port": 58171,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 2,
+        "overrun_max_ms": 5.884079,
+        "overrun_mean_ms": 4.06,
+        "other_logs": []
+      },
+      "1311841": {
+        "udp_drops_per_second": [
+          {
+            "port": 7004,
+            "drops": 0.0
+          },
+          {
+            "port": 16900,
+            "drops": 0.0
+          },
+          {
+            "port": 16918,
+            "drops": 1027.6
+          },
+          {
+            "port": 16919,
+            "drops": 0.0
+          },
+          {
+            "port": 33597,
+            "drops": 0.0
+          },
+          {
+            "port": 34085,
+            "drops": 0.0
+          },
+          {
+            "port": 35457,
+            "drops": 0.0
+          },
+          {
+            "port": 60754,
+            "drops": 0.0
+          }
+        ],
+        "overrun_count": 4,
+        "overrun_max_ms": 390.435139,
+        "overrun_mean_ms": 283.95,
+        "other_logs": [
+          "[WARN] [1789569767.890067817] [robotnik_base_controller]: Imu data not received, using odometry yaw instead"
+        ]
+      }
+    }
+  }
+}

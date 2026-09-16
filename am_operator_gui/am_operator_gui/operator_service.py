@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import os
+import sys
 from collections import deque
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -15,12 +16,18 @@ from pathlib import Path
 from threading import Lock, Timer
 from typing import Any, Callable, Optional
 
+from .tool_transforms import (
+    DEFAULT_VICON_INPUT_TOPIC, DEFAULT_VICON_NOZZLE_TRANSFORM,
+    VICON_NOZZLE_TOPIC, validated_transform,
+)
 from .config_store import ConfigStore
+from .robot_debug import RobotDebugInfo
 from .process_manager import ProcessRegistry
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[2]
+SYNC_REMOTE_TARGET = 'robot@192.168.0.200:~/b04_gui_ws/src/'
 
 
 def _installed_config_path() -> Path:
@@ -98,8 +105,10 @@ POSE_ADAPTER_PROCESSES = (
 )
 
 TOGGLE_ACTIONS = {
+    'vicon': ('vicon', 'Start Vicon', 'Stop Vicon'),
     'simulation': ('simulation', 'Launch Sim', 'Stop Sim'),
     'publish_path': ('publish_path', 'Publish Path', 'Stop Path'),
+    'index_pose_preview': ('index_pose_preview', 'Show Index Poses', 'Stop Index Poses'),
     'path_index': ('path_index', 'Launch Path Index', 'Stop Path Index'),
     'base_follower': ('base_follower', 'Launch Base Follower', 'Stop Base Follower'),
     'arm_follower': ('arm_follower', 'Launch Arm Follower', 'Stop Arm Follower'),
@@ -121,6 +130,8 @@ ONE_SHOT_ACTIONS = {
 # browser button tooltips.  Keep them operational so hovering explains the
 # action in addition to reporting its current process state.
 ACTION_DESCRIPTIONS = {
+    'index_pose_preview': ('Publiziert die gewählten Arm-/Base-Trackingindexposen auf '
+                           '/selected_arm_index_pose und /selected_base_index_pose für RViz.'),
     'simulation': (
         'Startet ausschließlich die Simulation des gewählten Bunker- oder '
         'Robotnik-Profils; Show simulator window steuert das Gazebo-Fenster.'
@@ -153,7 +164,7 @@ ACTION_DESCRIPTIONS = {
         'Zeichnet die Abweichung von /current_deposition_pose zum Tracking-Armpfad '
         'und zur Arm-Referenzpose ab /start_condition auf.'
     ),
-    'sync_workspace': 'Synchronisiert den Quellbaum per rsync auf das konfigurierte Zielsystem.',
+    'sync_workspace': 'Copies workspace sources to robot@192.168.0.200:~/b04_gui_ws/src/ via rsync. Build and launch on the robot separately.',
     'move_base': (
         'Fährt die Base einmalig zur Pose des gemeinsamen Trackingindex in /base_path_tracking mit '
         '/robot_pose und plattformspezifischem cmd_vel-Topic.'
@@ -178,6 +189,7 @@ ACTION_DESCRIPTIONS = {
         'Simulation: leitet TCP-/Nozzle-Pose aus Robot-TF, Werkzeugoffset und '
         'Sprühabstand ab. Hardware: startet die Vicon-/Odometrie-Posekette.'
     ),
+    'vicon': 'Starts the Vicon receiver at 192.168.0.30:8802 using the configured Control frame as world_frame. Stop and restart to apply frame changes.',
     'pose_adapters': (
         'Erzeugt auf Hardware Base- und Nozzle-Pose aus Vicon, Odometry oder Tool-TF '
         'und publiziert die standardisierten Pose-Topics.'
@@ -213,6 +225,12 @@ class OperatorService:
             config_path = Path(configured_path).expanduser() if configured_path else CONFIG_PATH
         self.store = ConfigStore(config_path, LEGACY_CONFIG_PATH if config_path == CONFIG_PATH else None)
         self.config: dict[str, Any] = self.store.load()
+        # The former EE field selected a downstream pose. Preserve a custom
+        # measured topic as the input to the now explicit calibration chain.
+        legacy_topic = str(self.config.get('arm_pose_topic', VICON_NOZZLE_TOPIC))
+        self.config.setdefault('vicon_input_topic',
+                               legacy_topic if legacy_topic != VICON_NOZZLE_TOPIC else DEFAULT_VICON_INPUT_TOPIC)
+        self.config['arm_pose_topic'] = VICON_NOZZLE_TOPIC
         self.logs: deque[dict[str, str]] = deque(maxlen=1000)
         self._lock = Lock()
         self._output_callback = output_callback
@@ -221,6 +239,7 @@ class OperatorService:
         self.processes = ProcessRegistry(output_callback=self._on_output)
         self.ros_bridge = None
         self.ros_error: str | None = None
+        self.robot_debug = RobotDebugInfo()
         self._status = {'path': False, 'robot_pose': False, 'arm_pose': False,
                         'jparse_ready': False, 'controller_ready': False}
         self._launch_all_active = False
@@ -271,6 +290,7 @@ class OperatorService:
             self.ros_bridge = RosBridge(
                 status_callback=self._on_ros_status,
                 path_index_callback=self._on_path_index,
+                control_frame=str(self._setting('control_frame', 'map')),
             )
             self.ros_bridge.start()
             return True
@@ -301,7 +321,8 @@ class OperatorService:
         # Keep the public web endpoint deliberately explicit; unknown keys cannot
         # accidentally become command-line arguments.
         allowed = {'simulation', 'simulation_gui', 'platform', 'trajectory_directory', 'control_frame',
-                   'base_pose_topic', 'arm_pose_topic', 'external_map_frame',
+                   'base_pose_topic', 'vicon_input_topic', 'vicon_nozzle_transform',
+                   'vicon_nozzle_transform_input_mode', 'external_map_frame',
                    'robot_base_frame', 'robot_tree_root_frame', 'use_odometry_robot_pose',
                    'use_vicon_tcp_base_pose_fallback', 'default_velocity',
                    'default_velocity_enabled', 'spray_distance_mm', 'path_transform',
@@ -312,6 +333,15 @@ class OperatorService:
                    'direction_mode', 'accuracy_phase'}
         accepted = {key: value for key, value in values.items() if key in allowed}
         try:
+            if 'vicon_input_topic' in accepted:
+                topic = str(accepted['vicon_input_topic']).strip()
+                if not topic.startswith('/') or any(char.isspace() for char in topic):
+                    raise ValueError('Vicon input must be an absolute ROS topic without whitespace')
+                if topic.rstrip('/') in {VICON_NOZZLE_TOPIC, '/current_nozzle_tip_pose', '/current_deposition_pose'}:
+                    raise ValueError('Vicon input must be an external measurement, not a local pose output')
+                accepted['vicon_input_topic'] = topic
+            if 'vicon_nozzle_transform' in accepted:
+                accepted['vicon_nozzle_transform'] = validated_transform(accepted['vicon_nozzle_transform'])
             if 'path_index' in accepted:
                 accepted['path_index'] = max(0, int(accepted['path_index']))
             if 'original_arm_index' in accepted:
@@ -331,6 +361,8 @@ class OperatorService:
             except Exception:
                 accepted['path_index'] = accepted['original_arm_index']
         self.config.update(accepted)
+        if 'control_frame' in accepted and self.ros_bridge is not None:
+            self.ros_bridge.set_control_frame(str(accepted['control_frame']))
         if 'path_index' in accepted:
             self._live_path_index = accepted['path_index']
         if 'original_arm_index' in accepted:
@@ -484,7 +516,10 @@ class OperatorService:
             'trajectory_directory': str(REPO_ROOT / 'components' / 'robotnik_paired_demo'),
             'control_frame': 'map',
             'base_pose_topic': '/vicon/Base_RB/Base_RB',
-            'arm_pose_topic': '/vicon/tool_transformed',
+            'arm_pose_topic': VICON_NOZZLE_TOPIC,
+            'vicon_input_topic': DEFAULT_VICON_INPUT_TOPIC,
+            'vicon_nozzle_transform': deepcopy(DEFAULT_VICON_NOZZLE_TRANSFORM),
+            'vicon_nozzle_transform_input_mode': 'quaternion',
             'external_map_frame': 'map',
             'robot_base_frame': 'base_link',
             'robot_tree_root_frame': 'odom',
@@ -514,8 +549,14 @@ class OperatorService:
         }
         return {'config': config, 'platform_settings': platform_settings, 'status': self._status, 'processes': processes,
                 'actions': self._action_states(),
+                'move_start_distances_cm': self.move_start_distances_cm(),
                 'logs': list(self.logs), 'ros_error': self.ros_error,
                 'hardware_topic_results': self._hardware_topic_results}
+
+    def move_start_distances_cm(self) -> dict:
+        if self.ros_bridge is None:
+            return {'base': None, 'arm': None}
+        return self.ros_bridge.move_start_distances_cm(int(self._setting('path_index', 0)))
 
     def _process_state(
         self,
@@ -914,7 +955,7 @@ class OperatorService:
             # This is the bridge input.  /vicon/tool_transformed is generated
             # locally by vicon_ee_static_tf during Launch All, so checking it
             # before launch would always create a misleading failure.
-            ('/vicon/Tool_Flange/Tool_Flange',
+            (str(self._setting('vicon_input_topic', DEFAULT_VICON_INPUT_TOPIC)),
              'geometry_msgs/msg/PoseStamped', 'publisher'),
             ('/robot/robot_description', 'std_msgs/msg/String', 'publisher'),
             ('/robot/joint_states', 'sensor_msgs/msg/JointState', 'publisher'),
@@ -928,9 +969,6 @@ class OperatorService:
             requirements.insert(0, (str(profile['odom']), 'nav_msgs/msg/Odometry', 'publisher'))
         elif not bool(self._setting('use_vicon_tcp_base_pose_fallback', False)):
             requirements.insert(0, (base_topic, 'geometry_msgs/msg/PoseStamped', 'publisher'))
-        arm_pose_topic = str(self._setting('arm_pose_topic', '/vicon/tool_transformed'))
-        if arm_pose_topic != '/vicon/tool_transformed':
-            requirements.insert(1, (arm_pose_topic, 'geometry_msgs/msg/PoseStamped', 'publisher'))
         messages = self.ros_bridge.check_topic_contract(requirements)
         for message in messages:
             self.log('hardware_check', message)
@@ -948,6 +986,17 @@ class OperatorService:
         frame = str(self._setting('control_frame', 'map'))
         trajectory = str(self._setting('trajectory_directory', REPO_ROOT / 'components' / 'robotnik_paired_demo'))
         index = int(self._setting('path_index', 0))
+        if name == 'vicon':
+            command = ['ros2', 'launch', 'vicon_receiver', 'client.launch.py',
+                       'hostname:=192.168.0.30:8802', 'topic_namespace:=vicon',
+                       f'world_frame:={frame}', 'vicon_frame:=vicon']
+            setup = Path.home() / 'vicon_receiver_ws' / 'install' / 'setup.bash'
+            if setup.is_file():
+                # Source only in the managed child session. Positional arguments
+                # preserve paths/frame values without shell interpolation.
+                return ['bash', '-c', 'source "$1" && shift && exec "$@"',
+                        'vicon', str(setup), *command]
+            return command
         if name == 'simulation':
             show_window = str(bool(self._setting('simulation_gui', False))).lower()
             if self._platform_key() == 'bunker':
@@ -961,6 +1010,11 @@ class OperatorService:
                     f'use_sim_time:={self._use_sim_time()}', f'frame_id:={frame}',
                     'load_exported_trajectories:=true', f'trajectory_directory:={trajectory}', 'publish_once:=false',
                     *self._path_transform_arguments(trajectory)]
+        if name == 'index_pose_preview':
+            return [sys.executable, '-m', 'am_operator_gui.index_pose_preview', '--ros-args',
+                    '-p', f'use_sim_time:={self._use_sim_time()}',
+                    '-p', f'initial_path_index:={index}',
+                    '-p', f"base_path_topic:={profile['path']}"]
         if name == 'path_index':
             return ['ros2', 'run', 'ur_trajectory_follower', 'increment_path_index', '--ros-args',
                     '-p', f'use_sim_time:={self._use_sim_time()}', '-p', 'path_index_topic:=/path_index',
@@ -1092,7 +1146,7 @@ class OperatorService:
             rviz = 'bunker_operator.rviz' if str(self._setting('platform', 'robotnik')) == 'bunker' else 'robotnik_operator.rviz'
             return ['rviz2', '-d', str(ASSET_ROOT / 'rviz' / rviz), '-f', frame]
         if name == 'sync_workspace':
-            return ['rsync', '-az', '-e', 'ssh', f'{REPO_ROOT.parent}/', 'ite-dcs@192.168.0.222:~/workspaces/print_wattle_daub/src/']
+            return ['rsync', '-az', '-e', 'ssh', f'{REPO_ROOT.parent}/', SYNC_REMOTE_TARGET]
         return None
 
     def start_pose_adapters(self) -> None:
@@ -1104,8 +1158,13 @@ class OperatorService:
         if not bool(self._setting('use_odometry_robot_pose', False)) and not bool(self._setting('use_vicon_tcp_base_pose_fallback', False)):
             self.processes.start('vicon_base_static_tf', ['ros2', 'run', 'tf2_ros', 'static_transform_publisher',
                 '0.022595781', '-0.008234146', '-0.007327516', '0.004459784', '-0.006515752', '0.009033290', '0.999928025', 'robot_base_footprint', 'robot_base_vicon_reference'])
+        vicon_offset = validated_transform(self._setting('vicon_nozzle_transform', DEFAULT_VICON_NOZZLE_TRANSFORM))
         self.processes.start('vicon_ee_static_tf', ['ros2', 'run', 'am_operator_gui', 'vicon_ee_static_tf', '--ros-args',
-            '-p', f'use_sim_time:={self._use_sim_time()}', '-p', 'input_topic:=/vicon/Tool_Flange/Tool_Flange', '-p', 'output_topic:=/vicon/tool_transformed'])
+            '-p', f'use_sim_time:={self._use_sim_time()}',
+            '-p', f"input_topic:={self._setting('vicon_input_topic', DEFAULT_VICON_INPUT_TOPIC)}",
+            '-p', f'output_topic:={VICON_NOZZLE_TOPIC}',
+            '-p', f"marker_to_nozzle_xyz:={vicon_offset['xyz']}",
+            '-p', f"marker_to_nozzle_quaternion_xyzw:={vicon_offset['quaternion_xyzw']}"])
         if bool(self._setting('use_odometry_robot_pose', False)):
             command = ['ros2', 'run', 'am_operator_gui', 'odometry_robot_pose', '--ros-args',
                 '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"odom_topic:={self._profile()['odom']}",
@@ -1126,7 +1185,7 @@ class OperatorService:
                 '-p', f'map_frame:={external_map}', '-p', f'robot_base_frame:={base_frame}', '-p', f'robot_tree_root_frame:={root_frame}']
             self.processes.start('base_pose_adapter', command)
         self.processes.start('arm_pose_adapter', ['ros2', 'run', 'am_operator_gui', 'pose_stamped_adapter', '--ros-args',
-            '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"input_topic:={self._setting('arm_pose_topic', '/vicon/tool_transformed')}",
+            '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f'input_topic:={VICON_NOZZLE_TOPIC}',
             '-p', 'output_topic:=/current_nozzle_tip_pose', '-p', f'target_frame:={frame}'])
 
     def _publish_start_condition_repeatedly(self, value: bool) -> None:

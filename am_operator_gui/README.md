@@ -24,6 +24,67 @@ For a clean local setup, use
 `config/operator_gui_config.json` and select the trajectory directory in either
 interface. The example deliberately contains no workstation-specific absolute path.
 
+### Sync sources and run JParse on the robot
+
+**Sync Workspace** copies the local workspace's entire `src/` tree over SSH to
+`robot@192.168.0.200:~/b04_gui_ws/src/`. SSH key access and rsync are available on
+this robot. Restart the GUI after updating it to pick up the new destination.
+The action overwrites changed files, keeps destination-only files, and does not
+build or launch anything. Check the `sync_workspace` process log for completion.
+
+After syncing, build on the robot:
+
+```bash
+ssh robot@192.168.0.200
+source /opt/ros/jazzy/setup.bash
+cd ~/b04_gui_ws
+colcon build --symlink-install --packages-select am_jparse_controller
+source install/setup.bash
+```
+
+With the robot drivers running and the same ROS domain/discovery configuration
+as the operator PC, launch JParse using the GUI's controller twist topic:
+
+```bash
+ros2 launch am_jparse_controller am_jparse_velocity_controller.launch.py \
+  twist_topic:=/jparse_velocity_controller_ur/twist_cmd \
+  fixed_tool_offset_xyz:='[-0.25, 0.0, 0.015]' \
+  fixed_tool_offset_quaternion_xyzw:='[0.0, -0.7071067812, 0.0, 0.7071067812]' \
+  command_joint_names_csv:=robot_arm_shoulder_pan_joint,robot_arm_shoulder_lift_joint,robot_arm_elbow_joint,robot_arm_wrist_1_joint,robot_arm_wrist_2_joint,robot_arm_wrist_3_joint
+```
+
+Use the same tool offset and velocity limits as your GUI configuration; the
+example above uses the standard Robotnik tool offset. This starts JParse only:
+it requires the twist transform publisher, robot description, joint states,
+spray distance, and an active forward velocity controller. The GUI's **Start
+Controllers** action starts a local JParse instance too, so do not combine it
+with this remote instance. Sync does not change where GUI launch actions run.
+
+### Robot clock diagnostics
+
+Both interfaces offer a normally hidden **Debugging info** panel: expand it in
+the web GUI, or enable its checkbox in Qt. While open, it checks
+`robot@192.168.0.200` over key-based SSH every ten seconds, with an eight-second
+timeout. It displays SSH reachability, the estimated robot minus PC clock offset
+and measurement uncertainty, configured/system, network and fallback NTP servers,
+the currently selected server, and synchronization status. The remote probe uses
+Python 3 and `timedatectl`; no sudo is needed. A selected server alone does not
+mean synchronization succeeded. Failed checks clear the previous clock reading.
+
+For this workstation (`192.168.0.222`), Chrony already serves NTP to the robot
+network. To point the robot's `systemd-timesyncd` at it, run from this PC:
+
+```bash
+bash src/match_additive_manufacturing_ros2/am_operator_gui/scripts/configure_robot_time.sh
+```
+
+Enter the robot's sudo password in the terminal. The script installs
+`/etc/systemd/timesyncd.conf.d/99-am-operator-pc.conf`, overriding the old server
+list, and restarts the time service. Keep the PC's address stable and the PC
+running. Apply the correction with motion stopped, then restart affected ROS
+nodes to reset TF histories. To undo, remove that drop-in and restart
+`systemd-timesyncd`. Existing copies of the drop-in are backed up before changes.
+
 ### Browser test with Playwright
 
 The browser test starts the actual start script on a free local port, opens
@@ -162,6 +223,51 @@ static transform between the robot base and the Vicon base reference, transforms
 Vicon base measurement into `map`, and publishes `/robot_pose`. It also converts the
 Vicon tool marker into `/vicon/tool_transformed` and then
 `/current_nozzle_tip_pose`.
+
+### Vicon world frame
+
+For the active `components/david_path` setup, **Control frame** and **External map**
+are `vicon_world`; **Robot base frame** is `robot_base_footprint` and **Robot TF root**
+is `robot_odom`. The imported arm/base path files also use `vicon_world`.
+Changing a frame label preserves coordinates; it does not calculate a registration
+transform between independently calibrated worlds.
+
+The web readiness checks use **Control frame**. Path freshness allows 2.5 seconds
+for the 1 Hz path publisher; measured pose freshness remains 0.75 seconds.
+Restart pose adapters and followers after changing their frame settings.
+
+### Web GUI: nozzle transforms
+
+The **Nozzle transforms** section places two independent calibrations side by side
+(stacked on narrow screens):
+
+- **Vicon EE / marker → nozzle** sets the **Measured Vicon EE topic** and the
+  nozzle pose relative to that measured frame. Hardware topic checks and the
+  Vicon adapter use this input. Translation is in metres in the measured frame;
+  rotation is XYZW quaternion or RPY in degrees (roll X, pitch Y, yaw Z).
+  Restart **Pose Adapters** after changing the input or calibration.
+- **Robot flange → nozzle** describes the nozzle relative to `robot_arm_tool0`
+  for the kinematic/controller chain, separately for each platform. Restart arm
+  controllers and the follower after changing it. It does not change Vicon calibration.
+
+Both describe the same nozzle; their values coincide only when the Vicon measured
+frame coincides with the robot flange. The Vicon defaults retain the previous
+hardcoded calibration and must match your marker setup. If Vicon already measures
+nozzle-tip pose, use zero translation and quaternion `[0, 0, 0, 1]`.
+
+Hardware feedback always follows the chain:
+`measured Vicon EE → Vicon calibration → /vicon/tool_transformed → control-frame
+conversion → /current_nozzle_tip_pose → spray-distance offset → /current_deposition_pose`.
+The follower compares the deposition pose with `/arm_trajectory_reference`.
+The TCP-based base-pose fallback also uses `/vicon/tool_transformed`.
+
+Existing custom `arm_pose_topic` selections such as `/vicon/EE/root` become the
+`vicon_input_topic` when loading an older web configuration. They now pass through
+Vicon calibration. The downstream `arm_pose_topic` is fixed to
+`/vicon/tool_transformed`; it is no longer an editable web setting. Existing
+calibration values are retained, so review the Vicon offset when migrating a
+configuration that previously fed a raw EE pose directly to the nozzle adapter.
+These settings apply to the web GUI; the legacy Qt launcher retains its own launch wiring.
 
 Choose exactly one source for `/robot_pose`:
 
@@ -307,3 +413,14 @@ When recovering from an uncertain pose, controller state, or path registration, 
 following, make the hardware safe, correct the root cause, then restart the affected
 adapters/controllers and repeat the pre-flight checks. Do not resume solely from a
 stale GUI status or a previous TF calibration.
+
+For a manual RViz preview, start **Publish Path**, then **Show Index Poses**.
+This independently resamples the coupled paths into the same 5 mm tracking index
+space as Path Index. It publishes `PoseStamped` messages on
+`/selected_arm_index_pose` and `/selected_base_index_pose`, following the GUI's
+selected index (and the live index when Path Index is running). Both operator
+RViz configurations include these displays with Transient Local durability.
+The preview starts only through its own button; **Launch All** does not start it.
+Use **Stop Index Poses** to stop publishing. No motion or progress commands are
+published by the preview. Publish Path must supply valid coupled paths; an
+out-of-range index produces no new pose, so RViz may retain the previous pose.

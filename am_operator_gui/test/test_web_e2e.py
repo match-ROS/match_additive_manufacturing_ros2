@@ -87,6 +87,15 @@ def test_start_script_renders_and_saves_settings(tmp_path: Path) -> None:
             page.goto(f'http://127.0.0.1:{port}', wait_until='domcontentloaded')
             expect = sync_api.expect
             expect(page.get_by_role('heading', name='AM Operator')).to_be_visible()
+            expect(page.locator('#robot-debug-info')).not_to_be_visible()
+            page.route('**/api/debug/robot', lambda route: route.fulfill(json={
+                'text': 'SSH robot@192.168.0.200: erreichbar\nZeitversatz Roboter − PC: +98.000 s\nEingestellte Zeitserver: 192.168.0.222',
+            }))
+            page.locator('#robot-debug > summary').click()
+            expect(page.locator('#robot-debug-info')).to_contain_text('+98.000 s')
+            expect(page.locator('#robot-debug-info')).to_contain_text('192.168.0.222')
+            page.locator('#robot-debug > summary').click()
+            expect(page.locator('#robot-debug-info')).not_to_be_visible()
             expect(page.get_by_alt_text('MATCH')).to_be_visible()
             expect(page.get_by_alt_text('Additive Manufacturing Center Aachen')).to_be_visible()
             assert page.get_by_alt_text('MATCH').evaluate('(image) => image.naturalWidth') > 0
@@ -113,7 +122,22 @@ def test_start_script_renders_and_saves_settings(tmp_path: Path) -> None:
             page.locator('[data-setting="path_index"]').press('Tab')
             page.reload(wait_until='networkidle')
             expect(page.locator('[data-setting="path_index"]')).to_have_value('12')
-            assert json.loads(config_path.read_text(encoding='utf-8')) == {'path_index': 12}
+            assert json.loads(config_path.read_text(encoding='utf-8'))['path_index'] == 12
+            page.locator('[data-setting="vicon_input_topic"]').fill('/vicon/EE/root')
+            page.locator('[data-setting="vicon_input_topic"]').press('Tab')
+            page.locator('#vicon-offset-x').fill('0.125')
+            page.locator('#vicon-offset-mode').select_option('rpy')
+            page.locator('#vicon-offset-r0').fill('0')
+            page.locator('#vicon-offset-r1').fill('0')
+            page.locator('#vicon-offset-r2').fill('90')
+            page.get_by_role('button', name='Save Vicon-to-nozzle transform').click()
+            expect(page.locator('#action-feedback')).to_contain_text('Vicon-to-nozzle transform saved')
+            page.reload(wait_until='domcontentloaded')
+            expect(page.locator('#vicon-offset-x')).to_have_value('0.125')
+            expect(page.locator('[data-setting="vicon_input_topic"]')).to_have_value('/vicon/EE/root')
+            saved = json.loads(config_path.read_text(encoding='utf-8'))
+            assert saved['vicon_nozzle_transform']['quaternion_xyzw'][2] == pytest.approx(2 ** -0.5)
+            assert 'fixed_tool_offsets_by_platform' not in saved
             page.locator('.advanced-card > details > summary').click()
             expect(page.get_by_role('button', name='Plattform-Tuning speichern')).to_be_visible()
             base_vx = page.locator('[data-platform-section="pid_gains"][data-platform-key="base_follower.max_vx"]')
