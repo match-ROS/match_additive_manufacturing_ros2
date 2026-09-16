@@ -3,8 +3,9 @@
 **/.pytest_cache/
 
 # Local DDS investigations: logs, measurements, reports, and scripts.
-/am_operator_gui/docs/dds_diagnosis/
+/am_operator_gui/docs/dds_diagnosis/*
+!/am_operator_gui/docs/dds_diagnosis/README.md
 
-# Local tests (already tracked files remain tracked).
+# Local tests.
 /am_operator_gui/test/
 /move_to_path_idx/test/
