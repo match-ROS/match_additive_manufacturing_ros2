@@ -155,6 +155,7 @@ public:
         rclcpp::Parameter("command_timeout", 1.0),
         rclcpp::Parameter("joint_state_timeout", 0.5),
         rclcpp::Parameter("max_joint_velocity", 100.0),
+        rclcpp::Parameter("max_joint_acceleration", 1.0e9),
         rclcpp::Parameter("max_cartesian_linear_velocity", 100.0),
         rclcpp::Parameter("max_cartesian_angular_velocity", 100.0),
         rclcpp::Parameter(
@@ -358,8 +359,13 @@ TEST_F(JParseRuntimeTest, ReportsReadinessLimitsVelocityAndZerosOnTimeout)
   }
 
   bool saw_nonzero = false;
+  std::vector<double> previous_command(6, 0.0);
   for (const auto & command : commands) {
     ASSERT_EQ(command.size(), 6U);
+    for (std::size_t joint = 0; joint < command.size(); ++joint) {
+      EXPECT_LE(std::abs(command[joint] - previous_command[joint]), 0.005001);
+    }
+    previous_command = command;
     for (const double value : command) {
       EXPECT_LE(std::abs(value), 0.200001);
       saw_nonzero = saw_nonzero || std::abs(value) > 1.0e-6;
@@ -562,4 +568,19 @@ TEST_F(JParseRuntimeTest, DynamicSprayDistanceProducesFiniteBoundedCommands)
       EXPECT_NEAR(reconstructed_twist(row), expected_twist(row), 1.0e-6);
     }
   }
+}
+
+TEST(JointAccelerationLimiter, BoundsStepsAndReversalsWithCoordinatedScaling)
+{
+  Eigen::VectorXd previous = Eigen::VectorXd::Zero(2);
+  Eigen::VectorXd target(2);
+  target << 1.0, -0.5;
+  const auto first = limitJointAcceleration(target, previous, 0.5, 0.01);
+  EXPECT_NEAR(first(0), 0.005, 1e-12);
+  EXPECT_NEAR(first(1), -0.0025, 1e-12);
+  const auto reversal = limitJointAcceleration(-target, first, 0.5, 0.002);
+  EXPECT_LE((reversal - first).cwiseAbs().maxCoeff(), 0.001 + 1e-12);
+  const auto frozen = limitJointAcceleration(target, first, 0.5, 0.0);
+  EXPECT_TRUE(frozen.isApprox(first));
+  EXPECT_TRUE(limitJointAcceleration(first, first, 0.5, 0.01).isApprox(first));
 }

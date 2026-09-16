@@ -14,7 +14,7 @@ def generate_launch_description():
         'debug_twist_topic', 'readiness_topic', 'rate_hz', 'command_timeout',
         'joint_state_timeout', 'readiness_heartbeat_period', 'command_joint_names_csv', 'gamma',
         'singular_gain_position', 'singular_gain_angular', 'pinv_tolerance',
-        'max_joint_velocity', 'max_cartesian_linear_velocity',
+        'max_joint_velocity', 'max_joint_acceleration', 'max_cartesian_linear_velocity',
         'max_cartesian_angular_velocity',
     )
     defaults = {
@@ -43,6 +43,7 @@ def generate_launch_description():
         'singular_gain_angular': '1.0',
         'pinv_tolerance': '1.0e-6',
         'max_joint_velocity': '1.5',
+        'max_joint_acceleration': '0.5',
         'max_cartesian_linear_velocity': '0.25',
         'max_cartesian_angular_velocity': '0.8',
     }

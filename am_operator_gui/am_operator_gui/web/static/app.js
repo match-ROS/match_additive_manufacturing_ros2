@@ -50,12 +50,13 @@ const platformTuningGroups = [
     ['base_smoothing', 'moving_average_window_size', 'Moving-average Fenster', 'number', 1, 1],
     ['base_smoothing', 'external_path_index_stride', 'External path-index stride', 'number', 1, 1],
   ]},
-  {title: 'Maximale Arm-Geschwindigkeiten', fields: [
+  {title: 'Arm-Geschwindigkeit und Beschleunigung', fields: [
     ['pid_gains', 'arm_direction.max_tracking_linear_velocity', 'Tracking linear (m/s)', 'number', 0, 0.001],
     ['pid_gains', 'arm_direction.max_along_track_correction', 'Along-track Korrektur (m/s)', 'number', 0, 0.001],
     ['pid_gains', 'arm_direction.max_spray_axis_correction', 'Spray-axis Korrektur (m/s)', 'number', 0, 0.001],
     ['pid_gains', 'arm_move.max_linear_velocity', 'Move-to-start linear (m/s)', 'number', 0, 0.001],
     ['pid_gains', 'arm_move.max_angular_velocity', 'Move-to-start angular (rad/s)', 'number', 0, 0.001],
+    ['jparse_limits', 'max_joint_acceleration', 'J-PARSE Gelenkbeschleunigung, alle Gelenke (rad/s²)', 'number', 0.000001, 0.05],
     ['jparse_limits', 'max_joint_velocity', 'J-PARSE Gelenk (rad/s)', 'number', 0.000001, 0.001],
     ['jparse_limits', 'max_cartesian_linear_velocity', 'J-PARSE kartesisch linear (m/s)', 'number', 0.000001, 0.001],
     ['jparse_limits', 'max_cartesian_angular_velocity', 'J-PARSE kartesisch angular (rad/s)', 'number', 0.000001, 0.001],

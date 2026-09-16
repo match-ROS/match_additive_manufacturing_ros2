@@ -141,6 +141,18 @@ Eigen::Vector3d clampNorm(const Eigen::Vector3d & value, const double maximum)
   return norm > maximum && norm > std::numeric_limits<double>::epsilon() ?
     value * (maximum / norm) : value;
 }
+Eigen::VectorXd limitJointAcceleration(
+  const Eigen::VectorXd & target, const Eigen::VectorXd & previous,
+  const double acceleration, const double dt)
+{
+  const Eigen::VectorXd delta = target - previous;
+  const double maximum_delta = delta.size() ? delta.cwiseAbs().maxCoeff() : 0.0;
+  if (maximum_delta > acceleration * dt) {
+    return previous + delta * (acceleration * dt / maximum_delta);
+  }
+  return target;
+}
+
 }  // namespace
 
 class AmJParseController : public rclcpp::Node
@@ -180,6 +192,10 @@ public:
     singular_gain_angular_ = declare_parameter<double>("singular_gain_angular", 1.0);
     pinv_tolerance_ = declare_parameter<double>("pinv_tolerance", 1.0e-6);
     max_joint_velocity_ = declare_parameter<double>("max_joint_velocity", 1.5);
+    max_joint_acceleration_ = declare_parameter<double>("max_joint_acceleration", 0.5);
+    if (!std::isfinite(max_joint_acceleration_) || max_joint_acceleration_ <= 0.0) {
+      throw std::invalid_argument("max_joint_acceleration must be finite and positive");
+    }
     max_cartesian_linear_velocity_ =
       declare_parameter<double>("max_cartesian_linear_velocity", 0.25);
     max_cartesian_angular_velocity_ =
@@ -368,6 +384,8 @@ private:
 
   void publishZero()
   {
+    previous_velocities_.resize(0);
+    last_velocity_update_ = std::chrono::steady_clock::now();
     publishCommand(std::vector<double>(command_joint_names_.size(), 0.0));
   }
 
@@ -382,6 +400,11 @@ private:
       return;
     }
     if (!have_twist_ || (now() - last_twist_time_).seconds() > command_timeout_) {
+      publishZero();
+      return;
+    }
+    // Explicit zero commands (including GUI stop pulses) bypass the ramp.
+    if (target_twist_.isZero(0.0)) {
       publishZero();
       return;
     }
@@ -428,6 +451,19 @@ private:
         velocities *= max_joint_velocity_ / maximum;
       }
     }
+    const auto current_update = std::chrono::steady_clock::now();
+    const double dt = previous_velocities_.size() == velocities.size() ?
+      std::min(1.0 / rate_hz_, std::max(0.0,
+        std::chrono::duration<double>(current_update - last_velocity_update_).count())) :
+      1.0 / rate_hz_;
+    if (previous_velocities_.size() != velocities.size()) {
+      previous_velocities_ = Eigen::VectorXd::Zero(velocities.size());
+    }
+    // A common scale for the increment preserves coordinated joint changes.
+    velocities = limitJointAcceleration(
+      velocities, previous_velocities_, max_joint_acceleration_, dt);
+    previous_velocities_ = velocities;
+    last_velocity_update_ = current_update;
     const Eigen::VectorXd achieved_twist = jacobian * velocities;
 
     std::map<std::string, double> by_joint;
@@ -470,6 +506,9 @@ private:
   std::string singular_values_topic_;
   std::string debug_twist_topic_;
   std::string readiness_topic_;
+  Eigen::VectorXd previous_velocities_;
+  std::chrono::steady_clock::time_point last_velocity_update_;
+  double max_joint_acceleration_;
   double rate_hz_;
   double command_timeout_;
   double joint_state_timeout_;

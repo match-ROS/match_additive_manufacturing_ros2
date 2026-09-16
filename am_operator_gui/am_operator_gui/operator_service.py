@@ -93,6 +93,7 @@ DEFAULT_BASE_SMOOTHING = {
 
 DEFAULT_JPARSE_LIMITS = {
     'max_joint_velocity': 1.5,
+    'max_joint_acceleration': 0.5,
     'max_cartesian_linear_velocity': 0.25,
     'max_cartesian_angular_velocity': 0.8,
 }
@@ -1094,6 +1095,7 @@ class OperatorService:
                     'jparse_readiness_topic:=/am/jparse_ready', 'controller_readiness_topic:=/am/arm_controller_ready',
                     'command_joint_names_csv:=robot_arm_shoulder_pan_joint,robot_arm_shoulder_lift_joint,robot_arm_elbow_joint,robot_arm_wrist_1_joint,robot_arm_wrist_2_joint,robot_arm_wrist_3_joint',
                     f'jparse_max_joint_velocity:={self._jparse_limit("max_joint_velocity", 1.5):.6f}',
+                    f'jparse_max_joint_acceleration:={self._jparse_limit("max_joint_acceleration", 0.5):.6f}',
                     f'jparse_max_cartesian_linear_velocity:={self._jparse_limit("max_cartesian_linear_velocity", 0.25):.6f}',
                     f'jparse_max_cartesian_angular_velocity:={self._jparse_limit("max_cartesian_angular_velocity", 0.8):.6f}',
                     *self._fixed_tool_arguments()]
