@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import rclpy
 from geometry_msgs.msg import PoseStamped, TransformStamped
@@ -53,7 +55,19 @@ class ViconToolTransform(Node):
         ])
 
         q = msg.pose.orientation
-        r_vicon_marker = R.from_quat([q.x, q.y, q.z, q.w])
+        quaternion = np.array([q.x, q.y, q.z, q.w])
+        norm = math.hypot(*quaternion)
+        if (not np.isfinite(t_vicon_marker).all()
+                or not np.isfinite(quaternion).all()
+                or not math.isfinite(norm) or norm < 1e-9):
+            self.get_logger().warning(
+                'Skipping invalid Vicon pose: position and orientation must be finite '
+                'and the quaternion must have nonzero norm.',
+                throttle_duration_sec=2.0,
+            )
+            return
+        quaternion /= norm
+        r_vicon_marker = R.from_quat(quaternion)
 
         T_vicon_marker = np.eye(4)
         T_vicon_marker[:3, :3] = r_vicon_marker.as_matrix()
@@ -83,7 +97,8 @@ class ViconToolTransform(Node):
         tf_marker.transform.translation.x = msg.pose.position.x
         tf_marker.transform.translation.y = msg.pose.position.y
         tf_marker.transform.translation.z = msg.pose.position.z
-        tf_marker.transform.rotation = msg.pose.orientation
+        (tf_marker.transform.rotation.x, tf_marker.transform.rotation.y,
+         tf_marker.transform.rotation.z, tf_marker.transform.rotation.w) = quaternion.tolist()
 
         tf_tcp = TransformStamped()
         tf_tcp.header = msg.header
