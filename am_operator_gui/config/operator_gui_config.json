@@ -156,8 +156,8 @@
   "simulation": false,
   "simulation_gui": false,
   "spray_distance_mm": 100.0,
-  "trajectory_directory": "/home/afab/b04_gui_ws/src/match_additive_manufacturing_ros2/components/david_path",
-  "use_odometry_robot_pose": false,
+  "trajectory_directory": "/home/afab/b04_gui_ws/src/match_additive_manufacturing_ros2/components/horizontal_test",
+  "use_odometry_robot_pose": true,
   "use_vicon_tcp_base_pose_fallback": false,
   "velocity_override": 50,
   "vicon_fallback_nozzle_transform": {
