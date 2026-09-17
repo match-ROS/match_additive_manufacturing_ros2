@@ -5,15 +5,19 @@ from typing import Callable, Optional
 
 import rclpy
 from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
-from nav_msgs.msg import Path
+from nav_msgs.msg import Odometry, Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool, Float32, Int32
 from tf2_ros import Buffer, TransformException, TransformListener
+from robotnik_battery_msgs.msg import BatteryStatus
+from robotnik_hardware_msgs.msg import MotorStatusArray
 
 
 StatusCallback = Callable[[bool, bool, bool, bool, bool], None]
 PathIndexCallback = Callable[[int], None]
+BatteryCallback = Callable[[Optional[float]], None]
+BaseHardwareCallback = Callable[[dict], None]
 
 
 class OperatorGuiNode(Node):
@@ -21,12 +25,27 @@ class OperatorGuiNode(Node):
         self,
         status_callback: Optional[StatusCallback] = None,
         path_index_callback: Optional[PathIndexCallback] = None,
+        battery_callback: Optional[BatteryCallback] = None,
+        battery_topic: str = '',
         control_frame: str = 'map',
+        base_hardware_callback: Optional[BaseHardwareCallback] = None,
+        expected_motor_ids: tuple[int, ...] = (),
+        base_odom_topic: str = '',
     ) -> None:
         super().__init__('am_operator_gui')
         self._control_frame = control_frame.strip().lstrip('/')
         self._status_callback = status_callback
         self._path_index_callback = path_index_callback
+        self._battery_callback = battery_callback
+        self._battery_subscription = None
+        self._battery_topic = ''
+        self._base_hardware_callback = base_hardware_callback
+        self._expected_motor_ids = tuple(sorted(set(int(item) for item in expected_motor_ids)))
+        self._base_motor_statuses: dict[int, dict] = {}
+        self._base_status_received_at = None
+        self._base_odom_received_at = None
+        self._base_any_motor_disabled: Optional[bool] = None
+        self._base_emergency_stop: Optional[bool] = None
         self._has_path = False
         self._has_base_path = False
         self._has_arm_path = False
@@ -58,6 +77,8 @@ class OperatorGuiNode(Node):
             '/path_index_command',
             path_index_qos,
         )
+        self._pose_odom_pub = self.create_publisher(Bool, '/am/robot_pose/use_odometry', path_index_qos)
+        self._pose_tcp_pub = self.create_publisher(Bool, '/am/robot_pose/use_tcp', path_index_qos)
         self._start_condition_pub = self.create_publisher(Bool, '/start_condition', path_index_qos)
         self._velocity_override_pub = self.create_publisher(Float32, '/velocity_override', 10)
         self._desired_arm_speed_pub = self.create_publisher(Float32, '/desired_arm_speed', path_index_qos)
@@ -79,6 +100,15 @@ class OperatorGuiNode(Node):
             self._controller_ready_cb,
             path_index_qos,
         )
+        self.create_subscription(Bool, '/robot/robotnik_base_hw/emergency_stop', self._base_emergency_cb, 10)
+        self.create_subscription(Bool, '/robot/safety_module/emergency_stop', self._base_emergency_cb, 10)
+        self.create_subscription(Bool, '/robot/robotnik_base_hw_monitor/any_motor_disabled',
+                                 self._base_any_motor_disabled_cb, 10)
+        self.create_subscription(MotorStatusArray, '/robot/robotnik_base_hw_monitor/status',
+                                 self._base_motor_status_cb, 10)
+        if base_odom_topic:
+            self.create_subscription(Odometry, base_odom_topic, self._base_odom_cb, 10)
+        self.set_battery_topic(battery_topic)
         self._base_stop_pub = self.create_publisher(
             Twist,
             '/robot/robotnik_base_control/cmd_vel_unstamped',
@@ -118,6 +148,92 @@ class OperatorGuiNode(Node):
     def reset_tf_buffer(self) -> None:
         """Discard transforms from a previous simulation clock epoch."""
         self._tf_buffer.clear()
+
+    def set_battery_topic(self, topic: str) -> None:
+        """Subscribe to the selected platform's Robotnik battery topic."""
+        topic = topic.strip()
+        if topic == self._battery_topic:
+            return
+        if self._battery_subscription is not None:
+            self.destroy_subscription(self._battery_subscription)
+            self._battery_subscription = None
+        self._battery_topic = topic
+        if topic:
+            self._battery_subscription = self.create_subscription(
+                BatteryStatus, topic, self._battery_cb, 10,
+            )
+        if self._battery_callback is not None:
+            self._battery_callback(None)
+
+    def _battery_cb(self, msg: BatteryStatus) -> None:
+        try:
+            level = float(msg.level)
+        except (TypeError, ValueError):
+            return
+        if math.isfinite(level) and self._battery_callback is not None:
+            self._battery_callback(level)
+
+    def _base_emergency_cb(self, msg: Bool) -> None:
+        self._base_emergency_stop = bool(msg.data)
+        self._emit_base_hardware_status()
+
+    def _base_any_motor_disabled_cb(self, msg: Bool) -> None:
+        self._base_any_motor_disabled = bool(msg.data)
+        self._emit_base_hardware_status()
+
+    def _base_motor_status_cb(self, msg: MotorStatusArray) -> None:
+        self._base_motor_statuses = {
+            int(motor.id): {'error_code': int(motor.error_code),
+                            'bus_voltage': float(motor.bus_voltage),
+                            'status_word': str(motor.status_word)}
+            for motor in msg.motors
+        }
+        self._base_status_received_at = self.get_clock().now()
+        self._emit_base_hardware_status()
+
+    def _base_odom_cb(self, _msg: Odometry) -> None:
+        self._base_odom_received_at = self.get_clock().now()
+        self._emit_base_hardware_status()
+
+    def _base_hardware_status(self) -> dict:
+        if not self._expected_motor_ids:
+            return {'supported': False, 'level': 'neutral', 'summary': 'Nicht konfiguriert',
+                    'any_motor_disabled': None, 'emergency_stop': None, 'motors': {}}
+        now = self.get_clock().now()
+        status_fresh = self._base_status_received_at is not None and (now - self._base_status_received_at).nanoseconds / 1e9 <= 2.5
+        odom_fresh = self._base_odom_received_at is not None and (now - self._base_odom_received_at).nanoseconds / 1e9 <= 2.5
+        missing = [item for item in self._expected_motor_ids if item not in self._base_motor_statuses]
+        errors = [item for item, status in self._base_motor_statuses.items()
+                  if item in self._expected_motor_ids and status['error_code'] != 0]
+        low_voltage = [item for item, status in self._base_motor_statuses.items()
+                       if item in self._expected_motor_ids and status['bus_voltage'] < 20.0]
+        issues = []
+        if self._base_emergency_stop:
+            issues.append('Not-Aus aktiv')
+        if self._base_any_motor_disabled:
+            issues.append('Mindestens ein Motor deaktiviert')
+        if not status_fresh:
+            issues.append('Motorstatus fehlt oder ist veraltet')
+        if missing:
+            issues.append('Motoren fehlen: ' + ', '.join(str(item) for item in missing))
+        if errors:
+            issues.append('Motorfehler: ' + ', '.join(str(item) for item in errors))
+        if low_voltage:
+            issues.append('Niedrige Motorspannung: ' + ', '.join(str(item) for item in low_voltage))
+        if not odom_fresh:
+            issues.append('Keine frische Odometrie')
+        return {'supported': True, 'level': 'error' if issues else 'ok',
+                'summary': '; '.join(issues) if issues else 'Bereit',
+                'any_motor_disabled': self._base_any_motor_disabled,
+                'emergency_stop': self._base_emergency_stop,
+                'status_fresh': status_fresh, 'odom_fresh': odom_fresh,
+                'expected_motor_ids': list(self._expected_motor_ids),
+                'missing_motor_ids': missing, 'error_motor_ids': errors,
+                'low_voltage_motor_ids': low_voltage, 'motors': dict(self._base_motor_statuses)}
+
+    def _emit_base_hardware_status(self) -> None:
+        if self._base_hardware_callback is not None:
+            self._base_hardware_callback(self._base_hardware_status())
 
     def publish_stop_commands(self, arm_frame: str) -> None:
         self._base_stop_pub.publish(Twist())
@@ -209,6 +325,7 @@ class OperatorGuiNode(Node):
         self._has_base_path = self._is_control_path(msg)
         self._last_base_path_time = self.get_clock().now() if self._has_base_path else None
         self._has_path = self._has_base_path and self._has_arm_path
+        self._emit_base_hardware_status()
         with self._latest_pose_lock:
             self._latest_base_path = msg
         self._emit_status()
@@ -337,11 +454,21 @@ class RosBridge:
         self,
         status_callback: Optional[StatusCallback] = None,
         path_index_callback: Optional[PathIndexCallback] = None,
+        battery_callback: Optional[BatteryCallback] = None,
+        battery_topic: str = '',
         control_frame: str = 'map',
+        base_hardware_callback: Optional[BaseHardwareCallback] = None,
+        expected_motor_ids: tuple[int, ...] = (),
+        base_odom_topic: str = '',
     ) -> None:
         self._control_frame = control_frame.strip().lstrip('/')
         self._status_callback = status_callback
         self._path_index_callback = path_index_callback
+        self._battery_callback = battery_callback
+        self._battery_topic = battery_topic
+        self._base_hardware_callback = base_hardware_callback
+        self._expected_motor_ids = expected_motor_ids
+        self._base_odom_topic = base_odom_topic
         self._node: Optional[OperatorGuiNode] = None
         self._executor_thread: Optional[threading.Thread] = None
 
@@ -359,7 +486,16 @@ class RosBridge:
     def start(self) -> None:
         if not rclpy.ok():
             rclpy.init(args=None)
-        self._node = OperatorGuiNode(self._status_callback, self._path_index_callback, self._control_frame)
+        self._node = OperatorGuiNode(
+            self._status_callback,
+            self._path_index_callback,
+            self._battery_callback,
+            self._battery_topic,
+            self._control_frame,
+            self._base_hardware_callback,
+            self._expected_motor_ids,
+            self._base_odom_topic,
+        )
         self._executor_thread = threading.Thread(
             target=self._spin_node,
             args=(self._node,),
@@ -400,12 +536,28 @@ class RosBridge:
             except Exception:
                 pass
 
+    def set_battery_topic(self, topic: str) -> None:
+        self._battery_topic = topic.strip()
+        if self._node is not None:
+            self._node.set_battery_topic(self._battery_topic)
+
+    def set_base_hardware_expectations(self, expected_motor_ids: tuple[int, ...]) -> None:
+        self._expected_motor_ids = expected_motor_ids
+        if self._node is not None:
+            self._node._expected_motor_ids = tuple(sorted(set(int(item) for item in expected_motor_ids)))
+            self._node._emit_base_hardware_status()
+
     def reset_tf_buffer(self) -> None:
         if self._node is not None:
             try:
                 self._node.reset_tf_buffer()
             except Exception:
                 pass
+
+    def publish_robot_pose_modes(self, odometry: bool, tcp: bool) -> None:
+        if self._node is not None:
+            self._node._pose_odom_pub.publish(Bool(data=odometry))
+            self._node._pose_tcp_pub.publish(Bool(data=tcp))
 
     def publish_start_condition(self, value: bool = True) -> None:
         if self._node is not None:

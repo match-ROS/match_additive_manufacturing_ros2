@@ -12,6 +12,12 @@ if [[ ! -x "${venv_dir}/bin/python" ]]; then
 fi
 
 # The source package is used directly, which also makes the script work before a
-# colcon build. Source the ROS workspace first when process control is required.
-export PYTHONPATH="${package_dir}${PYTHONPATH:+:${PYTHONPATH}}"
+# colcon build. The venv's ``--system-site-packages`` does not include ROS'
+# /opt prefix, so retain its Python packages explicitly.
+ros_python_dir="/opt/ros/${ROS_DISTRO:-jazzy}/lib/python$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')/site-packages"
+if [[ -d "${ros_python_dir}" ]]; then
+  export PYTHONPATH="${package_dir}:${ros_python_dir}${PYTHONPATH:+:${PYTHONPATH}}"
+else
+  export PYTHONPATH="${package_dir}${PYTHONPATH:+:${PYTHONPATH}}"
+fi
 exec "${venv_dir}/bin/python" -m am_operator_gui.web_main

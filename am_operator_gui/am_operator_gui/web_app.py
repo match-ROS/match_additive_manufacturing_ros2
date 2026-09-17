@@ -111,6 +111,8 @@ ACTION_ENDPOINTS = (
     'switch_arm_velocity', 'capture_tool_offset', 'base_accuracy', 'tcp_accuracy',
     'accuracy_report', 'move_base', 'move_arm', 'start_following', 'stop_following',
     'calculate_path_transform', 'check_hardware_topics', 'rviz', 'sync_workspace',
+    'remote_bringup', 'play_program', 'unlock_protective_stop', 'enable_ur', 'release_brakes',
+    'restart_arm_controllers',
 )
 
 

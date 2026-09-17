@@ -18,6 +18,7 @@
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>builtin_interfaces</exec_depend>
   <exec_depend>std_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>controller_manager_msgs</exec_depend>
@@ -28,7 +29,10 @@
   <exec_depend>tf2_geometry_msgs</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>tf_transformations</exec_depend>
+  <exec_depend>robotnik_battery_msgs</exec_depend>
+  <exec_depend>robotnik_hardware_msgs</exec_depend>
   <exec_depend>ur_trajectory_follower</exec_depend>
+  <exec_depend>ur_dashboard_msgs</exec_depend>
 
   <test_depend>python3-pytest</test_depend>
 

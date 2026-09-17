@@ -407,6 +407,69 @@ function render(state) {
   const labels = {path:'Pfad', robot_pose:'Roboterpose', arm_pose:'Deposition pose', jparse_ready:'J-PARSE', controller_ready:'Controller'};
   document.querySelector('#status').innerHTML = Object.entries(labels).map(([key, label]) => `<span class="${state.status[key] ? 'ok' : 'wait'}">${label}: ${state.status[key] ? 'bereit' : 'wartet'}</span>`).join('');
   document.querySelector('#ros-state').textContent = state.ros_error ? `ROS nicht verbunden: ${state.ros_error}` : 'ROS Bridge aktiv';
+  const battery = state.battery || {};
+  const batteryState = document.querySelector('#battery-state');
+  const batteryLevel = Number(battery.level);
+  const hasBatteryLevel = Number.isFinite(batteryLevel);
+  batteryState.textContent = hasBatteryLevel ? `Batterie: ${batteryLevel.toFixed(0)} %`
+    : (battery.topic ? 'Batterie: —' : 'Batterie: nicht konfiguriert');
+  batteryState.title = battery.topic ? `Batterie-Topic: ${battery.topic}` : 'Für diese Plattform ist kein Batterie-Topic konfiguriert';
+  batteryState.classList.toggle('battery-low', hasBatteryLevel && batteryLevel <= 20);
+  batteryState.classList.toggle('battery-ok', hasBatteryLevel && batteryLevel > 20);
+  const dashboard = state.ur_dashboard || {};
+  const forwardVelocity = state.forward_velocity_controller || {};
+  const setDashboardStatus = (id, value, level = 'neutral') => {
+    const element = document.querySelector(id); element.textContent = value ?? '—';
+    element.classList.toggle('status-error', level === 'error');
+    element.classList.toggle('status-warning', level === 'warning');
+    element.classList.toggle('status-ok', level === 'ok');
+  };
+  const baseHardware = state.base_hardware || {};
+  const baseStatus = document.querySelector('#base-hardware-status');
+  const baseDisabled = document.querySelector('#base-any-motor-disabled');
+  const baseLevel = baseHardware.level || 'neutral';
+  baseStatus.textContent = baseHardware.summary || 'wartet';
+  baseStatus.title = [
+    `Erwartete Motoren: ${(baseHardware.expected_motor_ids || []).join(', ') || '—'}`,
+    `Fehlend: ${(baseHardware.missing_motor_ids || []).join(', ') || '—'}`,
+    `Fehler: ${(baseHardware.error_motor_ids || []).join(', ') || '—'}`,
+  ].join('\n');
+  baseDisabled.textContent = baseHardware.any_motor_disabled === true ? 'ja'
+    : baseHardware.any_motor_disabled === false ? 'nein' : '—';
+  setDashboardStatus('#base-hardware-status', baseStatus.textContent, baseLevel);
+  setDashboardStatus('#base-any-motor-disabled', baseDisabled.textContent,
+    baseHardware.any_motor_disabled === true ? 'error' : baseHardware.any_motor_disabled === false ? 'ok' : 'neutral');
+  const safety = dashboard.safety_mode;
+  const robot = dashboard.robot_mode;
+  const program = dashboard.program_state;
+  const safetyLevel = ['NORMAL'].includes(safety) ? 'ok' : ['REDUCED'].includes(safety) ? 'warning' : safety ? 'error' : 'neutral';
+  const robotLevel = ['RUNNING'].includes(robot) ? 'ok' : ['IDLE', 'POWER_ON', 'BOOTING', 'BACKDRIVE'].includes(robot) ? 'warning' : robot ? 'error' : 'neutral';
+  const programLevel = ['PLAYING'].includes(program) ? 'ok' : ['PAUSED'].includes(program) ? 'warning' : program ? 'error' : 'neutral';
+  setDashboardStatus('#ur-dashboard-available', dashboard.checking ? 'prüft …' : (dashboard.available ? 'verbunden' : 'nicht verfügbar'), dashboard.checking ? 'warning' : dashboard.available ? 'ok' : 'error');
+  setDashboardStatus('#ur-safety-status', safety, safetyLevel);
+  setDashboardStatus('#ur-robot-status', robot, robotLevel);
+  const remoteControl = String(dashboard.remote_control).toLowerCase();
+  setDashboardStatus('#ur-remote-status', remoteControl === 'true' ? 'ja' : remoteControl === 'false' ? 'nein' : null, remoteControl === 'true' ? 'ok' : remoteControl === 'false' ? 'error' : 'neutral');
+  setDashboardStatus('#ur-program-status', program, programLevel);
+  setDashboardStatus('#ur-loaded-program', dashboard.loaded_program, dashboard.loaded_program ? 'ok' : 'error');
+  let forwardVelocityText = '—';
+  let forwardVelocityLevel = 'neutral';
+  if (forwardVelocity.checking) {
+    forwardVelocityText = 'prüft …'; forwardVelocityLevel = 'warning';
+  } else if (!forwardVelocity.available) {
+    forwardVelocityText = 'Controller-Manager nicht verfügbar'; forwardVelocityLevel = 'error';
+  } else if (!forwardVelocity.loaded) {
+    forwardVelocityText = 'nicht geladen'; forwardVelocityLevel = 'error';
+  } else if (forwardVelocity.state === 'active') {
+    forwardVelocityText = 'aktiv'; forwardVelocityLevel = 'ok';
+  } else if (forwardVelocity.state === 'inactive') {
+    forwardVelocityText = 'geladen, inaktiv'; forwardVelocityLevel = 'error';
+  } else if (forwardVelocity.state === 'unconfigured') {
+    forwardVelocityText = 'geladen, nicht konfiguriert'; forwardVelocityLevel = 'error';
+  } else {
+    forwardVelocityText = `geladen: ${forwardVelocity.state || 'unbekannt'}`; forwardVelocityLevel = 'error';
+  }
+  setDashboardStatus('#forward-velocity-controller-status', forwardVelocityText, forwardVelocityLevel);
   renderActionButtons(state.actions);
   for (const name of ['base', 'arm']) {
     const distance = state.move_start_distances_cm?.[name];

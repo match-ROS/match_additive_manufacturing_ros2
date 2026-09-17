@@ -18,11 +18,13 @@ class ViconToolTransform(Node):
         self.declare_parameter("output_topic", "/vicon/tool_transformed")
         self.declare_parameter("marker_frame", "Tool_Flange")
         self.declare_parameter("tcp_frame", "tool_transformed")
+        self.declare_parameter('publish_marker_tf', True)
 
         self.input_topic = str(self.get_parameter("input_topic").value)
         self.output_topic = str(self.get_parameter("output_topic").value)
         self.marker_frame = str(self.get_parameter("marker_frame").value)
         self.tcp_frame = str(self.get_parameter("tcp_frame").value)
+        self.publish_marker_tf = bool(self.get_parameter('publish_marker_tf').value)
 
         # Nozzle pose relative to the measured marker/EE frame; independent
         # from the robot flange-to-nozzle kinematic calibration.
@@ -108,7 +110,8 @@ class ViconToolTransform(Node):
         tf_tcp.transform.translation.z = out.pose.position.z
         tf_tcp.transform.rotation = out.pose.orientation
 
-        self.tf_broadcaster.sendTransform(tf_marker)
+        if self.publish_marker_tf:
+            self.tf_broadcaster.sendTransform(tf_marker)
         self.tf_broadcaster.sendTransform(tf_tcp)
 
 

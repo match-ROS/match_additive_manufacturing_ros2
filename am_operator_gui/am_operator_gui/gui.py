@@ -101,6 +101,7 @@ ODOMETRY_POSE_ADAPTER_NAME = 'odometry_pose_adapter'
 VICON_TCP_POSE_BACKUP_NAME = 'vicon_tcp_pose_backup'
 ARM_POSE_ADAPTER_NAME = 'arm_pose_adapter'
 VICON_EE_STATIC_TF_NAME = 'vicon_ee_static_tf'
+VICON_FALLBACK_NOZZLE_TF_NAME = 'vicon_fallback_nozzle_tf'
 VICON_BASE_STATIC_TF_NAME = 'vicon_base_static_tf'
 ARM_CONTROLLERS_NAME = 'arm_controllers'
 BASE_ACCURACY_MONITOR_NAME = 'base_accuracy_monitor'
@@ -738,7 +739,6 @@ class OperatorWindow(QMainWindow):
         self.vicon_tcp_base_pose_fallback_checkbox = QCheckBox('Fallback: Base Pose')
         self.vicon_tcp_base_pose_fallback_checkbox.setChecked(
             self._configured_use_vicon_tcp_base_pose_fallback()
-            and not self.odometry_pose_checkbox.isChecked()
         )
         self.direction_mode = QComboBox()
         self.direction_mode.addItems(['goal_direction', 'speed_orthogonal'])
@@ -1198,16 +1198,14 @@ class OperatorWindow(QMainWindow):
         self._save_config()
 
     def _set_use_odometry_robot_pose(self, enabled: bool) -> None:
-        if enabled and self.vicon_tcp_base_pose_fallback_checkbox.isChecked():
-            self.vicon_tcp_base_pose_fallback_checkbox.setChecked(False)
         self._config['use_odometry_robot_pose'] = bool(enabled)
         self._save_config()
+        self.service.update_config({'use_odometry_robot_pose': bool(enabled)})
 
     def _set_use_vicon_tcp_base_pose_fallback(self, enabled: bool) -> None:
-        if enabled and self.odometry_pose_checkbox.isChecked():
-            self.odometry_pose_checkbox.setChecked(False)
         self._config['use_vicon_tcp_base_pose_fallback'] = bool(enabled)
         self._save_config()
+        self.service.update_config({'use_vicon_tcp_base_pose_fallback': bool(enabled)})
 
     def _set_path_transform(self, *_args) -> None:
         directory = Path(self.path_folder.text().strip()).expanduser()
@@ -1662,6 +1660,7 @@ class OperatorWindow(QMainWindow):
             VICON_TCP_POSE_BACKUP_NAME,
             ARM_POSE_ADAPTER_NAME,
             VICON_EE_STATIC_TF_NAME,
+            VICON_FALLBACK_NOZZLE_TF_NAME,
             ARM_CONTROLLERS_NAME,
             BASE_FOLLOWER_NAME,
             ARM_FOLLOWER_NAME,
@@ -1940,6 +1939,7 @@ class OperatorWindow(QMainWindow):
                 for name in (
                     VICON_BASE_STATIC_TF_NAME,
                     VICON_EE_STATIC_TF_NAME,
+                    VICON_FALLBACK_NOZZLE_TF_NAME,
                     BASE_POSE_ADAPTER_NAME,
                     ODOMETRY_POSE_ADAPTER_NAME,
                     VICON_TCP_POSE_BACKUP_NAME,
@@ -1949,6 +1949,7 @@ class OperatorWindow(QMainWindow):
             if running:
                 self.processes.stop(VICON_BASE_STATIC_TF_NAME)
                 self.processes.stop(VICON_EE_STATIC_TF_NAME)
+                self.processes.stop(VICON_FALLBACK_NOZZLE_TF_NAME)
                 self.processes.stop(BASE_POSE_ADAPTER_NAME)
                 self.processes.stop(ODOMETRY_POSE_ADAPTER_NAME)
                 self.processes.stop(VICON_TCP_POSE_BACKUP_NAME)
@@ -2055,94 +2056,7 @@ class OperatorWindow(QMainWindow):
         self.processes.start(ACCURACY_REPORT_NAME, command)
 
     def _start_pose_adapters(self) -> None:
-        use_odometry_pose = self.odometry_pose_checkbox.isChecked()
-        fallback_checkbox = getattr(self, 'vicon_tcp_base_pose_fallback_checkbox', None)
-        use_vicon_tcp_fallback = bool(
-            fallback_checkbox is not None and fallback_checkbox.isChecked()
-        )
-        if not use_odometry_pose and not use_vicon_tcp_fallback:
-            base_static_command = [
-                'ros2',
-                'run',
-                'tf2_ros',
-                'static_transform_publisher',
-                *VICON_BASE_STATIC_TF,
-            ]
-            self._append_process_output(VICON_BASE_STATIC_TF_NAME, ' '.join(base_static_command))
-            self.processes.start(VICON_BASE_STATIC_TF_NAME, base_static_command)
-
-        vicon_transform_command = [
-            'ros2',
-            'run',
-            'am_operator_gui',
-            'vicon_ee_static_tf',
-            '--ros-args',
-            '-p', f'use_sim_time:={self._use_sim_time()}',
-            '-p', 'input_topic:=/vicon/Tool_Flange/Tool_Flange',
-            '-p', 'output_topic:=/vicon/tool_transformed',
-        ]
-        self._append_process_output(VICON_EE_STATIC_TF_NAME, ' '.join(vicon_transform_command))
-        self.processes.start(VICON_EE_STATIC_TF_NAME, vicon_transform_command)
-
-        if use_odometry_pose:
-            self._start_odometry_pose_adapter()
-        elif use_vicon_tcp_fallback:
-            base_command = [
-                'ros2',
-                'run',
-                'am_operator_gui',
-                'vicon_tcp_robot_pose_backup',
-                '--ros-args',
-                '-r', f'__node:={VICON_TCP_POSE_BACKUP_NAME}',
-                '-p', f'use_sim_time:={self._use_sim_time()}',
-                '-p', 'input_topic:=/vicon/tool_transformed',
-                '-p', 'output_topic:=/robot_pose',
-                '-p', f'map_frame:={self.external_map_frame.text().strip()}',
-                '-p', f'robot_base_frame:={self.robot_base_frame.text().strip()}',
-                '-p', 'robot_tcp_frame:=robot_arm_nozzle_tip',
-                '-p', f'robot_tree_root_frame:={self.robot_tree_root_frame.text().strip()}',
-                '-p', 'ready_topic:=/am/base_pose_ready',
-                '-p', 'stale_timeout:=0.5',
-            ]
-            self._append_process_output(VICON_TCP_POSE_BACKUP_NAME, ' '.join(base_command))
-            self.processes.start(VICON_TCP_POSE_BACKUP_NAME, base_command)
-        else:
-            base_command = [
-                'ros2',
-                'run',
-                'am_operator_gui',
-                'external_base_reference',
-                '--ros-args',
-                '-r', f'__node:={BASE_POSE_ADAPTER_NAME}',
-                '-p', f'use_sim_time:={self._use_sim_time()}',
-                '-p', f'input_topic:={self.base_pose_topic.text().strip()}',
-                '-p', f'input_pose_frame:={VICON_BASE_REFERENCE_FRAME}',
-                '-p', 'output_topic:=/robot_pose',
-                '-p', f'map_frame:={self.external_map_frame.text().strip()}',
-                '-p', f'robot_base_frame:={self.robot_base_frame.text().strip()}',
-                '-p', f'robot_tree_root_frame:={self.robot_tree_root_frame.text().strip()}',
-                '-p', 'ready_topic:=/am/base_pose_ready',
-                '-p', 'stale_timeout:=0.5',
-            ]
-            self._append_process_output(BASE_POSE_ADAPTER_NAME, ' '.join(base_command))
-            self.processes.start(BASE_POSE_ADAPTER_NAME, base_command)
-
-        arm_command = [
-            'ros2',
-            'run',
-            'am_operator_gui',
-            'pose_stamped_adapter',
-            '--ros-args',
-            '-r', f'__node:={ARM_POSE_ADAPTER_NAME}',
-            '-p', f'use_sim_time:={self._use_sim_time()}',
-            '-p', f'input_topic:={self.arm_pose_topic.text().strip()}',
-            '-p', 'output_topic:=/current_nozzle_tip_pose',
-            '-p', f'target_frame:={self.control_frame.text().strip()}',
-            '-p', 'ready_topic:=/am/arm_pose_ready',
-            '-p', 'stale_timeout:=0.5',
-        ]
-        self._append_process_output(ARM_POSE_ADAPTER_NAME, ' '.join(arm_command))
-        self.processes.start(ARM_POSE_ADAPTER_NAME, arm_command)
+        self.service.start_pose_adapters()
 
     def _start_odometry_pose_adapter(self) -> None:
         profile = self._current_platform_profile()
@@ -2568,6 +2482,7 @@ class OperatorWindow(QMainWindow):
                 for name in (
                     VICON_BASE_STATIC_TF_NAME,
                     VICON_EE_STATIC_TF_NAME,
+                    VICON_FALLBACK_NOZZLE_TF_NAME,
                     BASE_POSE_ADAPTER_NAME,
                     ODOMETRY_POSE_ADAPTER_NAME,
                     VICON_TCP_POSE_BACKUP_NAME,

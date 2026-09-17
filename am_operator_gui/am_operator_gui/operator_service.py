@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import os
+import shlex
 import sys
 from collections import deque
 from copy import deepcopy
@@ -23,6 +24,9 @@ from .tool_transforms import (
 from .config_store import ConfigStore
 from .robot_debug import RobotDebugInfo
 from .process_manager import ProcessRegistry
+from .ur_dashboard import (
+    ForwardVelocityControllerInfo, UrDashboardInfo, UrStatusMonitor, dashboard_command, enable_command,
+)
 
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
@@ -49,6 +53,16 @@ PROFILES = {
                  'robot_pose': '/robot_pose', 'path': '/base_path'},
     'bunker': {'cmd_vel': '/diff_drive_controller/cmd_vel', 'stamped': True,
                'frame': 'base_footprint', 'odom': '/odom', 'robot_pose': '/robot_pose', 'path': '/base_path'},
+}
+
+DEFAULT_BATTERY_TOPICS = {
+    'robotnik': '/robot/battery_estimator/data',
+    'bunker': '',
+}
+
+DEFAULT_BASE_HARDWARE = {
+    'robotnik': {'expected_motor_ids': list(range(1, 9))},
+    'bunker': {'expected_motor_ids': []},
 }
 
 DEFAULT_PID_GAINS = {
@@ -101,7 +115,8 @@ DEFAULT_JPARSE_LIMITS = {
 DEFAULT_PATH_TRANSFORM = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw_deg': 0.0}
 
 POSE_ADAPTER_PROCESSES = (
-    'vicon_base_static_tf', 'vicon_ee_static_tf', 'base_pose_adapter',
+    'nozzle_static_tf',
+    'vicon_base_static_tf', 'vicon_ee_static_tf', 'vicon_fallback_nozzle_tf', 'base_pose_adapter',
     'odometry_pose_adapter', 'vicon_tcp_pose_backup', 'arm_pose_adapter',
 )
 
@@ -125,6 +140,9 @@ ONE_SHOT_ACTIONS = {
     'switch_arm_velocity': ('switch_arm_velocity', 'Switch Arm Velocity', 'Switching Arm Velocity'),
     'accuracy_report': ('accuracy_report', 'Summarize Accuracy', 'Summarizing Accuracy'),
     'check_hardware_topics': ('check_hardware_topics', 'Check Hardware Topics', 'Checking Hardware Topics'),
+    'restart_arm_controllers': (
+        'restart_arm_controllers', 'Restart Controllers', 'Restarting Controllers'
+    ),
 }
 
 # These descriptions are returned with every action state and become the
@@ -186,6 +204,12 @@ ACTION_DESCRIPTIONS = {
         'Prüft die ROS-Graph-Verträge der externen Hardware-Eingänge und Kommando-Endpunkte; '
         'dies ist kein Frische-, Controllerzustands- oder Sicherheitstest.'
     ),
+    'restart_arm_controllers': (
+        'Wartet auf den UR-Controller-Manager, deaktiviert strikt alle momentan aktiven '
+        'Arm-Controller und aktiviert anschließend die Status-Controller sowie ausschließlich '
+        'forward_velocity_controller. Trajectory-, position- und weitere Bewegungscontroller '
+        'bleiben deaktiviert.'
+    ),
     'transformations': (
         'Simulation: leitet TCP-/Nozzle-Pose aus Robot-TF, Werkzeugoffset und '
         'Sprühabstand ab. Hardware: startet die Vicon-/Odometrie-Posekette.'
@@ -240,7 +264,16 @@ class OperatorService:
         self.processes = ProcessRegistry(output_callback=self._on_output)
         self.ros_bridge = None
         self.ros_error: str | None = None
+        self._battery_level: float | None = None
+        self._base_hardware: dict[str, Any] = {
+            'supported': False, 'level': 'neutral', 'summary': 'Warte auf ROS',
+            'any_motor_disabled': None, 'emergency_stop': None, 'motors': {},
+        }
         self.robot_debug = RobotDebugInfo()
+        self.ur_status_monitor = UrStatusMonitor()
+        self.ur_dashboard = UrDashboardInfo(self.ur_status_monitor)
+        self.forward_velocity_controller = ForwardVelocityControllerInfo(self.ur_status_monitor)
+        self._remote_bringup_run = 0
         self._status = {'path': False, 'robot_pose': False, 'arm_pose': False,
                         'jparse_ready': False, 'controller_ready': False}
         self._launch_all_active = False
@@ -291,9 +324,17 @@ class OperatorService:
             self.ros_bridge = RosBridge(
                 status_callback=self._on_ros_status,
                 path_index_callback=self._on_path_index,
+                battery_callback=self._on_battery_level,
+                battery_topic=self._battery_topic(),
                 control_frame=str(self._setting('control_frame', 'map')),
+                base_hardware_callback=self._on_base_hardware,
+                expected_motor_ids=() if bool(self._setting('simulation', False)) else tuple(self._base_hardware_config()['expected_motor_ids']),
+                base_odom_topic=str(self._profile()['odom']),
             )
             self.ros_bridge.start()
+            # The status monitor shares rclpy with RosBridge but owns its own
+            # node/executor and its long-lived service clients.
+            self.ur_status_monitor.start()
             return True
         except Exception as exc:  # ROS is intentionally an optional web-server dependency
             self.ros_error = str(exc)
@@ -318,11 +359,18 @@ class OperatorService:
         if self._external_path_index_callback is not None:
             self._external_path_index_callback(index)
 
+    def _on_battery_level(self, level: float | None) -> None:
+        self._battery_level = level
+
+    def _on_base_hardware(self, status: dict) -> None:
+        self._base_hardware = deepcopy(status)
+
     def update_config(self, values: dict[str, Any]) -> dict[str, Any]:
         # Keep the public web endpoint deliberately explicit; unknown keys cannot
         # accidentally become command-line arguments.
         allowed = {'simulation', 'simulation_gui', 'platform', 'trajectory_directory', 'control_frame',
                    'base_pose_topic', 'vicon_input_topic', 'vicon_nozzle_transform',
+                   'vicon_fallback_nozzle_transform',
                    'vicon_nozzle_transform_input_mode', 'external_map_frame',
                    'robot_base_frame', 'robot_tree_root_frame', 'use_odometry_robot_pose',
                    'use_vicon_tcp_base_pose_fallback', 'default_velocity',
@@ -331,9 +379,19 @@ class OperatorService:
                    'base_smoothing', 'fixed_tool_offset', 'fixed_tool_offsets_by_platform',
                    'fixed_tool_offset_input_mode', 'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
-                   'direction_mode', 'accuracy_phase'}
+                   'direction_mode', 'accuracy_phase', 'battery_topic', 'battery_topics_by_platform',
+                   'base_hardware_by_platform'}
         accepted = {key: value for key, value in values.items() if key in allowed}
         try:
+            if 'battery_topics_by_platform' in accepted:
+                accepted['battery_topics_by_platform'] = self._validated_battery_topics(
+                    accepted['battery_topics_by_platform'])
+            if 'battery_topic' in accepted:
+                battery_topic = self._validated_battery_topic(accepted.pop('battery_topic'))
+                topics = accepted.get('battery_topics_by_platform', self._battery_topics())
+                platform = self._platform_name(accepted.get('platform', self._platform_key()))
+                topics[platform] = battery_topic
+                accepted['battery_topics_by_platform'] = topics
             if 'vicon_input_topic' in accepted:
                 topic = str(accepted['vicon_input_topic']).strip()
                 if not topic.startswith('/') or any(char.isspace() for char in topic):
@@ -343,6 +401,8 @@ class OperatorService:
                 accepted['vicon_input_topic'] = topic
             if 'vicon_nozzle_transform' in accepted:
                 accepted['vicon_nozzle_transform'] = validated_transform(accepted['vicon_nozzle_transform'])
+            if 'vicon_fallback_nozzle_transform' in accepted:
+                accepted['vicon_fallback_nozzle_transform'] = validated_transform(accepted['vicon_fallback_nozzle_transform'])
             if 'path_index' in accepted:
                 accepted['path_index'] = max(0, int(accepted['path_index']))
             if 'original_arm_index' in accepted:
@@ -364,12 +424,25 @@ class OperatorService:
         self.config.update(accepted)
         if 'control_frame' in accepted and self.ros_bridge is not None:
             self.ros_bridge.set_control_frame(str(accepted['control_frame']))
+        if self.ros_bridge is not None and ({'platform', 'battery_topics_by_platform'} & set(accepted)):
+            self._battery_level = None
+            setter = getattr(self.ros_bridge, 'set_battery_topic', None)
+            if setter is not None:
+                setter(self._battery_topic())
+        if self.ros_bridge is not None and ({'platform', 'simulation', 'base_hardware_by_platform'} & set(accepted)):
+            setter = getattr(self.ros_bridge, 'set_base_hardware_expectations', None)
+            if setter is not None:
+                setter(() if bool(self._setting('simulation', False)) else tuple(self._base_hardware_config()['expected_motor_ids']))
         if 'path_index' in accepted:
             self._live_path_index = accepted['path_index']
         if 'original_arm_index' in accepted:
             self._live_original_arm_index = accepted['original_arm_index']
         self.store.save(self.config)
         if self.ros_bridge is not None:
+            if 'use_odometry_robot_pose' in accepted or 'use_vicon_tcp_base_pose_fallback' in accepted:
+                self.ros_bridge.publish_robot_pose_modes(
+                    bool(self._setting('use_odometry_robot_pose', False)),
+                    bool(self._setting('use_vicon_tcp_base_pose_fallback', False)))
             if 'path_index' in accepted:
                 self.ros_bridge.publish_path_index(int(self._setting('path_index', 0)))
             if 'velocity_override' in accepted:
@@ -530,6 +603,8 @@ class OperatorService:
             'default_velocity': 0.1,
             'spray_distance_mm': 100.0,
             'simulation_gui': False,
+            'battery_topics_by_platform': deepcopy(DEFAULT_BATTERY_TOPICS),
+            'base_hardware_by_platform': deepcopy(DEFAULT_BASE_HARDWARE),
         }
         for key, value in defaults.items():
             config.setdefault(key, value)
@@ -544,6 +619,7 @@ class OperatorService:
         config.setdefault('velocity_override', 100)
         config.setdefault('nozzle_offset_mm', 0)
         config.setdefault('fixed_tool_offset_input_mode', 'quaternion')
+        config['battery_topic'] = self._battery_topic()
         platform_settings = {
             platform: self.platform_settings_snapshot(platform)
             for platform in PROFILES
@@ -552,6 +628,10 @@ class OperatorService:
                 'actions': self._action_states(),
                 'move_start_distances_cm': self.move_start_distances_cm(),
                 'logs': list(self.logs), 'ros_error': self.ros_error,
+                'battery': {'level': self._battery_level, 'topic': self._battery_topic()},
+                'base_hardware': self._base_hardware,
+                'ur_dashboard': self.ur_dashboard.snapshot(),
+                'forward_velocity_controller': self.forward_velocity_controller.snapshot(),
                 'hardware_topic_results': self._hardware_topic_results}
 
     def move_start_distances_cm(self) -> dict:
@@ -643,6 +723,34 @@ class OperatorService:
         states['check_hardware_topics'] = self._message_state(
             'check_hardware_topics', 'Check Hardware Topics', ACTION_DESCRIPTIONS['check_hardware_topics']
         )
+        restart_process = self.processes.get('restart_arm_controllers')
+        if restart_process is None and self._last_action_success.get('restart_arm_controllers') is False:
+            states['restart_arm_controllers'] = self._message_state(
+                'restart_arm_controllers', 'Restart Controllers', ACTION_DESCRIPTIONS['restart_arm_controllers']
+            )
+        else:
+            states['restart_arm_controllers'] = self._process_state(
+                ('restart_arm_controllers',), 'Restart Controllers', 'Restarting Controllers',
+                ACTION_DESCRIPTIONS['restart_arm_controllers'], one_shot=True,
+            )
+        states['remote_bringup'] = self._message_state(
+            'remote_bringup', 'Start remote Bringup',
+            'Führt ~/bringup.sh auf robot@192.168.0.200 aus. Jeder Klick startet eine neue Ausführung.'
+        )
+        states['enable_ur'] = self._message_state(
+            'enable_ur', 'Enable UR',
+            'Quittiert bei Protective Stop und führt anschließend Power on sowie Brake release aus.'
+        )
+        states['release_brakes'] = self._message_state(
+            'release_brakes', 'Release brakes', 'Löst die Bremsen des eingeschalteten UR.'
+        )
+        states['unlock_protective_stop'] = self._message_state(
+            'unlock_protective_stop', 'Unlock Protective Stop',
+            'Quittiert einen Protective Stop nach Prüfung der Ursache.'
+        )
+        states['play_program'] = self._message_state(
+            'play_program', 'Run Program', 'Startet das aktuell im UR geladene Programm.'
+        )
         ready = all(self._status.values())
         controls = all(self._is_running(name) for name in ('path_index', 'base_follower', 'arm_follower'))
         states['start_following'] = {
@@ -697,6 +805,48 @@ class OperatorService:
     def _platform_key(self) -> str:
         """Return the canonical key for platform-scoped operator settings."""
         return str(self._setting('platform', 'robotnik')).strip().lower() or 'robotnik'
+
+    @staticmethod
+    def _validated_battery_topic(value: Any) -> str:
+        topic = str(value).strip()
+        if not topic:
+            return ''
+        if not topic.startswith('/') or any(character.isspace() for character in topic):
+            raise ValueError('Battery topic must be an absolute ROS topic without whitespace')
+        return topic
+
+    def _validated_battery_topics(self, value: Any) -> dict[str, str]:
+        if not isinstance(value, dict):
+            raise ValueError('battery_topics_by_platform must be an object')
+        unknown = set(value) - set(PROFILES)
+        if unknown:
+            raise ValueError(f'Unknown platform: {sorted(unknown)[0]}')
+        topics = deepcopy(DEFAULT_BATTERY_TOPICS)
+        topics.update({platform: self._validated_battery_topic(topic) for platform, topic in value.items()})
+        return topics
+
+    def _battery_topics(self) -> dict[str, str]:
+        configured = self.config.get('battery_topics_by_platform', {})
+        try:
+            return self._validated_battery_topics(configured)
+        except ValueError:
+            return deepcopy(DEFAULT_BATTERY_TOPICS)
+
+    def _battery_topic(self, platform: str | None = None) -> str:
+        key = self._platform_key() if platform is None else self._platform_name(platform)
+        return self._battery_topics()[key]
+
+    def _base_hardware_config(self) -> dict[str, list[int]]:
+        configured = self.config.get('base_hardware_by_platform', {})
+        candidate = configured.get(self._platform_key(), {}) if isinstance(configured, dict) else {}
+        values = candidate.get('expected_motor_ids', []) if isinstance(candidate, dict) else []
+        try:
+            ids = sorted(set(int(item) for item in values if int(item) > 0))
+        except (TypeError, ValueError):
+            ids = []
+        if not ids:
+            ids = list(DEFAULT_BASE_HARDWARE[self._platform_key()]['expected_motor_ids'])
+        return {'expected_motor_ids': ids}
 
     def _platform_settings(self, platform: str | None = None) -> dict[str, Any]:
         key = self._platform_key() if platform is None else str(platform).strip().lower()
@@ -788,7 +938,7 @@ class OperatorService:
         except (TypeError, ValueError):
             return 0.1
 
-    def _fixed_tool_arguments(self) -> list[str]:
+    def _fixed_tool_offset(self) -> dict:
         platform_offsets = self._setting('fixed_tool_offsets_by_platform', {})
         offset = {}
         if isinstance(platform_offsets, dict):
@@ -798,6 +948,13 @@ class OperatorService:
         if not offset:
             offset = self._setting('fixed_tool_offset', {})
         offset = offset if isinstance(offset, dict) else {}
+        return {
+            'xyz': offset.get('xyz', [-0.25, 0.0, 0.015]),
+            'quaternion_xyzw': offset.get('quaternion_xyzw', [0.0, -0.7071067812, 0.0, 0.7071067812]),
+        }
+
+    def _fixed_tool_arguments(self) -> list[str]:
+        offset = self._fixed_tool_offset()
         try:
             xyz = ', '.join(f'{float(value):.6f}' for value in offset.get('xyz', [-0.25, 0.0, 0.015]))
             quat = ', '.join(f'{float(value):.6f}' for value in offset.get('quaternion_xyzw', [0.0, -0.7071067812, 0.0, 0.7071067812]))
@@ -845,6 +1002,25 @@ class OperatorService:
         )
 
     def action(self, name: str) -> None:
+        if name == 'remote_bringup':
+            self._remote_bringup_run += 1
+            run_name = f'remote_bringup_{self._remote_bringup_run}'
+            command = ['ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+                       '-o', 'ConnectTimeout=8', 'robot@192.168.0.200', 'cd "$HOME" && ./bringup.sh']
+            self.log(run_name, 'starting ~/bringup.sh on robot@192.168.0.200')
+            self.processes.start(run_name, command, replace=False)
+            self._last_action_messages[name] = f'Bringup-Ausführung {self._remote_bringup_run} gestartet'
+            self._last_action_success[name] = True
+            return
+        if name in {'play_program', 'unlock_protective_stop', 'enable_ur', 'release_brakes'}:
+            if name == 'enable_ur':
+                command = enable_command(
+                    self.ur_dashboard.snapshot().get('safety_mode') == 'PROTECTIVE_STOP'
+                )
+                self._start_dashboard_command(name, command)
+            else:
+                self._start_dashboard_command(name)
+            return
         if name == 'stop_all':
             self.stop_all()
             return
@@ -909,6 +1085,9 @@ class OperatorService:
         if name == 'check_hardware_topics':
             self.check_hardware_topics()
             return
+        if name == 'restart_arm_controllers':
+            self._restart_arm_controllers()
+            return
         if name == 'pose_adapters':
             self._toggle_pose_adapters()
             return
@@ -926,6 +1105,155 @@ class OperatorService:
         if command is None:
             raise ValueError(f'unknown action: {name}')
         self._toggle(name, command)
+
+    def _start_dashboard_command(self, name: str, command: list[str] | None = None) -> None:
+        command = dashboard_command(name) if command is None else command
+        self.log(name, ' '.join(command))
+        self.processes.start(name, command)
+        self.ur_status_monitor.request_refresh(dashboard=True, controller=False)
+        self._last_action_messages[name] = 'Dashboard-Kommando gesendet; Status wird aktualisiert'
+        self._last_action_success[name] = True
+
+    @staticmethod
+    def _restart_arm_controllers_command() -> list[str]:
+        """Return the remote, fail-closed UR controller restart procedure.
+
+        This is deliberately executed where the controller manager runs.  It
+        therefore uses the robot's ROS/DDS settings, rather than assuming that
+        the workstation running the web GUI can make ROS service calls to it.
+        """
+        script = r'''set -eo pipefail
+source /opt/ros/jazzy/setup.bash
+source /home/robot/ros_config.sh >/dev/null
+set -u
+export ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+
+manager=/robot/arm/controller_manager
+required=(
+  joint_state_broadcaster
+  io_and_status_controller
+  speed_scaling_state_broadcaster
+  force_torque_sensor_broadcaster
+  tcp_pose_broadcaster
+  ur_configuration_controller
+  forward_velocity_controller
+)
+
+list_controllers() {
+  local deadline result
+  deadline=$((SECONDS + 90))
+  while true; do
+    if result="$(timeout 20s ros2 control list_controllers --controller-manager "$manager")"; then
+      printf '%s\n' "$result"
+      return 0
+    fi
+    if (( SECONDS >= deadline )); then
+      echo "ERROR: $manager/list_controllers did not answer within 90 seconds." >&2
+      return 1
+    fi
+    echo "Controller-manager response delayed; retrying ..." >&2
+    sleep 2
+  done
+}
+
+echo "Waiting for $manager/list_controllers ..."
+deadline=$((SECONDS + 90))
+while ! controllers="$(list_controllers)"; do
+  if (( SECONDS >= deadline )); then
+    echo "ERROR: $manager/list_controllers did not answer within 90 seconds." >&2
+    exit 1
+  fi
+  sleep 2
+done
+
+mapfile -t active < <(printf '%s\n' "$controllers" | awk '$3 == "active" { print $1 }')
+if (( ${#active[@]} )); then
+  echo "Deactivating all active controllers: ${active[*]}"
+  if ! timeout 60s ros2 control switch_controllers --controller-manager "$manager" \
+    --deactivate "${active[@]}" --strict --switch-timeout 50; then
+    echo "Switch response delayed; checking resulting controller state ..." >&2
+  fi
+fi
+
+controllers="$(list_controllers)"
+if printf '%s\n' "$controllers" | awk '$3 == "active" { found = 1 } END { exit !found }'; then
+  echo "ERROR: At least one controller is still active after the strict stop." >&2
+  printf '%s\n' "$controllers" >&2
+  exit 1
+fi
+
+for controller in "${required[@]}"; do
+  if ! printf '%s\n' "$controllers" | awk -v name="$controller" '$1 == name { found = 1 } END { exit found ? 0 : 1 }'; then
+    echo "Loading $controller"
+    if ! timeout 60s ros2 control load_controller --controller-manager "$manager" "$controller"; then
+      echo "Load response delayed; checking whether $controller was loaded ..." >&2
+    fi
+    controllers="$(list_controllers)"
+    if ! printf '%s\n' "$controllers" | awk -v name="$controller" '$1 == name { found = 1 } END { exit found ? 0 : 1 }'; then
+      echo "ERROR: $controller was not loaded." >&2
+      exit 1
+    fi
+  fi
+  state="$(printf '%s\n' "$controllers" | awk -v name="$controller" '$1 == name { print $3 }')"
+  if [[ "$state" == "unconfigured" ]]; then
+    echo "Configuring $controller"
+    if ! timeout 60s ros2 control set_controller_state --controller-manager "$manager" "$controller" inactive; then
+      echo "Configure response delayed; checking resulting controller state ..." >&2
+    fi
+    controllers="$(list_controllers)"
+    state="$(printf '%s\n' "$controllers" | awk -v name="$controller" '$1 == name { print $3 }')"
+    if [[ "$state" != "inactive" ]]; then
+      echo "ERROR: $controller was not configured to inactive (state: '$state')." >&2
+      exit 1
+    fi
+  elif [[ "$state" != "inactive" ]]; then
+    echo "ERROR: $controller has unexpected state '$state' after the strict stop." >&2
+    exit 1
+  fi
+done
+
+echo "Activating required status controllers and forward_velocity_controller"
+if ! timeout 60s ros2 control switch_controllers --controller-manager "$manager" \
+  --activate "${required[@]}" --strict --switch-timeout 50; then
+  echo "Activation response delayed; checking resulting controller state ..." >&2
+fi
+
+controllers="$(list_controllers)"
+printf '%s\n' "$controllers"
+if ! printf '%s\n' "$controllers" | awk '$1 == "forward_velocity_controller" && $3 == "active" { found = 1 } END { exit found ? 0 : 1 }'; then
+  echo "ERROR: forward_velocity_controller is not active." >&2
+  exit 1
+fi
+if printf '%s\n' "$controllers" | awk '$3 == "active" && $1 ~ /^(joint_trajectory_controller|scaled_joint_trajectory_controller|forward_position_controller|force_mode_controller|passthrough_trajectory_controller|freedrive_mode_controller|tool_contact_controller)$/ { found = 1 } END { exit found ? 0 : 1 }'; then
+  echo "ERROR: a conflicting arm motion controller is still active." >&2
+  exit 1
+fi
+echo "Controller restart complete: forward_velocity_controller is active."
+'''
+        return [
+            'ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+            '-o', 'ConnectTimeout=8', 'robot@192.168.0.200',
+            f'bash -lc {shlex.quote(script)}',
+        ]
+
+    def _restart_arm_controllers(self) -> None:
+        """Run the bounded, remote controller recovery without moving the arm."""
+        name = 'restart_arm_controllers'
+        if bool(self._setting('simulation', False)):
+            message = 'Controller restart skipped: disable Simulation before changing the physical UR controllers'
+            self.log(name, message)
+            self._last_action_messages[name] = message
+            self._last_action_success[name] = False
+            return
+        command = self._restart_arm_controllers_command()
+        self.log(name, 'restarting remote arm controllers; no motion command is sent')
+        self.processes.start(name, command)
+        self.ur_status_monitor.request_refresh(dashboard=False, controller=True)
+        self._last_action_messages[name] = (
+            'Controller restart started: all active controllers will be stopped before '
+            'forward_velocity_controller is activated'
+        )
+        self._last_action_success[name] = True
 
     def _toggle_pose_adapters(self) -> None:
         if any(self._is_running(name) for name in POSE_ADAPTER_PROCESSES):
@@ -968,7 +1296,7 @@ class OperatorService:
         ]
         if bool(self._setting('use_odometry_robot_pose', False)):
             requirements.insert(0, (str(profile['odom']), 'nav_msgs/msg/Odometry', 'publisher'))
-        elif not bool(self._setting('use_vicon_tcp_base_pose_fallback', False)):
+        if not bool(self._setting('use_vicon_tcp_base_pose_fallback', False)):
             requirements.insert(0, (base_topic, 'geometry_msgs/msg/PoseStamped', 'publisher'))
         messages = self.ros_bridge.check_topic_contract(requirements)
         for message in messages:
@@ -1153,12 +1481,26 @@ class OperatorService:
 
     def start_pose_adapters(self) -> None:
         """Start the same Vicon/odometry adapter set as the reference GUI."""
+        # Simulation provides the nozzle through its URDF. Hardware uses the
+        # same platform calibration as the controller's tool0-based KDL chain.
+        if not bool(self._setting('simulation', False)):
+            offset = validated_transform(self._fixed_tool_offset())
+            arguments = []
+            for flag, value in zip(
+                ('--x', '--y', '--z', '--qx', '--qy', '--qz', '--qw'),
+                [*offset['xyz'], *offset['quaternion_xyzw']],
+            ):
+                arguments.extend([flag, str(value)])
+            self.processes.start('nozzle_static_tf', [
+                'ros2', 'run', 'tf2_ros', 'static_transform_publisher',
+                *arguments, '--frame-id', 'robot_arm_tool0',
+                '--child-frame-id', 'robot_arm_nozzle_tip',
+            ])
         frame = str(self._setting('control_frame', 'map'))
         base_frame = str(self._setting('robot_base_frame', self._profile()['frame']))
         root_frame = str(self._setting('robot_tree_root_frame', 'odom'))
         external_map = str(self._setting('external_map_frame', 'map'))
-        if not bool(self._setting('use_odometry_robot_pose', False)) and not bool(self._setting('use_vicon_tcp_base_pose_fallback', False)):
-            self.processes.start('vicon_base_static_tf', ['ros2', 'run', 'tf2_ros', 'static_transform_publisher',
+        self.processes.start('vicon_base_static_tf', ['ros2', 'run', 'tf2_ros', 'static_transform_publisher',
                 '0.022595781', '-0.008234146', '-0.007327516', '0.004459784', '-0.006515752', '0.009033290', '0.999928025', 'robot_base_footprint', 'robot_base_vicon_reference'])
         vicon_offset = validated_transform(self._setting('vicon_nozzle_transform', DEFAULT_VICON_NOZZLE_TRANSFORM))
         self.processes.start('vicon_ee_static_tf', ['ros2', 'run', 'am_operator_gui', 'vicon_ee_static_tf', '--ros-args',
@@ -1167,25 +1509,33 @@ class OperatorService:
             '-p', f'output_topic:={VICON_NOZZLE_TOPIC}',
             '-p', f"marker_to_nozzle_xyz:={vicon_offset['xyz']}",
             '-p', f"marker_to_nozzle_quaternion_xyzw:={vicon_offset['quaternion_xyzw']}"])
-        if bool(self._setting('use_odometry_robot_pose', False)):
-            command = ['ros2', 'run', 'am_operator_gui', 'odometry_robot_pose', '--ros-args',
-                '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"odom_topic:={self._profile()['odom']}",
-                '-p', 'path_topic:=/base_path', '-p', 'output_topic:=/robot_pose',
-                '-p', f"initial_path_index:={int(self._setting('path_index', 0))}", '-p', f'map_frame:={external_map}',
-                '-p', f'odom_frame:={root_frame}', '-p', f'robot_base_frame:={base_frame}', '-p', 'publish_tf:=true']
-            self.processes.start('odometry_pose_adapter', command)
-        elif bool(self._setting('use_vicon_tcp_base_pose_fallback', False)):
-            command = ['ros2', 'run', 'am_operator_gui', 'vicon_tcp_robot_pose_backup', '--ros-args',
-                '-p', f'use_sim_time:={self._use_sim_time()}', '-p', 'input_topic:=/vicon/tool_transformed',
-                '-p', 'output_topic:=/robot_pose', '-p', f'map_frame:={external_map}',
-                '-p', f'robot_base_frame:={base_frame}', '-p', f'robot_tree_root_frame:={root_frame}']
-            self.processes.start('vicon_tcp_pose_backup', command)
-        else:
-            command = ['ros2', 'run', 'am_operator_gui', 'external_base_reference', '--ros-args',
-                '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"input_topic:={self._setting('base_pose_topic', '/vicon/Base_RB/Base_RB')}",
-                '-p', 'input_pose_frame:=robot_base_vicon_reference', '-p', 'output_topic:=/robot_pose',
-                '-p', f'map_frame:={external_map}', '-p', f'robot_base_frame:={base_frame}', '-p', f'robot_tree_root_frame:={root_frame}']
-            self.processes.start('base_pose_adapter', command)
+        # Independent measured reference for base reconstruction. The deposition
+        # adapter above retains its original calibration and output topic.
+        fallback_offset = validated_transform(self._setting(
+            'vicon_fallback_nozzle_transform', vicon_offset))
+        self.processes.start('vicon_fallback_nozzle_tf', [
+            'ros2', 'run', 'am_operator_gui', 'vicon_ee_static_tf', '--ros-args',
+            '-r', '__node:=vicon_fallback_nozzle_transform',
+            '-p', f'use_sim_time:={self._use_sim_time()}',
+            '-p', f"input_topic:={self._setting('vicon_input_topic', DEFAULT_VICON_INPUT_TOPIC)}",
+            '-p', 'output_topic:=/vicon/nozzle_fallback',
+            '-p', 'tcp_frame:=vicon_nozzle_fallback',
+            '-p', 'publish_marker_tf:=false',
+            '-p', f"marker_to_nozzle_xyz:={fallback_offset['xyz']}",
+            '-p', f"marker_to_nozzle_quaternion_xyzw:={fallback_offset['quaternion_xyzw']}",
+        ])
+        command = ['ros2', 'run', 'am_operator_gui', 'external_base_reference', '--ros-args',
+            '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"input_topic:={self._setting('base_pose_topic', '/vicon/Base/root')}",
+            '-p', 'input_pose_frame:=robot_base_vicon_reference', '-p', 'output_topic:=/robot_pose',
+            '-p', 'tcp_topic:=/vicon/nozzle_fallback',
+            '-p', 'robot_tcp_frame:=robot_arm_nozzle_tip',
+            '-p', f'map_frame:={external_map}', '-p', f'robot_base_frame:={base_frame}',
+            '-p', f'robot_tree_root_frame:={root_frame}', '-p', f"odom_topic:={self._profile()['odom']}",
+            '-p', f"use_odometry_robot_pose:={str(bool(self._setting('use_odometry_robot_pose', False))).lower()}",
+            '-p', f"use_vicon_tcp_base_pose_fallback:={str(bool(self._setting('use_vicon_tcp_base_pose_fallback', False))).lower()}"]
+        self.processes.stop('odometry_pose_adapter')
+        self.processes.stop('vicon_tcp_pose_backup')
+        self.processes.start('base_pose_adapter', command)
         self.processes.start('arm_pose_adapter', ['ros2', 'run', 'am_operator_gui', 'pose_stamped_adapter', '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f'input_topic:={VICON_NOZZLE_TOPIC}',
             '-p', 'output_topic:=/current_nozzle_tip_pose', '-p', f'target_frame:={frame}'])
@@ -1255,5 +1605,6 @@ class OperatorService:
 
     def close(self) -> None:
         self.stop_all()
+        self.ur_status_monitor.close()
         if self.ros_bridge is not None:
             self.ros_bridge.stop()

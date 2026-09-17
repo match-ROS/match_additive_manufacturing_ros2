@@ -1,6 +1,23 @@
 {
   "accuracy_phase": "baseline",
   "arm_pose_topic": "/vicon/tool_transformed",
+  "base_hardware_by_platform": {
+    "bunker": {
+      "expected_motor_ids": []
+    },
+    "robotnik": {
+      "expected_motor_ids": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ]
+    }
+  },
   "base_pose_topic": "/vicon/Base/root",
   "base_smoothing": {
     "enabled": false,
@@ -10,6 +27,10 @@
     "max_accel_y": 0.25,
     "method": "moving_average",
     "moving_average_window_size": 5
+  },
+  "battery_topics_by_platform": {
+    "bunker": "",
+    "robotnik": "/robot/battery_estimator/data"
   },
   "control_frame": "vicon_world",
   "default_velocity": 0.15,
@@ -139,6 +160,19 @@
   "use_odometry_robot_pose": false,
   "use_vicon_tcp_base_pose_fallback": false,
   "velocity_override": 50,
+  "vicon_fallback_nozzle_transform": {
+    "quaternion_xyzw": [
+      0.9696768821452185,
+      0.24357122148426677,
+      -0.004463499869759728,
+      0.01949054813756968
+    ],
+    "xyz": [
+      0.032560504623751506,
+      0.021826921709054238,
+      -0.1657816331683243
+    ]
+  },
   "vicon_input_topic": "/vicon/EE/root",
   "vicon_nozzle_transform": {
     "quaternion_xyzw": [

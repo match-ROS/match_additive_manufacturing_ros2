@@ -266,7 +266,8 @@ class ExternalBaseReference(Node):
 
 def main(args=None) -> None:
     rclpy.init(args=args)
-    node = ExternalBaseReference()
+    from .live_robot_pose import LiveRobotPose
+    node = LiveRobotPose()
     try:
         rclpy.spin(node)
     except (ExternalShutdownException, KeyboardInterrupt):

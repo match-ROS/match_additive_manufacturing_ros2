@@ -1,5 +1,13 @@
 {
   "platform": "robotnik",
+  "battery_topics_by_platform": {
+    "robotnik": "/robot/battery_estimator/data",
+    "bunker": ""
+  },
+  "base_hardware_by_platform": {
+    "robotnik": {"expected_motor_ids": [1, 2, 3, 4, 5, 6, 7, 8]},
+    "bunker": {"expected_motor_ids": []}
+  },
   "simulation": true,
   "simulation_gui": false,
   "trajectory_directory": "",

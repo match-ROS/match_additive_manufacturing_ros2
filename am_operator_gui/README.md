@@ -238,6 +238,14 @@ Restart pose adapters and followers after changing their frame settings.
 
 ### Web GUI: nozzle transforms
 
+On hardware, **Launch Transformations**, **Pose Adapters**, and **Launch All**
+start a static `robot_arm_tool0 -> robot_arm_nozzle_tip` TF using the selected
+platform's **Robot flange → nozzle** offset. Restart the pose adapters after
+changing that offset. Simulation already supplies the nozzle frame through its
+URDF, so this additional publisher is disabled there. Hardware must still supply
+the live base-to-tool0 kinematic chain. Do not run another publisher for the same
+nozzle child frame alongside this adapter.
+
 The **Nozzle transforms** section places two independent calibrations side by side
 (stacked on narrow screens):
 
@@ -259,7 +267,16 @@ Hardware feedback always follows the chain:
 `measured Vicon EE → Vicon calibration → /vicon/tool_transformed → control-frame
 conversion → /current_nozzle_tip_pose → spray-distance offset → /current_deposition_pose`.
 The follower compares the deposition pose with `/arm_trajectory_reference`.
-The TCP-based base-pose fallback also uses `/vicon/tool_transformed`.
+Base reconstruction uses an independent Vicon nozzle reference:
+`measured Vicon EE → vicon_fallback_nozzle_transform → /vicon/nozzle_fallback`
+(TF frame `vicon_nozzle_fallback`). The base adapter matches this measurement to
+the kinematic `robot_arm_nozzle_tip` reference. Their correspondence is identity;
+the calibrated EE-to-reference transform is applied by the independent adapter.
+Changing the fallback calibration does not affect the deposition pose or its
+Vicon calibration. If no separate calibration is configured, the second adapter
+uses the deposition calibration for compatibility. Restart the GUI service and
+pose adapters after deploying this change. Validate the fallback calibration
+over multiple arm configurations; the current calibration used a fixed posture.
 
 Existing custom `arm_pose_topic` selections such as `/vicon/EE/root` become the
 `vicon_input_topic` when loading an older web configuration. They now pass through
