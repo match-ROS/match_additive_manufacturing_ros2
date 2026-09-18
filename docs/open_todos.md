@@ -8,8 +8,8 @@ outstanding work with Codex.
 
 The ROS 1 MiR follower combined indexing, timing, diagnostics, and control in one
 node. ROS 2 should retain the useful behavior below as small, independently tested
-components rather than porting that design wholesale. The historical rationale is
-in [ros1_mir_trajectory_follower_analysis.md](ros1_mir_trajectory_follower_analysis.md).
+components rather than porting that design wholesale. The historical rationale
+is in [ros1_mir_trajectory_follower_analysis.md](ros1_mir_trajectory_follower_analysis.md).
 
 ### `TODO(ros1-migration):` Test index-aware completion for paths with repeated geometry
 
@@ -71,13 +71,13 @@ reaches its waypoint. The controller uses the difference between the modified ar
 reference and the reached base index to scale **base** velocity; it does not send an
 index-offset velocity command to the arm or skip base waypoints.
 
-**Implementation:** `simple_base_follower` maps the shared `/path_index` with
-the existing external-index stride to `base_reference_index`, while keeping an
-independent, sequential geometric `base_progress_index`.  It advances one densely
+**Implementation:** `simple_base_follower` maps the shared `/path_index` with the
+existing external-index stride to `base_reference_index`, while keeping an
+independent, sequential geometric `base_progress_index`. It advances one densely
 sampled base waypoint at a time when the next point is closer in XY, and skips
-zero-translation/yaw-only entries.  The resulting signed discrete arc-length error
+zero-translation/yaw-only entries. The resulting signed discrete arc-length error
 drives only a bounded Pure Pursuit base-speed correction; it never changes the
-arm/coordinator timeline.  Diagnostics publish on `/base_progress_index` and
+arm/coordinator timeline. Diagnostics publish on `/base_progress_index` and
 `/base_progress_error_m`, and the trajectory monitor records them with base-command
 saturation data.
 
@@ -113,6 +113,24 @@ base and arm motion; all summed twists are expressed about the same TCP/nozzle p
 the same world frame; stale odometry/TF while base following is active latches a visible
 fault and inhibits the final arm command; and launch tests cover the frame, sign,
 lever-arm, and stale-input cases.
+
+### `TODO(base-motion-compensation):` Replace the dynamic base-to-TCP TF lookup if needed
+
+**Why:** `base_motion_compensation.py` currently obtains the TCP offset with a dynamic
+TF lookup from `base_frame` to `tcp_frame`. If the arm and mobile-base TF trees are
+managed separately, this lookup may be unavailable or unnecessarily coupled to the
+runtime TF graph.
+
+**Where to implement:** Evaluate publishing the TCP offset on a dedicated topic and
+using a static TF to the mobile base/reference frame instead of calling
+`lookup_transform(base_frame, tcp_frame)` in the compensation node. Keep the offset
+and all velocity vectors frame-labeled, and preserve the existing lever-arm and stale-
+input safety behavior.
+
+**Done when:** The chosen topic/static-TF design is documented, tested for frame and
+sign correctness, and works when the arm and base publish independent TF trees; remove
+the inline TODO in
+`ur_trajectory_follower/ur_trajectory_follower/base_motion_compensation.py`.
 
 ### `TODO(ros1-migration):` Promote tracking-error diagnostics into an explicit safety gate
 
