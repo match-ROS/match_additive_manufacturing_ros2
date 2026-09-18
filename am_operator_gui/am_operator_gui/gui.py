@@ -736,6 +736,12 @@ class OperatorWindow(QMainWindow):
         self._sync_diff_drive_checkbox()
         self.odometry_pose_checkbox = QCheckBox('Use odometry for /robot_pose')
         self.odometry_pose_checkbox.setChecked(self._configured_use_odometry_robot_pose())
+        self.base_compensation_translation_only_checkbox = QCheckBox('Backup: Kompensation nur Translation')
+        self.base_compensation_translation_only_checkbox.setChecked(
+            bool(self._config.get('base_compensation_translation_only', False)))
+        self.base_compensation_translation_only_checkbox.setToolTip(
+            'Live umschaltbar. Keine TCP-Pose erforderlich; Odometrie und Basisorientierung bleiben nötig. '
+            'Rotationsbewegungen der Basis werden nicht kompensiert.')
         self.vicon_tcp_base_pose_fallback_checkbox = QCheckBox('Fallback: Base Pose')
         self.vicon_tcp_base_pose_fallback_checkbox.setChecked(
             self._configured_use_vicon_tcp_base_pose_fallback()
@@ -842,6 +848,7 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.vicon_button, 9, 1)
         launch_layout.addWidget(self.check_hardware_topics_button, 9, 4)
         launch_layout.addWidget(self.sync_workspace_button, 9, 5)
+        launch_layout.addWidget(self.base_compensation_translation_only_checkbox, 10, 0, 1, 6)
 
         component_group = QGroupBox('Components')
         component_layout = QGridLayout(component_group)
@@ -1003,6 +1010,7 @@ class OperatorWindow(QMainWindow):
         self.follower_type_combo.currentIndexChanged.connect(self._set_follower_type)
         self.diff_drive_checkbox.toggled.connect(self._set_diff_drive_mode)
         self.odometry_pose_checkbox.toggled.connect(self._set_use_odometry_robot_pose)
+        self.base_compensation_translation_only_checkbox.toggled.connect(self._set_base_compensation_translation_only)
         self.vicon_tcp_base_pose_fallback_checkbox.toggled.connect(
             self._set_use_vicon_tcp_base_pose_fallback
         )
@@ -1201,6 +1209,11 @@ class OperatorWindow(QMainWindow):
         self._config['use_odometry_robot_pose'] = bool(enabled)
         self._save_config()
         self.service.update_config({'use_odometry_robot_pose': bool(enabled)})
+
+    def _set_base_compensation_translation_only(self, enabled: bool) -> None:
+        self._config['base_compensation_translation_only'] = bool(enabled)
+        self._save_config()
+        self.service.update_config({'base_compensation_translation_only': bool(enabled)})
 
     def _set_use_vicon_tcp_base_pose_fallback(self, enabled: bool) -> None:
         self._config['use_vicon_tcp_base_pose_fallback'] = bool(enabled)
@@ -1837,6 +1850,16 @@ class OperatorWindow(QMainWindow):
             'robot_description_topic:=/robot/robot_description',
             'joint_states_topic:=/robot/joint_states',
             f"velocity_command_topic:={self._arm_velocity_command_topic()}",
+            'start_base_motion_compensation:=true',
+            f"base_compensation_translation_only:={str(bool(getattr(self, '_config', {}).get('base_compensation_translation_only', False))).lower()}",
+            'dds_udp_only:=true',
+            f"base_compensation_pose_source:={'tf' if simulation_checkbox is not None and simulation_checkbox.isChecked() else 'tcp_pose'}",
+            'base_compensation_tcp_pose_topic:=/robot/arm/tcp_pose_broadcaster/pose',
+            'base_compensation_base_pose_topic:=/robot_pose',
+            'base_compensation_controller_tcp_frame:=robot_arm_tool0_controller_raw',
+            'base_velocity_type:=odometry',
+            f"base_velocity_topic:={self._current_platform_profile()['odom_topic']}",
+            f'compensation_base_frame:={self._configured_robot_base_frame()}',
             'start_jparse_controller:=false',
             'start_command_transform:=false',
             'publish_current_pose_from_tf:=false',

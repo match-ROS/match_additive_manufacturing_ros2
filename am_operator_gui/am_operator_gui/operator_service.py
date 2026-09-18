@@ -381,7 +381,7 @@ class OperatorService:
                    'vicon_nozzle_transform_input_mode', 'vicon_cluster_to_base_transform_input_mode',
                    'external_map_frame',
                    'robot_base_frame', 'robot_tree_root_frame', 'use_odometry_robot_pose',
-                   'use_vicon_tcp_base_pose_fallback', 'default_velocity',
+                   'use_vicon_tcp_base_pose_fallback', 'base_compensation_translation_only', 'default_velocity',
                    'default_velocity_enabled', 'spray_distance_mm', 'path_transform',
                    'path_transforms_by_directory', 'platform_control_settings', 'pid_gains',
                    'base_smoothing', 'fixed_tool_offset', 'fixed_tool_offsets_by_platform',
@@ -391,6 +391,8 @@ class OperatorService:
                    'base_hardware_by_platform'}
         accepted = {key: value for key, value in values.items() if key in allowed}
         try:
+            if 'base_compensation_translation_only' in accepted and not isinstance(accepted['base_compensation_translation_only'], bool):
+                raise ValueError('base_compensation_translation_only must be a boolean')
             if 'battery_topics_by_platform' in accepted:
                 accepted['battery_topics_by_platform'] = self._validated_battery_topics(
                     accepted['battery_topics_by_platform'])
@@ -450,6 +452,9 @@ class OperatorService:
             self._live_original_arm_index = accepted['original_arm_index']
         self.store.save(self.config)
         if self.ros_bridge is not None:
+            if 'base_compensation_translation_only' in accepted:
+                self.ros_bridge.publish_base_compensation_translation_only(
+                    bool(self._setting('base_compensation_translation_only', False)))
             if 'use_odometry_robot_pose' in accepted or 'use_vicon_tcp_base_pose_fallback' in accepted:
                 self.ros_bridge.publish_robot_pose_modes(
                     bool(self._setting('use_odometry_robot_pose', False)),
@@ -613,6 +618,7 @@ class OperatorService:
             'path_index': 0,
             'original_arm_index': 0,
             'default_velocity_enabled': False,
+            'base_compensation_translation_only': False,
             'default_velocity': 0.1,
             'spray_distance_mm': 100.0,
             'simulation_gui': False,
@@ -1428,6 +1434,15 @@ echo "Controller restart complete: forward_velocity_controller is active."
                     'robot_name:=robot', 'arm:=arm', 'joint_prefix:=robot_arm_', 'base_link:=robot_arm_base_link', 'tip_link:=robot_arm_tool0',
                     'robot_description_topic:=/robot/robot_description', 'joint_states_topic:=/robot/joint_states',
                     f"velocity_command_topic:={'/robot/arm_forward_velocity_controller/commands' if simulation else '/robot/arm/forward_velocity_controller/commands'}",
+                    'start_base_motion_compensation:=true', 'base_velocity_type:=odometry',
+                    f"base_compensation_translation_only:={str(bool(self._setting('base_compensation_translation_only', False))).lower()}",
+                    'dds_udp_only:=true',
+                    f"base_compensation_pose_source:={'tf' if simulation else 'tcp_pose'}",
+                    'base_compensation_tcp_pose_topic:=/robot/arm/tcp_pose_broadcaster/pose',
+                    f"base_compensation_base_pose_topic:={profile['robot_pose']}",
+                    'base_compensation_controller_tcp_frame:=robot_arm_tool0_controller_raw',
+                    f"base_velocity_topic:={profile['odom']}",
+                    f"compensation_base_frame:={self._setting('robot_base_frame', profile['frame'])}",
                     'start_jparse_controller:=false', 'start_command_transform:=false', 'publish_current_pose_from_tf:=false',
                     'publish_path:=false', 'publish_path_index:=false', 'move_to_start_pose:=false',
                     f"start_pose_trajectory_topic:={'/robot/joint_trajectory_controller/joint_trajectory' if simulation else '/robot/arm/joint_trajectory_controller/joint_trajectory'}",

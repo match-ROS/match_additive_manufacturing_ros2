@@ -445,3 +445,30 @@ The preview starts only through its own button; **Launch All** does not start it
 Use **Stop Index Poses** to stop publishing. No motion or progress commands are
 published by the preview. Publish Path must supply valid coupled paths; an
 out-of-range index produces no new pose, so RViz may retain the previous pose.
+
+
+The arm follower automatically includes measured-base-motion compensation for
+Robotnik and Bunker (hardware and simulation). No additional GUI process or
+switch is required to enable it. It uses the selected platform's odometry and compensates at
+the deposition point, including the configured nozzle transform and spray
+distance. Hardware uses `/robot/arm/tcp_pose_broadcaster/pose` and `/robot_pose`,
+with mounting and controller-TCP calibration captured once from TF at startup.
+Keep the lift and UR TCP configuration fixed; restart the arm follower after
+changing either. Simulation retains live TF geometry.
+The follower's child processes use Fast DDS UDP transport to avoid local SHM
+lock failures. Initial discovery gets a 45-second diagnostic grace period;
+compensation starts as soon as valid inputs arrive. Brief pose gaps use the last
+valid geometry for at most 1.5 seconds while still requiring fresh base velocity
+(0.5 seconds). Longer outages clear compensation and recover automatically.
+See [moving-base compensation](../ur_trajectory_follower/README.md#moving-base-compensation)
+for topics, launch parameters, timeout behavior and velocity-limit implications.
+
+The **Backup: Kompensation nur Translation** checkbox in System settings (web
+and desktop) switches compensation live and is saved for subsequent starts.
+It defaults to unchecked. When checked, only measured linear velocity is
+compensated: neither angular counter-motion nor the angular lever-arm term is
+applied. Hardware no longer waits for TCP pose or tool/mounting TF; fresh odometry
+and `/robot_pose` orientation remain required. A different odometry child frame
+still requires its fixed rotation relative to the configured base frame.
+This bypasses missing TCP data, but does not repair DDS discovery or compensate
+base rotations. Existing position/orientation feedback controllers remain active.

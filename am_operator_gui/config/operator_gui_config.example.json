@@ -10,6 +10,7 @@
   },
   "simulation": true,
   "simulation_gui": false,
+  "base_compensation_translation_only": false,
   "trajectory_directory": "",
   "control_frame": "map",
   "base_pose_topic": "/vicon/Base_RB/Base_RB",

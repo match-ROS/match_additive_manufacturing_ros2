@@ -82,6 +82,8 @@ class OperatorGuiNode(Node):
         self._start_condition_pub = self.create_publisher(Bool, '/start_condition', path_index_qos)
         self._velocity_override_pub = self.create_publisher(Float32, '/velocity_override', 10)
         self._desired_arm_speed_pub = self.create_publisher(Float32, '/desired_arm_speed', path_index_qos)
+        self._base_compensation_translation_only_pub = self.create_publisher(
+            Bool, '/am/base_compensation/translation_only', path_index_qos)
         self._nozzle_height_pub = self.create_publisher(Float32, '/nozzle_height_override', 10)
         self._spray_distance_pub = self.create_publisher(Float32, '/spray_distance', 10)
         self._tf_buffer = Buffer()
@@ -558,6 +560,10 @@ class RosBridge:
         if self._node is not None:
             self._node._pose_odom_pub.publish(Bool(data=odometry))
             self._node._pose_tcp_pub.publish(Bool(data=tcp))
+
+    def publish_base_compensation_translation_only(self, enabled: bool) -> None:
+        if self._node is not None:
+            self._node._base_compensation_translation_only_pub.publish(Bool(data=bool(enabled)))
 
     def publish_start_condition(self, value: bool = True) -> None:
         if self._node is not None:
