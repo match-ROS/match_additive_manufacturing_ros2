@@ -155,6 +155,10 @@ class BaseMotionCompensation(Node):
         try:
             base_from_velocity = self._lookup(self.base_frame, velocity_frame)
             world_from_base = self._lookup(self.world_frame, self.base_frame)
+            # TODO(base-motion-compensation): Consider replacing this dynamic
+            # base->TCP TF lookup with a TCP offset topic plus a static TF from
+            # that published/reference frame to the mobile base. This may be
+            # more robust when the arm and base TF trees are managed separately.
             base_from_tcp = self._lookup(self.base_frame, self.tcp_frame)
         except TransformException as exc:
             self.get_logger().warn(
