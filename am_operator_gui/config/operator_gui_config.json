@@ -42,27 +42,27 @@
   "fixed_tool_offsets_by_platform": {
     "robotnik": {
       "quaternion_xyzw": [
-        -0.0009413761436218027,
-        0.004966326633333367,
-        -0.8485563651403607,
-        0.5290808488222819
+        0.7073328992545017,
+        0.0006486593295660997,
+        -0.0002341955024130999,
+        0.7068802543753516
       ],
       "xyz": [
-        0.06024778624735416,
-        -0.034761582103755684,
-        0.21201083581464725
+        0.0015873624879277,
+        -0.266405984267603,
+        0.089429814228986
       ]
     }
   },
   "follower_type": "pid",
   "nozzle_offset_mm": 0,
-  "original_arm_index": 520,
-  "path_index": 2185,
+  "original_arm_index": 50,
+  "path_index": 490,
   "path_transform": {
-    "x": 2.211214166215158,
-    "y": 3.672752973473191,
-    "yaw_deg": -90.9305556923864,
-    "z": 0.008663449832553405
+    "x": -1.8148869126341716,
+    "y": 3.96938899095019,
+    "yaw_deg": 101.43493334231577,
+    "z": 0.0024308892970040094
   },
   "path_transforms_by_directory": {
     "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/bunker_paired_demo": {
@@ -108,6 +108,7 @@
       "jparse_limits": {
         "max_cartesian_angular_velocity": 0.8,
         "max_cartesian_linear_velocity": 0.25,
+        "max_joint_acceleration": 0.5,
         "max_joint_velocity": 1.5
       },
       "path_transforms_by_directory": {
@@ -116,6 +117,12 @@
           "y": 3.672752973473191,
           "yaw_deg": -90.9305556923864,
           "z": 0.008663449832553405
+        },
+        "/home/afab/b04_gui_ws/src/match_additive_manufacturing_ros2/components/horizontal_test": {
+          "x": -1.8148869126341716,
+          "y": 3.96938899095019,
+          "yaw_deg": 101.43493334231577,
+          "z": 0.0024308892970040094
         }
       },
       "pid_gains": {
@@ -136,8 +143,8 @@
         "base_follower.kp_x": 0.8,
         "base_follower.kp_y": 0.8,
         "base_follower.kp_yaw": 1.2,
-        "base_follower.max_vx": 0.1,
-        "base_follower.max_vy": 0.1,
+        "base_follower.max_vx": 0.3,
+        "base_follower.max_vy": 0.3,
         "base_follower.max_wz": 0.5,
         "base_move.kp_angular_reorient": 1.2,
         "base_move.kp_angular_to_point": 1.5,
@@ -182,9 +189,9 @@
       0.5
     ],
     "xyz": [
-      0.0,
-      0.0,
-      0.0
+      0.32,
+      0.088,
+      0.0027
     ]
   },
   "vicon_nozzle_transform_input_mode": "quaternion"
