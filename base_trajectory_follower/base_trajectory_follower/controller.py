@@ -118,12 +118,15 @@ def compute_velocity_command(
     gains: FollowerGains,
     limits: FollowerLimits,
     tolerances: FollowerTolerances,
+    at_final_index: bool,
     diff_drive_mode: bool = False,
     velocity_override: float = 1.0,
 ) -> VelocityCommand:
     goal_distance = distance_xy(robot_pose, final_pose)
     goal_yaw_error = wrap_to_pi(final_pose.yaw - robot_pose.yaw)
     if (
+        at_final_index
+        and
         goal_distance <= tolerances.xy_goal_tolerance
         and abs(goal_yaw_error) <= tolerances.yaw_goal_tolerance
     ):
@@ -195,16 +198,18 @@ def compute_pure_pursuit_command(
     if not path:
         return VelocityCommand(0.0, 0.0, 0.0)
 
+    path_index = max(0, min(int(current_index), len(path) - 1))
     final_pose = path[-1]
     goal_distance = distance_xy(robot_pose, final_pose)
     goal_yaw_error = wrap_to_pi(final_pose.yaw - robot_pose.yaw)
     if (
+        path_index == len(path) - 1
+        and
         goal_distance <= tolerances.xy_goal_tolerance
         and abs(goal_yaw_error) <= tolerances.yaw_goal_tolerance
     ):
         return VelocityCommand(0.0, 0.0, 0.0, reached_goal=True)
 
-    path_index = max(0, min(int(current_index), len(path) - 1))
     lookahead_index = max(path_index, min(int(target_index), len(path) - 1))
     target_pose = path[lookahead_index]
     tracking_pose = path[path_index]

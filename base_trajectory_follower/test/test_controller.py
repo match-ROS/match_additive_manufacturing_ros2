@@ -51,6 +51,7 @@ def test_compute_velocity_uses_robot_frame_lateral_error():
         FollowerGains(kp_x=1.0, kp_y=1.0, kp_yaw=1.0),
         FollowerLimits(max_vx=2.0, max_vy=2.0, max_wz=2.0),
         FollowerTolerances(xy_goal_tolerance=0.01, yaw_goal_tolerance=0.01),
+        at_final_index=True,
     )
 
     assert abs(command.vx) < 1e-6
@@ -66,12 +67,28 @@ def test_compute_velocity_reports_reached_goal():
         FollowerGains(),
         FollowerLimits(),
         FollowerTolerances(xy_goal_tolerance=0.05, yaw_goal_tolerance=0.05),
+        at_final_index=True,
     )
 
     assert command.reached_goal
     assert command.vx == 0.0
     assert command.vy == 0.0
     assert command.wz == 0.0
+
+
+def test_compute_velocity_requires_the_final_path_index_to_reach_goal():
+    final_pose = Pose2D(1.0, 2.0, 0.1)
+    command = compute_velocity_command(
+        final_pose,
+        Pose2D(0.0, 0.0, 0.0),
+        final_pose,
+        FollowerGains(),
+        FollowerLimits(),
+        FollowerTolerances(xy_goal_tolerance=0.05, yaw_goal_tolerance=0.05),
+        at_final_index=False,
+    )
+
+    assert not command.reached_goal
 
 
 def test_compute_velocity_honours_velocity_override():
@@ -82,6 +99,7 @@ def test_compute_velocity_honours_velocity_override():
         FollowerGains(kp_x=1.0, kp_y=1.0, kp_yaw=1.0),
         FollowerLimits(max_vx=2.0, max_vy=2.0, max_wz=2.0),
         FollowerTolerances(xy_goal_tolerance=0.01, yaw_goal_tolerance=0.01),
+        at_final_index=True,
         velocity_override=0.25,
     )
 
@@ -98,6 +116,7 @@ def test_compute_velocity_diff_drive_suppresses_lateral_motion():
         FollowerGains(kp_x=1.0, kp_y=1.0, kp_yaw=1.0),
         FollowerLimits(max_vx=2.0, max_vy=2.0, max_wz=2.0),
         FollowerTolerances(xy_goal_tolerance=0.01, yaw_goal_tolerance=0.01),
+        at_final_index=True,
         diff_drive_mode=True,
     )
 
@@ -148,3 +167,23 @@ def test_pure_pursuit_holonomic_can_publish_lateral_motion():
 
     assert abs(command.vx) < 1e-6
     assert command.vy > 0.0
+
+
+def test_pure_pursuit_requires_the_final_path_index_to_reach_goal():
+    path = [
+        Pose2D(0.0, 0.0, 0.0),
+        Pose2D(1.0, 0.0, 0.0),
+        Pose2D(1.0, 1.0, 0.0),
+    ]
+    command = compute_pure_pursuit_command(
+        path[-1],
+        path,
+        current_index=1,
+        target_index=1,
+        timestamps=None,
+        gains=PurePursuitGains(),
+        limits=FollowerLimits(),
+        tolerances=FollowerTolerances(xy_goal_tolerance=0.05, yaw_goal_tolerance=0.05),
+    )
+
+    assert not command.reached_goal

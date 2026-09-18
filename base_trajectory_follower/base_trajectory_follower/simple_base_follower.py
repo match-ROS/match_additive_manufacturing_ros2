@@ -250,6 +250,7 @@ class SimpleBaseFollower(Node):
                 self._gains(),
                 self._limits(),
                 self._tolerances(),
+                self.current_index >= len(self.path) - 1,
                 self.diff_drive_mode,
                 command_override,
             )
