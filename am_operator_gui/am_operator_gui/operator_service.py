@@ -637,7 +637,12 @@ class OperatorService:
     def move_start_distances_cm(self) -> dict:
         if self.ros_bridge is None:
             return {'base': None, 'arm': None}
-        return self.ros_bridge.move_start_distances_cm(int(self._setting('path_index', 0)))
+        # The GUI displays the latest /path_index immediately.  Use that same
+        # live selection here so its distance label and selected index cannot
+        # diverge while the persisted start index remains unchanged.
+        index = self._live_path_index if self._live_path_index is not None else int(
+            self._setting('path_index', 0))
+        return self.ros_bridge.move_start_distances_cm(index)
 
     def _process_state(
         self,
@@ -1454,7 +1459,7 @@ echo "Controller restart complete: forward_velocity_controller is active."
                     '-p', f"robot_pose_topic:={profile['robot_pose']}", '-p', 'robot_pose_type:=pose_stamped',
                     '-p', f"cmd_vel_topic:={profile['cmd_vel']}", '-p', f"output_stamped:={str(profile['stamped']).lower()}",
                     '-p', f"command_frame_id:={profile['frame']}", '-p', f'diff_drive_mode:={str(diff_drive).lower()}',
-                    '-p', f'path_index:={index}', '-p', 'publish_start_condition:=false', '-p', 'start_condition_topic:=/start_pose_reached',
+                    '-p', f'path_index:={move_index}', '-p', 'publish_start_condition:=false', '-p', 'start_condition_topic:=/start_pose_reached',
                     '-p', 'distance_tolerance:=0.06', '-p', 'yaw_tolerance:=0.08',
                     '-p', f'kp_linear:={self._pid("base_move.kp_linear", 0.6):.6f}', '-p', f'kp_lateral:={self._pid("base_move.kp_lateral", 0.6):.6f}',
                     '-p', f'kp_angular_to_point:={self._pid("base_move.kp_angular_to_point", 1.5):.6f}', '-p', f'kp_angular_reorient:={self._pid("base_move.kp_angular_reorient", 1.2):.6f}',
@@ -1463,7 +1468,7 @@ echo "Controller restart complete: forward_velocity_controller is active."
         if name == 'move_arm':
             return ['ros2', 'launch', 'move_to_path_idx', 'move_ur_to_path_idx.launch.py',
                     f'use_sim_time:={self._use_sim_time()}', 'path_topic:=/ur_path_tracking',
-                    'current_pose_topic:=/current_deposition_pose', f'path_index:={index}',
+                    'current_pose_topic:=/current_deposition_pose', f'path_index:={move_index}',
                     'wait_for_start_condition:=false', 'start_condition_topic:=/start_pose_reached',
                     'cmd_vel_topic:=/jparse_velocity_controller_ur/twist_cmd_world', f'path_frame:={frame}',
                     f'kp_linear:={self._pid("arm_move.kp_linear", 0.8):.6f}', f'kp_angular:={self._pid("arm_move.kp_angular", 1.0):.6f}',
@@ -1476,6 +1481,7 @@ echo "Controller restart complete: forward_velocity_controller is active."
             rviz = 'bunker_operator.rviz' if str(self._setting('platform', 'robotnik')) == 'bunker' else 'robotnik_operator.rviz'
             return ['rviz2', '-d', str(ASSET_ROOT / 'rviz' / rviz), '-f', frame]
         if name == 'sync_workspace':
+            move_index = self._live_path_index if self._live_path_index is not None else index
             return ['rsync', '-az', '-e', 'ssh', f'{REPO_ROOT.parent}/', SYNC_REMOTE_TARGET]
         return None
 
@@ -1488,6 +1494,7 @@ echo "Controller restart complete: forward_velocity_controller is active."
             arguments = []
             for flag, value in zip(
                 ('--x', '--y', '--z', '--qx', '--qy', '--qz', '--qw'),
+            move_index = self._live_path_index if self._live_path_index is not None else index
                 [*offset['xyz'], *offset['quaternion_xyzw']],
             ):
                 arguments.extend([flag, str(value)])
