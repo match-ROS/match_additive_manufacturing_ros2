@@ -108,7 +108,7 @@ async def _run_action(request: Request, action: str):
 ACTION_ENDPOINTS = (
     'launch_all', 'stop_all', 'simulation', 'vicon', 'pose_adapters', 'publish_path',
     'index_pose_preview', 'path_index', 'base_follower', 'arm_follower', 'transformations', 'controllers',
-    'switch_arm_velocity', 'capture_tool_offset', 'base_accuracy', 'tcp_accuracy',
+    'switch_arm_velocity', 'capture_tool_offset', 'calculate_nozzle_tip_transform', 'base_accuracy', 'tcp_accuracy',
     'accuracy_report', 'move_base', 'move_arm', 'start_following', 'stop_following',
     'calculate_path_transform', 'check_hardware_topics', 'rviz', 'sync_workspace',
     'remote_bringup', 'play_program', 'unlock_protective_stop', 'enable_ur', 'release_brakes',

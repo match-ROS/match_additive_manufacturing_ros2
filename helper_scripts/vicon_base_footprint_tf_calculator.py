@@ -59,7 +59,7 @@ ROBOT_BASE_FRAME = "robot_base_footprint"
 #   "/robot/tool0"
 #   "/robot/tcp"
 #   "/robot/flange"
-ROBOT_TCP_FRAME = "robot_arm_tool0_controller"
+ROBOT_TCP_FRAME = "robot_arm_tool0_controller_raw"
 
 # Optional known offset from robot TCP frame to Vicon tool marker frame.
 # Keep identity if Tool_Flange from Vicon corresponds directly to ROBOT_TCP_FRAME.

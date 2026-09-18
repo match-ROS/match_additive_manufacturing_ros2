@@ -257,6 +257,10 @@ The **Nozzle transforms** section places two independent calibrations side by si
 - **Robot flange → nozzle** describes the nozzle relative to `robot_arm_tool0`
   for the kinematic/controller chain, separately for each platform. Restart arm
   controllers and the follower after changing it. It does not change Vicon calibration.
+  **Raw Controller TCP als Nozzle tip übernehmen** reads the live
+  `robot_arm_tool0 -> robot_arm_tool0_controller_raw` TF and stores it as the
+  flange-to-nozzle transform, so `robot_arm_nozzle_tip` coincides with
+  `robot_arm_tool0_controller_raw`.
 
 Both describe the same nozzle; their values coincide only when the Vicon measured
 frame coincides with the robot flange. The Vicon defaults retain the previous
@@ -301,11 +305,11 @@ Choose exactly one source for `/robot_pose`:
 The latter two checkboxes are mutually exclusive. Do not run another node that
 publishes `/robot_pose` concurrently.
 
-### Capture UR TCP Offset
+### Capture Raw UR TCP Offset
 
-Use **Capture UR TCP Offset** when the real tool flange/controller TCP differs from
+Use **Capture Raw UR TCP Offset** when the real tool flange/controller TCP differs from
 the modeled `robot_arm_tool0` frame and the robot TF tree already contains the
-calibrated transform `robot_arm_tool0 -> robot_arm_tool0_controller`. This is a
+calibrated transform `robot_arm_tool0 -> robot_arm_tool0_controller_raw`. This is a
 hardware-only convenience action: it reads that TF transform, stores its translation
 and XYZW quaternion as `fixed_tool_offset`, and passes the values to the arm
 controller/follower when they are next launched.
@@ -319,7 +323,7 @@ calibrated TF transform with exactly those frame names, keep the robot stationar
 safe, and verify it first, for example:
 
 ```bash
-ros2 run tf2_ros tf2_echo robot_arm_tool0 robot_arm_tool0_controller
+ros2 run tf2_ros tf2_echo robot_arm_tool0 robot_arm_tool0_controller_raw
 ```
 
 Use it after a physical tool/TCP change or when deploying a corrected robot

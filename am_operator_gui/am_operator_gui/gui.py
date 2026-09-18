@@ -854,7 +854,7 @@ class OperatorWindow(QMainWindow):
         self.current_tcp_pose_button = QPushButton('Launch Transformations')
         self.arm_controllers_button = QPushButton('Start Controllers')
         self.switch_arm_velocity_button = QPushButton('Switch Arm Velocity')
-        self.capture_tool_offset_button = QPushButton('Capture UR TCP Offset')
+        self.capture_tool_offset_button = QPushButton('Capture Raw UR TCP Offset')
         self._set_tool_offset_capture_button_state(matches=True)
         self.base_accuracy_monitor_button = QPushButton('Record Base Accuracy')
         self.tcp_accuracy_monitor_button = QPushButton('Record TCP Accuracy')
@@ -1241,10 +1241,10 @@ class OperatorWindow(QMainWindow):
             self._append_process_output('gui', 'UR TCP offset capture is available in hardware mode only')
             return
         transform = self.ros_bridge.lookup_tool_offset(
-            'robot_arm_tool0', 'robot_arm_tool0_controller')
+            'robot_arm_tool0', 'robot_arm_tool0_controller_raw')
         if transform is None:
             self._append_process_output(
-                'gui', 'cannot capture UR TCP offset: TF robot_arm_tool0 <- robot_arm_tool0_controller unavailable')
+                'gui', 'cannot capture UR TCP offset: TF robot_arm_tool0 <- robot_arm_tool0_controller_raw unavailable')
             return
         translation = transform.transform.translation
         rotation = transform.transform.rotation
@@ -1257,7 +1257,7 @@ class OperatorWindow(QMainWindow):
         self._set_tool_offset_capture_button_state(matches=True)
         self._append_process_output(
             'gui',
-            'saved fixed tool offset from robot_arm_tool0 -> robot_arm_tool0_controller; '
+            'saved fixed tool offset from robot_arm_tool0 -> robot_arm_tool0_controller_raw; '
             'restart arm controllers and follower to apply',
         )
 
@@ -1307,9 +1307,9 @@ class OperatorWindow(QMainWindow):
             f'QPushButton {{ background-color: {color}; color: white; }}'
         )
         self.capture_tool_offset_button.setToolTip(
-            'Configured UR TCP offset differs from the robot TF; capture it to update the configuration.'
+            'Configured raw UR TCP offset differs from the robot TF; capture it to update the configuration.'
             if not matches else
-            'Configured UR TCP offset matches the robot TF.'
+            'Configured raw UR TCP offset matches the robot TF.'
         )
 
     def _check_configured_tool_offset(self) -> None:
@@ -1317,7 +1317,7 @@ class OperatorWindow(QMainWindow):
         if self.simulation_checkbox.isChecked():
             return
         transform = self.ros_bridge.lookup_tool_offset(
-            'robot_arm_tool0', 'robot_arm_tool0_controller')
+            'robot_arm_tool0', 'robot_arm_tool0_controller_raw')
         if transform is None:
             return
         matches = self._tool_offset_matches_transform(transform)
@@ -1326,11 +1326,11 @@ class OperatorWindow(QMainWindow):
             return
         message = (
             'The configured UR TCP offset differs from the transform currently published by '
-            'robot_arm_tool0 -> robot_arm_tool0_controller. Capture the UR TCP offset before '
+            'robot_arm_tool0 -> robot_arm_tool0_controller_raw. Capture the UR TCP offset before '
             'starting the arm controllers or follower.'
         )
         self._append_process_output('gui', f'WARNING: {message}')
-        QMessageBox.warning(self, 'UR TCP Offset Mismatch', message)
+        QMessageBox.warning(self, 'Raw UR TCP Offset Mismatch', message)
 
     def _calculate_path_transform(self) -> None:
         index = self.index_spin.value()

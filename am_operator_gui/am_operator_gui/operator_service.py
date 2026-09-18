@@ -221,10 +221,15 @@ ACTION_DESCRIPTIONS = {
     ),
     'rviz': 'Öffnet RViz mit der zum Plattformprofil passenden Konfiguration.',
     'capture_tool_offset': (
-        'Liest den TF robot_arm_tool0 → robot_arm_tool0_controller und speichert ihn '
+        'Liest den TF robot_arm_tool0 → robot_arm_tool0_controller_raw und speichert ihn '
         'als Flansch-zu-Nozzle-Offset.'
     ),
     'calculate_path_transform': (
+    'calculate_nozzle_tip_transform': (
+        'Liest den TF robot_arm_tool0 → robot_arm_tool0_controller_raw und übernimmt ihn '
+        'als robot_arm_tool0 → robot_arm_nozzle_tip. Dadurch liegen Nozzle tip und '
+        'raw Controller TCP auf derselben Pose.'
+    ),
         'Berechnet aus /robot_pose und /base_path am gewählten Index die starre '
         'Pfadtranslation und Gierrotation.'
     ),
@@ -720,7 +725,11 @@ class OperatorService:
             ('rviz',), 'Open RViz', 'Open RViz', ACTION_DESCRIPTIONS['rviz']
         )
         states['capture_tool_offset'] = self._message_state(
-            'capture_tool_offset', 'Capture UR TCP Offset', ACTION_DESCRIPTIONS['capture_tool_offset']
+            'capture_tool_offset', 'Capture Raw UR TCP Offset', ACTION_DESCRIPTIONS['capture_tool_offset']
+        )
+        states['calculate_nozzle_tip_transform'] = self._message_state(
+            'calculate_nozzle_tip_transform', 'Raw Controller TCP als Nozzle tip übernehmen',
+            ACTION_DESCRIPTIONS['calculate_nozzle_tip_transform']
         )
         states['calculate_path_transform'] = self._message_state(
             'calculate_path_transform', 'Calculate Path Transform', ACTION_DESCRIPTIONS['calculate_path_transform']
@@ -1062,12 +1071,16 @@ class OperatorService:
                 self._publish_start_condition_repeatedly(True)
                 self._following_active = True
             return
-        if name == 'capture_tool_offset':
+        if name in ('capture_tool_offset', 'calculate_nozzle_tip_transform'):
             if not self.ensure_ros():
                 return
-            transform = self.ros_bridge.lookup_tool_offset('robot_arm_tool0', 'robot_arm_tool0_controller')
+            controller_frame = 'robot_arm_tool0_controller_raw'
+            transform = self.ros_bridge.lookup_tool_offset('robot_arm_tool0', controller_frame)
             if transform is None:
-                self.log('calibration', 'TF robot_arm_tool0 -> robot_arm_tool0_controller is unavailable')
+                message = f'TF robot_arm_tool0 -> {controller_frame} is unavailable'
+                self.log('calibration', message)
+                self._last_action_messages[name] = message
+                self._last_action_success[name] = False
                 return
             translation = transform.transform.translation
             rotation = transform.transform.rotation
@@ -1081,8 +1094,13 @@ class OperatorService:
                 self.config['fixed_tool_offsets_by_platform'] = platform_offsets
             platform_offsets[self._platform_key()] = offset
             self.store.save(self.config)
-            self.log('calibration', f'captured UR TCP offset for {self._platform_key()}')
-            self._last_action_messages['capture_tool_offset'] = 'UR TCP offset captured'
+            message = (
+                'Raw controller TCP transform übernommen: nozzle tip liegt auf raw controller TCP'
+                if name == 'calculate_nozzle_tip_transform' else 'UR TCP offset captured'
+            )
+            self.log('calibration', f'{message} for {self._platform_key()}')
+            self._last_action_messages[name] = message
+            self._last_action_success[name] = True
             return
         if name == 'calculate_path_transform':
             self.calculate_path_transform()

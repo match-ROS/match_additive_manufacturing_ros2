@@ -510,7 +510,12 @@ document.querySelectorAll('[data-action]').forEach(button => button.addEventList
   showFeedback('');
   try {
     await save();
-    await fetch(`/api/actions/${button.dataset.action}`, {method:'POST'}).then(jsonResponse);
+    const state = await fetch(`/api/actions/${button.dataset.action}`, {method:'POST'}).then(jsonResponse);
+    if (button.dataset.action === 'calculate_nozzle_tip_transform' &&
+        state.actions?.calculate_nozzle_tip_transform?.state === 'success') {
+      // The action replaced the editable values with the controller-TCP TF.
+      toolOffsetDirty = false;
+    }
   } catch (error) {
     showFeedback(`Aktion „${button.textContent}“ fehlgeschlagen: ${error.message}`, true);
   }
