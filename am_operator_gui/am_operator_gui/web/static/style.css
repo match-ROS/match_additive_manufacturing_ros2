@@ -43,6 +43,16 @@ textarea { width: 100%; height: 18rem; overflow: auto; color: #d8e4e9; backgroun
 @media (max-width: 1050px) { .system-card, .components-card, .motion-card, .robot-hardware-card, .hardware-guide, .overrides-card, .accuracy-card, .advanced-card { grid-column: span 6; }.app-header { align-items: flex-start; }.header-meta { flex-wrap: wrap; justify-content: end; } }
 @media (max-width: 680px) { .app-header { align-items: flex-start; flex-direction: column; gap: .7rem; }.match-logo { width: clamp(28px, 8vw, 36px); height: clamp(28px, 8vw, 36px); }.header-meta { width: 100%; justify-content: space-between; }.connection-state { max-width: 55%; }.amc-brand { min-width: 138px; }.amc-brand img { width: 120px; } main { display: block; padding: .75rem; }.card { margin-bottom: .75rem; }.fields { grid-template-columns: 1fr; }.fields label:has(input[type=checkbox]) { padding-top: 0; }.actions button { flex: 1 1 145px; }.console-header { align-items: start; flex-direction: column; }.console-controls { justify-content: start; }.console-search { flex: 1 1 150px; }.console-search input { width: 100%; }.log-output { height: 18rem; } }
 
+.base-vicon-transform { grid-column: 1 / -1; min-width: 0; }
+.base-vicon-transform details { margin-top: .75rem; padding: 1rem; border: 1px solid #b8c6d2; border-radius: 8px; }
+.base-vicon-transform summary { flex-wrap: wrap; gap: .35rem 1rem; }
+.base-vicon-transform p { max-width: 100ch; overflow-wrap: anywhere; }
+.vicon-base-offset-fields { display: grid; gap: 1rem; min-width: 0; margin: 0; padding: 0; border: 0; }
+.vicon-base-offset-fields .fields { grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); }
+.vicon-base-offset-fields label, .vicon-base-offset-fields input, .vicon-base-offset-fields select { min-width: 0; }
+.vicon-base-offset-fields .actions { margin-top: 0; }
+@media (max-width: 680px) { .vicon-base-offset-fields .fields { grid-template-columns: 1fr; } }
+
 .nozzle-transforms { grid-column: 1 / -1; }
 .transform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .transform-grid details { border: 1px solid #b8c6d2; padding: 1rem; border-radius: 8px; }

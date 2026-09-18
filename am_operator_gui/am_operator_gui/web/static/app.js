@@ -25,11 +25,21 @@ const viconOffsetElements = {
 };
 const defaultViconOffset = {xyz: [0.184687295, -0.501541068, -0.126693390], quaternion_xyzw: [0.0014631726632651522, -0.003424541244486294, 0.8435437871654295, 0.5370474939682958]};
 let viconOffsetDisplayedMode = 'quaternion';
+const viconBaseOffsetElements = {
+  mode: document.querySelector('#vicon-base-offset-mode'),
+  xyz: ['x', 'y', 'z'].map(axis => document.querySelector(`#vicon-base-offset-${axis}`)),
+  rotation: [0, 1, 2, 3].map(index => document.querySelector(`#vicon-base-offset-r${index}`)),
+  labels: [0, 1, 2, 3].map(index => document.querySelector(`#vicon-base-offset-label-${index}`)),
+};
+const defaultViconClusterToBaseOffset = {xyz: [-0.022345829062692456, 0.008706477947710399, 0.007544808501644998], quaternion_xyzw: [-0.0044597839995404705, 0.006515751999328627, -0.009033289999069223, 0.999928024896969]};
+let viconBaseOffsetDisplayedMode = 'quaternion';
 let toolOffsetPlatform = null;
 let toolOffsetDirty = false;
 let viconOffsetDirty = false;
+let viconBaseOffsetDirty = false;
 [...toolOffsetElements.xyz, ...toolOffsetElements.rotation, toolOffsetElements.mode].forEach(input => input.addEventListener('input', () => { toolOffsetDirty = true; }));
 [...viconOffsetElements.xyz, ...viconOffsetElements.rotation, viconOffsetElements.mode].forEach(input => input.addEventListener('input', () => { viconOffsetDirty = true; }));
+[...viconBaseOffsetElements.xyz, ...viconBaseOffsetElements.rotation, viconBaseOffsetElements.mode].forEach(input => input.addEventListener('input', () => { viconBaseOffsetDirty = true; }));
 const platformSettingsElement = document.querySelector('#platform-settings');
 let renderedPlatformSettingsSignature = null;
 const platformTuningGroups = [
@@ -215,6 +225,58 @@ function renderViconOffset(config) {
   viconOffsetElements.mode.value = mode;
   viconOffsetDisplayedMode = mode;
   updateViconOffsetMode();
+}
+function viconBaseOffsetFocused() {
+  return [...viconBaseOffsetElements.xyz, ...viconBaseOffsetElements.rotation, viconBaseOffsetElements.mode]
+    .includes(document.activeElement);
+}
+function updateViconBaseOffsetMode() {
+  const rpy = viconBaseOffsetElements.mode.value === 'rpy';
+  const labels = rpy ? ['Roll (deg)', 'Pitch (deg)', 'Yaw (deg)', 'Qw'] : ['Qx', 'Qy', 'Qz', 'Qw'];
+  viconBaseOffsetElements.labels.forEach((label, index) => label.textContent = labels[index]);
+  viconBaseOffsetElements.rotation.forEach((input, index) => {
+    input.disabled = rpy && index === 3;
+    input.step = rpy && index < 3 ? '0.1' : '0.000001';
+  });
+}
+function convertViconBaseOffsetMode() {
+  const targetMode = viconBaseOffsetElements.mode.value;
+  if (targetMode === viconBaseOffsetDisplayedMode) {
+    updateViconBaseOffsetMode();
+    return;
+  }
+  try {
+    if (targetMode === 'rpy') {
+      const quaternion = normalizeQuaternion(viconBaseOffsetElements.rotation.map(input => Number(input.value)));
+      const rpy = quaternionToRpyDegrees(quaternion);
+      viconBaseOffsetElements.rotation.slice(0, 3).forEach((input, index) => input.value = rpy[index]);
+      viconBaseOffsetElements.rotation[3].value = quaternion[3];
+    } else {
+      const quaternion = rpyDegreesToQuaternion(
+        viconBaseOffsetElements.rotation.slice(0, 3).map(input => Number(input.value))
+      );
+      viconBaseOffsetElements.rotation.forEach((input, index) => input.value = quaternion[index]);
+    }
+    viconBaseOffsetDisplayedMode = targetMode;
+    updateViconBaseOffsetMode();
+  } catch (error) {
+    showFeedback(`Rotation could not be converted: ${error.message}`, true);
+    viconBaseOffsetElements.mode.value = viconBaseOffsetDisplayedMode;
+    updateViconBaseOffsetMode();
+  }
+}
+function renderViconBaseOffset(config) {
+  const offset = config.vicon_cluster_to_base_transform || defaultViconClusterToBaseOffset;
+  let quaternion;
+  try { quaternion = normalizeQuaternion((offset.quaternion_xyzw || defaultViconClusterToBaseOffset.quaternion_xyzw).map(Number)); }
+  catch (_) { quaternion = defaultViconClusterToBaseOffset.quaternion_xyzw; }
+  viconBaseOffsetElements.xyz.forEach((input, index) => input.value = Number(offset.xyz?.[index] ?? defaultViconClusterToBaseOffset.xyz[index]));
+  const mode = config.vicon_cluster_to_base_transform_input_mode === 'rpy' ? 'rpy' : 'quaternion';
+  const rotation = mode === 'rpy' ? [...quaternionToRpyDegrees(quaternion), quaternion[3]] : quaternion;
+  viconBaseOffsetElements.rotation.forEach((input, index) => input.value = rotation[index]);
+  viconBaseOffsetElements.mode.value = mode;
+  viconBaseOffsetDisplayedMode = mode;
+  updateViconBaseOffsetMode();
 }
 
 function platformSettingsFocused() {
@@ -402,6 +464,7 @@ function render(state) {
   fields.forEach(field => { if (active !== field) setField(field, config[field.dataset.setting]); });
   if (!toolOffsetFocused() && !toolOffsetDirty) renderToolOffset(config);
   if (!viconOffsetFocused() && !viconOffsetDirty) renderViconOffset(config);
+  if (!viconBaseOffsetFocused() && !viconBaseOffsetDirty) renderViconBaseOffset(config);
   renderPlatformSettings(state, config);
   if (active !== document.querySelector('#advanced-json')) document.querySelector('#advanced-json').value = JSON.stringify(config, null, 2);
   const labels = {path:'Pfad', robot_pose:'Roboterpose', arm_pose:'Deposition pose', jparse_ready:'J-PARSE', controller_ready:'Controller'};
@@ -576,6 +639,23 @@ document.querySelector('#save-vicon-offset').addEventListener('click', async () 
     showFeedback('Vicon-to-nozzle transform saved; restart Pose Adapters to apply.');
     await refresh();
   } catch (error) { showFeedback(`Vicon transform could not be saved: ${error.message}`, true); }
+});
+viconBaseOffsetElements.mode.addEventListener('change', convertViconBaseOffsetMode);
+document.querySelector('#save-vicon-base-offset').addEventListener('click', async () => {
+  try {
+    const xyz = viconBaseOffsetElements.xyz.map(input => Number(input.value));
+    const quaternion = viconBaseOffsetElements.mode.value === 'rpy'
+      ? rpyDegreesToQuaternion(viconBaseOffsetElements.rotation.slice(0, 3).map(input => Number(input.value)))
+      : normalizeQuaternion(viconBaseOffsetElements.rotation.map(input => Number(input.value)));
+    if (![...xyz, ...quaternion].every(Number.isFinite)) throw new Error('All transform values must be numbers');
+    await fetch('/api/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({values: {
+      vicon_cluster_to_base_transform: {xyz, quaternion_xyzw: quaternion},
+      vicon_cluster_to_base_transform_input_mode: viconBaseOffsetElements.mode.value,
+    }})}).then(jsonResponse);
+    viconBaseOffsetDirty = false;
+    showFeedback('Vicon cluster-to-base transform saved; restart Pose Adapters to apply.');
+    await refresh();
+  } catch (error) { showFeedback(`Vicon base transform could not be saved: ${error.message}`, true); }
 });
 [consoleElements.source, ...consoleElements.levels, consoleElements.search, consoleElements.autoScroll].forEach(element => element.addEventListener(element === consoleElements.search ? 'input' : 'change', () => { saveConsolePreferences(); if (latestState) renderConsole(latestState.logs || []); }));
 consoleElements.clear.addEventListener('click', () => { clearedAfter = Date.now(); if (latestState) renderConsole(latestState.logs || []); });

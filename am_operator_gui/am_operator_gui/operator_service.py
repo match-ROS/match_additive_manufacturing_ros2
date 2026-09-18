@@ -18,8 +18,9 @@ from threading import Lock, Timer
 from typing import Any, Callable, Optional
 
 from .tool_transforms import (
-    DEFAULT_VICON_INPUT_TOPIC, DEFAULT_VICON_NOZZLE_TRANSFORM,
-    VICON_NOZZLE_TOPIC, validated_transform,
+    DEFAULT_VICON_CLUSTER_TO_BASE_TRANSFORM, DEFAULT_VICON_INPUT_TOPIC,
+    DEFAULT_VICON_NOZZLE_TRANSFORM, VICON_NOZZLE_TOPIC, inverted_transform,
+    validated_transform,
 )
 from .config_store import ConfigStore
 from .robot_debug import RobotDebugInfo
@@ -224,12 +225,12 @@ ACTION_DESCRIPTIONS = {
         'Liest den TF robot_arm_tool0 → robot_arm_tool0_controller_raw und speichert ihn '
         'als Flansch-zu-Nozzle-Offset.'
     ),
-    'calculate_path_transform': (
     'calculate_nozzle_tip_transform': (
         'Liest den TF robot_arm_tool0 → robot_arm_tool0_controller_raw und übernimmt ihn '
         'als robot_arm_tool0 → robot_arm_nozzle_tip. Dadurch liegen Nozzle tip und '
         'raw Controller TCP auf derselben Pose.'
     ),
+    'calculate_path_transform': (
         'Berechnet aus /robot_pose und /base_path am gewählten Index die starre '
         'Pfadtranslation und Gierrotation.'
     ),
@@ -375,8 +376,10 @@ class OperatorService:
         # accidentally become command-line arguments.
         allowed = {'simulation', 'simulation_gui', 'platform', 'trajectory_directory', 'control_frame',
                    'base_pose_topic', 'vicon_input_topic', 'vicon_nozzle_transform',
+                   'vicon_cluster_to_base_transform',
                    'vicon_fallback_nozzle_transform',
-                   'vicon_nozzle_transform_input_mode', 'external_map_frame',
+                   'vicon_nozzle_transform_input_mode', 'vicon_cluster_to_base_transform_input_mode',
+                   'external_map_frame',
                    'robot_base_frame', 'robot_tree_root_frame', 'use_odometry_robot_pose',
                    'use_vicon_tcp_base_pose_fallback', 'default_velocity',
                    'default_velocity_enabled', 'spray_distance_mm', 'path_transform',
@@ -406,6 +409,9 @@ class OperatorService:
                 accepted['vicon_input_topic'] = topic
             if 'vicon_nozzle_transform' in accepted:
                 accepted['vicon_nozzle_transform'] = validated_transform(accepted['vicon_nozzle_transform'])
+            if 'vicon_cluster_to_base_transform' in accepted:
+                accepted['vicon_cluster_to_base_transform'] = validated_transform(
+                    accepted['vicon_cluster_to_base_transform'])
             if 'vicon_fallback_nozzle_transform' in accepted:
                 accepted['vicon_fallback_nozzle_transform'] = validated_transform(accepted['vicon_fallback_nozzle_transform'])
             if 'path_index' in accepted:
@@ -599,6 +605,8 @@ class OperatorService:
             'vicon_input_topic': DEFAULT_VICON_INPUT_TOPIC,
             'vicon_nozzle_transform': deepcopy(DEFAULT_VICON_NOZZLE_TRANSFORM),
             'vicon_nozzle_transform_input_mode': 'quaternion',
+            'vicon_cluster_to_base_transform': deepcopy(DEFAULT_VICON_CLUSTER_TO_BASE_TRANSFORM),
+            'vicon_cluster_to_base_transform_input_mode': 'quaternion',
             'external_map_frame': 'map',
             'robot_base_frame': 'base_link',
             'robot_tree_root_frame': 'odom',
@@ -624,6 +632,7 @@ class OperatorService:
         config.setdefault('velocity_override', 100)
         config.setdefault('nozzle_offset_mm', 0)
         config.setdefault('fixed_tool_offset_input_mode', 'quaternion')
+        config.setdefault('vicon_cluster_to_base_transform_input_mode', 'quaternion')
         config['battery_topic'] = self._battery_topic()
         platform_settings = {
             platform: self.platform_settings_snapshot(platform)
@@ -1472,6 +1481,7 @@ echo "Controller restart complete: forward_velocity_controller is active."
                     '--arm-base-offset', '0.26,0,1.046']
         if name == 'move_base':
             diff_drive = bool(self._control_setting('diff_drive_mode', False)) or str(self._setting('platform', 'robotnik')) == 'bunker'
+            move_index = self._live_path_index if self._live_path_index is not None else index
             return ['ros2', 'run', 'move_to_path_idx', 'move_to_path_idx', '--ros-args',
                     '-p', f'use_sim_time:={self._use_sim_time()}', '-p', 'path_topic:=/base_path_tracking',
                     '-p', f"robot_pose_topic:={profile['robot_pose']}", '-p', 'robot_pose_type:=pose_stamped',
@@ -1484,6 +1494,7 @@ echo "Controller restart complete: forward_velocity_controller is active."
                     '-p', f'max_linear_velocity:={self._pid("base_move.max_linear_velocity", 0.2):.6f}', '-p', f'max_lateral_velocity:={self._pid("base_move.max_lateral_velocity", 0.2):.6f}',
                     '-p', f'max_angular_velocity:={self._pid("base_move.max_angular_velocity", 0.5):.6f}']
         if name == 'move_arm':
+            move_index = self._live_path_index if self._live_path_index is not None else index
             return ['ros2', 'launch', 'move_to_path_idx', 'move_ur_to_path_idx.launch.py',
                     f'use_sim_time:={self._use_sim_time()}', 'path_topic:=/ur_path_tracking',
                     'current_pose_topic:=/current_deposition_pose', f'path_index:={move_index}',
@@ -1499,7 +1510,6 @@ echo "Controller restart complete: forward_velocity_controller is active."
             rviz = 'bunker_operator.rviz' if str(self._setting('platform', 'robotnik')) == 'bunker' else 'robotnik_operator.rviz'
             return ['rviz2', '-d', str(ASSET_ROOT / 'rviz' / rviz), '-f', frame]
         if name == 'sync_workspace':
-            move_index = self._live_path_index if self._live_path_index is not None else index
             return ['rsync', '-az', '-e', 'ssh', f'{REPO_ROOT.parent}/', SYNC_REMOTE_TARGET]
         return None
 
@@ -1512,7 +1522,6 @@ echo "Controller restart complete: forward_velocity_controller is active."
             arguments = []
             for flag, value in zip(
                 ('--x', '--y', '--z', '--qx', '--qy', '--qz', '--qw'),
-            move_index = self._live_path_index if self._live_path_index is not None else index
                 [*offset['xyz'], *offset['quaternion_xyzw']],
             ):
                 arguments.extend([flag, str(value)])
@@ -1525,8 +1534,17 @@ echo "Controller restart complete: forward_velocity_controller is active."
         base_frame = str(self._setting('robot_base_frame', self._profile()['frame']))
         root_frame = str(self._setting('robot_tree_root_frame', 'odom'))
         external_map = str(self._setting('external_map_frame', 'map'))
-        self.processes.start('vicon_base_static_tf', ['ros2', 'run', 'tf2_ros', 'static_transform_publisher',
-                '0.022595781', '-0.008234146', '-0.007327516', '0.004459784', '-0.006515752', '0.009033290', '0.999928025', 'robot_base_footprint', 'robot_base_vicon_reference'])
+        # The saved calibration is T_cluster__base because that is the relation
+        # being measured.  tf2 publishes the inverse as base -> cluster reference.
+        base_calibration = validated_transform(self._setting(
+            'vicon_cluster_to_base_transform', DEFAULT_VICON_CLUSTER_TO_BASE_TRANSFORM))
+        static_base_to_cluster = inverted_transform(base_calibration)
+        self.processes.start('vicon_base_static_tf', [
+            'ros2', 'run', 'tf2_ros', 'static_transform_publisher',
+            *(str(value) for value in static_base_to_cluster['xyz']),
+            *(str(value) for value in static_base_to_cluster['quaternion_xyzw']),
+            base_frame, 'robot_base_vicon_reference',
+        ])
         vicon_offset = validated_transform(self._setting('vicon_nozzle_transform', DEFAULT_VICON_NOZZLE_TRANSFORM))
         self.processes.start('vicon_ee_static_tf', ['ros2', 'run', 'am_operator_gui', 'vicon_ee_static_tf', '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}',
