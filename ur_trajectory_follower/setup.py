@@ -24,6 +24,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'ur_vel_induced_by_base = ur_trajectory_follower.base_motion_compensation:main',
             'ur_direction_controller = ur_trajectory_follower.ur_path_direction_controller:main',
             'combine_twists = ur_trajectory_follower.combine_twists:main',
             'current_pose_from_tf = ur_trajectory_follower.current_pose_from_tf:main',

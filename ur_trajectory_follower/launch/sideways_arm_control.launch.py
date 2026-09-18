@@ -1,5 +1,5 @@
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -26,15 +26,18 @@ def _launch_setup(context, *args, **kwargs):
     normal_topic = LaunchConfiguration('normal_topic')
     start_condition_topic = LaunchConfiguration('start_condition_topic')
     combined_twist_source_topic = LaunchConfiguration('combined_twist_source_topic')
-    twist_topics = (
-        '['
-        + LaunchConfiguration('ur_twist_world_topic').perform(context)
-        + ', '
-        + LaunchConfiguration('orientation_twist_topic').perform(context)
-        + ']'
-    )
+    compensation_enabled = IfCondition(LaunchConfiguration('start_base_motion_compensation')).evaluate(context)
+    inputs = [LaunchConfiguration('ur_twist_world_topic').perform(context),
+              LaunchConfiguration('orientation_twist_topic').perform(context)]
+    if compensation_enabled:
+        inputs.append(LaunchConfiguration('base_compensation_topic').perform(context))
+    twist_topics = '[' + ', '.join(inputs) + ']'
 
     nodes = [
+        SetEnvironmentVariable(
+            'FASTDDS_BUILTIN_TRANSPORTS', 'UDPv4',
+            condition=IfCondition(LaunchConfiguration('dds_udp_only')),
+        ),
         Node(
             package='ur_trajectory_follower',
             executable='deposition_pose',
@@ -189,16 +192,48 @@ def _launch_setup(context, *args, **kwargs):
         ),
         Node(
             package='ur_trajectory_follower',
+            executable='ur_vel_induced_by_base',
+            name='ur_vel_induced_by_base',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('start_base_motion_compensation')),
+            parameters=[{
+                'use_sim_time': use_sim_time,
+                'base_velocity_topic': LaunchConfiguration('base_velocity_topic'),
+                'base_velocity_type': LaunchConfiguration('base_velocity_type'),
+                'base_frame': LaunchConfiguration('compensation_base_frame'),
+                'tcp_frame': LaunchConfiguration('tip_link'),
+                'pose_source': LaunchConfiguration('base_compensation_pose_source'),
+                'translation_only': LaunchConfiguration('base_compensation_translation_only'),
+                'tcp_pose_topic': LaunchConfiguration('base_compensation_tcp_pose_topic'),
+                'base_pose_topic': LaunchConfiguration('base_compensation_base_pose_topic'),
+                'controller_tcp_frame': LaunchConfiguration('base_compensation_controller_tcp_frame'),
+                'world_frame': LaunchConfiguration('path_frame'),
+                'fixed_tool_offset_xyz': LaunchConfiguration('fixed_tool_offset_xyz'),
+                'fixed_tool_offset_quaternion_xyzw': LaunchConfiguration('fixed_tool_offset_quaternion_xyzw'),
+                'spray_distance_topic': LaunchConfiguration('smoothed_spray_distance_topic'),
+                'spray_distance_initial': LaunchConfiguration('spray_distance_initial'),
+                'output_topic': LaunchConfiguration('base_compensation_topic'),
+                'publish_rate': LaunchConfiguration('base_compensation_rate'),
+                'stale_timeout': LaunchConfiguration('base_compensation_stale_timeout'),
+                'pose_timeout': LaunchConfiguration('base_compensation_pose_timeout'),
+                'tf_timeout': LaunchConfiguration('base_compensation_tf_timeout'),
+                'startup_wait_timeout': LaunchConfiguration('base_compensation_startup_wait_timeout'),
+                'output_smoothing_coeff': LaunchConfiguration('base_compensation_smoothing_coeff'),
+            }],
+        ),
+        Node(
+            package='ur_trajectory_follower',
             executable='combine_twists',
             name='twist_combiner',
             output='screen',
             parameters=[{
                 'use_sim_time': use_sim_time,
-                'twist_topics': twist_topics,
+                'twist_topics': ParameterValue(twist_topics, value_type=str),
                 'combined_twist_topic': combined_twist_source_topic,
                 'output_stamped': True,
                 'frame_id': LaunchConfiguration('path_frame'),
                 'publish_rate_hz': LaunchConfiguration('combined_twist_rate'),
+                'input_timeout': LaunchConfiguration('combined_twist_input_timeout'),
                 'wait_for_start_condition': LaunchConfiguration('wait_for_start_condition'),
                 'start_condition_topic': start_condition_topic,
             }],
@@ -346,6 +381,24 @@ def generate_launch_description():
         DeclareLaunchArgument('combined_twist_source_topic', default_value='/jparse_velocity_controller_ur/twist_cmd_world'),
         DeclareLaunchArgument('combined_twist_topic', default_value='/jparse_velocity_controller_ur/twist_cmd'),
         DeclareLaunchArgument('combined_twist_rate', default_value='100.0'),
+        DeclareLaunchArgument('combined_twist_input_timeout', default_value='0.5'),
+        DeclareLaunchArgument('start_base_motion_compensation', default_value='false'),
+        DeclareLaunchArgument('base_compensation_pose_source', default_value='tf'),
+        DeclareLaunchArgument('base_compensation_translation_only', default_value='false'),
+        DeclareLaunchArgument('base_compensation_tcp_pose_topic', default_value='/robot/arm/tcp_pose_broadcaster/pose'),
+        DeclareLaunchArgument('base_compensation_base_pose_topic', default_value='/robot_pose'),
+        DeclareLaunchArgument('base_compensation_controller_tcp_frame', default_value='robot_arm_tool0_controller_raw'),
+        DeclareLaunchArgument('base_velocity_topic', default_value='/odom'),
+        DeclareLaunchArgument('base_velocity_type', default_value='odometry'),
+        DeclareLaunchArgument('compensation_base_frame', default_value='base_link'),
+        DeclareLaunchArgument('base_compensation_topic', default_value='/ur_twist_base_compensation_world'),
+        DeclareLaunchArgument('base_compensation_rate', default_value='100.0'),
+        DeclareLaunchArgument('base_compensation_stale_timeout', default_value='0.5'),
+        DeclareLaunchArgument('base_compensation_pose_timeout', default_value='1.5'),
+        DeclareLaunchArgument('base_compensation_tf_timeout', default_value='1.5'),
+        DeclareLaunchArgument('base_compensation_startup_wait_timeout', default_value='45.0'),
+        DeclareLaunchArgument('dds_udp_only', default_value='false'),
+        DeclareLaunchArgument('base_compensation_smoothing_coeff', default_value='0.0'),
         DeclareLaunchArgument('jparse_readiness_topic', default_value='/am/jparse_ready'),
         DeclareLaunchArgument('command_joint_names_csv', default_value=''),
         DeclareLaunchArgument('kp_orientation', default_value='1.0'),
