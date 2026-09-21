@@ -3,9 +3,9 @@
 ## Local web GUI (preview, runs alongside the PyQt reference GUI)
 
 The web interface listens only on `127.0.0.1:8000`, opens the browser automatically,
-and uses the same persisted configuration and process manager as the reference GUI.
-It is intentionally local because it can start robot processes and issue motion
-commands.
+and uses the same persisted configuration as the reference GUI. The browser UI,
+Vicon/pose adapters, path publisher and RViz stay on this PC; hardware control
+processes can run locally or, by default, under the robot-side SSH supervisor.
 
 ```bash
 cd ~/wattle_daub_ros2_ws
@@ -24,41 +24,37 @@ For a clean local setup, use
 `config/operator_gui_config.json` and select the trajectory directory in either
 interface. The example deliberately contains no workstation-specific absolute path.
 
-### Sync sources and run JParse on the robot
+### Remote control execution on the robot
 
 **Sync Workspace** copies the local workspace's entire `src/` tree over SSH to
 `robot@192.168.0.200:~/b04_gui_ws/src/`. SSH key access and rsync are available on
-this robot. Restart the GUI after updating it to pick up the new destination.
-The action overwrites changed files, keeps destination-only files, and does not
-build or launch anything. Check the `sync_workspace` process log for completion.
+this robot. The action overwrites changed files, keeps destination-only files,
+and does not build or launch anything. **Build Remote** is the separate build
+step; it streams `colcon build --symlink-install --packages-up-to ...` output to
+the GUI console and is available only while all control processes are stopped.
 
-After syncing, build on the robot:
+In hardware mode the Web GUI defaults to **Regelung ausführen auf: Roboter**.
+Path index, Base/Arm followers, J-PARSE/controller stack, move-to-start and the
+controller switch then run under one supervisor reached through a persistent
+`ssh robot@192.168.0.200` connection. Vicon, pose adapters, static path publisher,
+RViz and the Web GUI remain local. Simulation and the Qt GUI always execute
+locally. There is no automatic fallback from robot to local execution.
 
-```bash
-ssh robot@192.168.0.200
-source /opt/ros/jazzy/setup.bash
-cd ~/b04_gui_ws
-colcon build --symlink-install --packages-select am_jparse_controller
-source install/setup.bash
-```
+Before starting hardware control, use **Check Robot**. The same preflight runs
+automatically before **Launch All** and verifies SSH, ROS 2 Jazzy, the
+`~/b04_gui_ws/install/setup.bash` overlay, required packages, protocol version,
+and `ROS_DOMAIN_ID=38`. A failed preflight starts no control process. Remote logs
+and failures appear in the normal console as `remote:*` sources.
 
-With the robot drivers running and the same ROS domain/discovery configuration
-as the operator PC, launch JParse using the GUI's controller twist topic:
+The GUI sends a heartbeat every second. If the SSH channel is lost, the remote
+supervisor stops its process groups after three seconds. The GUI deliberately
+shows **Remote status unknown** until it reconnects and reads the supervisor's
+actual status; it never claims an unconfirmed stop.
 
-```bash
-ros2 launch am_jparse_controller am_jparse_velocity_controller.launch.py \
-  twist_topic:=/jparse_velocity_controller_ur/twist_cmd \
-  fixed_tool_offset_xyz:='[-0.25, 0.0, 0.015]' \
-  fixed_tool_offset_quaternion_xyzw:='[0.0, -0.7071067812, 0.0, 0.7071067812]' \
-  command_joint_names_csv:=robot_arm_shoulder_pan_joint,robot_arm_shoulder_lift_joint,robot_arm_elbow_joint,robot_arm_wrist_1_joint,robot_arm_wrist_2_joint,robot_arm_wrist_3_joint
-```
-
-Use the same tool offset and velocity limits as your GUI configuration; the
-example above uses the standard Robotnik tool offset. This starts JParse only:
-it requires the twist transform publisher, robot description, joint states,
-spray distance, and an active forward velocity controller. The GUI's **Start
-Controllers** action starts a local JParse instance too, so do not combine it
-with this remote instance. Sync does not change where GUI launch actions run.
+The current remote workspace and environment still need to be verified on the
+physical robot when it is reachable. In particular, run Sync, Build Remote,
+Check Robot, start/stop each process, interrupt the network, and check for orphan
+processes before considering the hardware integration accepted.
 
 ### Robot clock diagnostics
 

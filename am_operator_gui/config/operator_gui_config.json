@@ -1,6 +1,7 @@
 {
   "accuracy_phase": "baseline",
   "arm_pose_topic": "/vicon/tool_transformed",
+  "control_execution_target": "robot",
   "base_hardware_by_platform": {
     "bunker": {
       "expected_motor_ids": []

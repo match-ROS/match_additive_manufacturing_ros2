@@ -44,7 +44,9 @@ class PlatformSettingsPayload(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    app.state.operator = OperatorService()
+    # Only the web UI offers remote control execution.  The Qt GUI keeps its
+    # existing local process lifecycle even when both frontends share config.
+    app.state.operator = OperatorService(allow_remote_execution=True)
     app.state.operator.ensure_ros()
     yield
     app.state.operator.close()
@@ -99,7 +101,7 @@ async def _run_action(request: Request, action: str):
     try:
         operator(request).action(action)
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return operator(request).snapshot()
 
 
@@ -114,6 +116,7 @@ ACTION_ENDPOINTS = (
     'remote_bringup', 'play_program', 'unlock_protective_stop', 'enable_ur', 'release_brakes',
     'restart_arm_controllers',
     'check_arm_controller',
+    'check_remote', 'build_remote',
 )
 
 

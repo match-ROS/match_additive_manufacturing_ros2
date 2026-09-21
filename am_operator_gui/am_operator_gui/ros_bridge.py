@@ -416,11 +416,8 @@ class OperatorGuiNode(Node):
             self._has_robot_pose = (now - self._last_robot_pose_time).nanoseconds / 1e9 <= 0.75
         if self._last_arm_pose_time is not None:
             self._has_arm_pose = (now - self._last_arm_pose_time).nanoseconds / 1e9 <= 0.75
-        # The path publisher runs at 1 Hz; allow two periods plus jitter.
-        if self._last_base_path_time is not None:
-            self._has_base_path = (now - self._last_base_path_time).nanoseconds / 1e9 <= 2.5
-        if self._last_arm_path_time is not None:
-            self._has_arm_path = (now - self._last_arm_path_time).nanoseconds / 1e9 <= 2.5
+        # Static paths are transient-local and are intentionally published only
+        # once.  A valid received path therefore remains ready until replaced.
         self._has_path = self._has_base_path and self._has_arm_path
         if self._last_jparse_ready_time is not None:
             fresh = (now - self._last_jparse_ready_time).nanoseconds / 1e9 <= 2.5

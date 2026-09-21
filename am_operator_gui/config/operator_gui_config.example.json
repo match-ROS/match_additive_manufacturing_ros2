@@ -1,5 +1,6 @@
 {
   "platform": "robotnik",
+  "control_execution_target": "robot",
   "battery_topics_by_platform": {
     "robotnik": "/robot/battery_estimator/data",
     "bunker": ""

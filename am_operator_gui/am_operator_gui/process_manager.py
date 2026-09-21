@@ -18,6 +18,7 @@ class ManagedProcess:
     process: Optional[subprocess.Popen] = None
     output: Deque[str] = field(default_factory=lambda: deque(maxlen=500))
     return_code: Optional[int] = None
+    expected_stop: bool = False
     _lock: Lock = field(default_factory=Lock)
 
     def start(self) -> None:
@@ -25,15 +26,22 @@ class ManagedProcess:
             if self.is_running():
                 return
             self.return_code = None
+            self.expected_stop = False
             self.output.clear()
-            self.process = subprocess.Popen(
-                self.command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                start_new_session=True,
-            )
+            try:
+                self.process = subprocess.Popen(
+                    self.command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1,
+                    start_new_session=True,
+                )
+            except OSError as exc:
+                self.return_code = 1
+                if self.output_callback is not None:
+                    self.output_callback(self.name, f'ERROR: could not start process: {exc}')
+                raise
             Thread(target=self._read_output, daemon=True).start()
             Thread(target=self._wait, daemon=True).start()
 
@@ -45,8 +53,8 @@ class ManagedProcess:
             return self.return_code
         code = self.process.poll()
         if code is not None:
-            self.return_code = code
-        return code
+            self.return_code = 0 if self.expected_stop else code
+        return self.return_code if code is not None else None
 
     def stop(self, timeout: float = 5.0) -> None:
         with self._lock:
@@ -56,6 +64,7 @@ class ManagedProcess:
             if process.poll() is not None:
                 self.return_code = process.returncode
                 return
+            self.expected_stop = True
             try:
                 os.killpg(process.pid, signal.SIGTERM)
                 process.wait(timeout=timeout)
@@ -64,7 +73,7 @@ class ManagedProcess:
                 process.wait()
             except ProcessLookupError:
                 pass
-            self.return_code = process.returncode
+            self.return_code = 0 if self.expected_stop else process.returncode
 
     def _read_output(self) -> None:
         process = self.process
@@ -80,9 +89,11 @@ class ManagedProcess:
         process = self.process
         if process is None:
             return
-        self.return_code = process.wait()
+        actual_code = process.wait()
+        self.return_code = 0 if self.expected_stop else actual_code
         if self.output_callback is not None:
-            self.output_callback(self.name, f"exited with code {self.return_code}")
+            prefix = 'ERROR: ' if actual_code != 0 and not self.expected_stop else ''
+            self.output_callback(self.name, f"{prefix}exited with code {actual_code}")
 
 
 class ProcessRegistry:

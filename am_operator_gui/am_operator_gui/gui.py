@@ -1759,7 +1759,7 @@ class OperatorWindow(QMainWindow):
             f'frame_id:={self.control_frame.text().strip()}',
             'load_exported_trajectories:=true',
             f'trajectory_directory:={self.path_folder.text()}',
-            'publish_once:=false',
+            'publish_once:=true',
         ]
         command.extend(self._path_transform_launch_arguments())
         self._append_process_output(PUBLISH_PATH_NAME, ' '.join(command))

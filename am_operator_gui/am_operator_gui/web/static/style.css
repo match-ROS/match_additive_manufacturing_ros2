@@ -10,6 +10,9 @@ body { margin: 0; }
 h1 { margin: 0; font-size: 1.35rem; letter-spacing: .01em; }
 .header-meta { gap: 1rem; }
 .connection-state { max-width: 32rem; padding: .34rem .58rem; border: 1px solid #a9dce955; border-radius: 999px; color: #e7f6fa; font-size: .82rem; background: #071b2560; }
+.connection-state.status-ok { border-color: #86d49a; background: #174d2b; }
+.connection-state.status-warning { border-color: #f0c36b; background: #6a4a08; }
+.connection-state.status-error { border-color: #ff9b9b; background: #7a2027; }
 .battery-state { padding: .34rem .58rem; border: 1px solid #a9dce955; border-radius: 999px; color: #e7f6fa; font-size: .82rem; background: #071b2560; white-space: nowrap; }.battery-state.battery-ok { color: #d7f5dc; border-color: #75bf83; }.battery-state.battery-low { color: #ffe3a8; border-color: #e6ac48; background: #5d3b0d99; }
 .amc-brand { min-width: 150px; padding: .32rem .5rem .28rem; border-radius: 6px; background: #fff; color: #40606d; line-height: 1; }
 .amc-brand span { display: block; margin: 0 0 .15rem; font-size: .55rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }

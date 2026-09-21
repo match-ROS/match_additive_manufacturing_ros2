@@ -6,6 +6,5 @@
 /am_operator_gui/docs/dds_diagnosis/*
 !/am_operator_gui/docs/dds_diagnosis/README.md
 
-# Local tests.
-/am_operator_gui/test/
+# Local move-to-path experiments.
 /move_to_path_idx/test/

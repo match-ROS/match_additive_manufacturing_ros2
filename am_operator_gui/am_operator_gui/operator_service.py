@@ -25,6 +25,7 @@ from .tool_transforms import (
 from .config_store import ConfigStore
 from .robot_debug import RobotDebugInfo
 from .process_manager import ProcessRegistry
+from .remote_process_manager import REMOTE_PACKAGES, RemoteProcessManager
 from .ur_dashboard import (
     ForwardVelocityControllerInfo, UrDashboardInfo, UrStatusMonitor, dashboard_command, enable_command,
 )
@@ -33,6 +34,12 @@ from .ur_dashboard import (
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SYNC_REMOTE_TARGET = 'robot@192.168.0.200:~/b04_gui_ws/src/'
+REMOTE_SSH_TARGET = 'robot@192.168.0.200'
+REMOTE_WORKSPACE = '/home/robot/b04_gui_ws'
+REMOTE_CONTROL_PROCESSES = frozenset({
+    'controllers', 'path_index', 'base_follower', 'arm_follower',
+    'move_base', 'move_arm', 'switch_arm_velocity',
+})
 
 
 def _installed_config_path() -> Path:
@@ -147,6 +154,7 @@ ONE_SHOT_ACTIONS = {
     'check_arm_controller': (
         'check_arm_controller', 'Check Controller', 'Checking Controller'
     ),
+    'build_remote': ('remote:build', 'Build Remote', 'Building Remote'),
 }
 
 # These descriptions are returned with every action state and become the
@@ -219,6 +227,9 @@ ACTION_DESCRIPTIONS = {
         'forward_velocity_controller an. Ein nicht erreichbarer Controller-Manager ändert '
         'eine zuvor bestätigte Freigabe nicht.'
     ),
+    'build_remote': (
+        'Baut die benötigten Regelungspakete im Workspace des Roboters.'
+    ),
     'transformations': (
         'Simulation: leitet TCP-/Nozzle-Pose aus Robot-TF, Werkzeugoffset und '
         'Sprühabstand ab. Hardware: startet die Vicon-/Odometrie-Posekette.'
@@ -258,6 +269,7 @@ class OperatorService:
         output_callback: Optional[Callable[[str, str], None]] = None,
         status_callback: Optional[Callable[[bool, bool, bool, bool, bool], None]] = None,
         path_index_callback: Optional[Callable[[int], None]] = None,
+        allow_remote_execution: bool = False,
     ) -> None:
         if config_path is None:
             configured_path = os.environ.get('AM_OPERATOR_GUI_CONFIG', '').strip()
@@ -276,6 +288,8 @@ class OperatorService:
         self._status_callback = status_callback
         self._external_path_index_callback = path_index_callback
         self.processes = ProcessRegistry(output_callback=self._on_output)
+        self._allow_remote_execution = bool(allow_remote_execution)
+        self.remote_processes = RemoteProcessManager(output_callback=self._on_output)
         self.ros_bridge = None
         self.ros_error: str | None = None
         self._battery_level: float | None = None
@@ -323,9 +337,11 @@ class OperatorService:
         unlabelled output as information.
         """
         upper = message.upper()
-        if any(token in upper for token in ('[FATAL]', '[ERROR]', ' FATAL', ' ERROR')):
+        if upper.startswith(('FATAL', 'ERROR')) or any(
+                token in upper for token in ('[FATAL]', '[ERROR]', ' FATAL', ' ERROR')):
             return 'error'
-        if any(token in upper for token in ('[WARN]', '[WARNING]', ' WARN', ' WARNING')):
+        if upper.startswith(('WARN', 'WARNING')) or any(
+                token in upper for token in ('[WARN]', '[WARNING]', ' WARN', ' WARNING')):
             return 'warning'
         if any(token in upper for token in ('[DEBUG]', '[TRACE]', ' DEBUG', ' TRACE')):
             return 'debug'
@@ -397,13 +413,21 @@ class OperatorService:
                    'fixed_tool_offset_input_mode', 'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
                    'direction_mode', 'accuracy_phase', 'battery_topic', 'battery_topics_by_platform',
-                   'base_hardware_by_platform', 'ur_status_monitoring_enabled'}
+                   'base_hardware_by_platform', 'ur_status_monitoring_enabled',
+                   'control_execution_target'}
         accepted = {key: value for key, value in values.items() if key in allowed}
         try:
             if 'base_compensation_translation_only' in accepted and not isinstance(accepted['base_compensation_translation_only'], bool):
                 raise ValueError('base_compensation_translation_only must be a boolean')
             if 'ur_status_monitoring_enabled' in accepted and not isinstance(accepted['ur_status_monitoring_enabled'], bool):
                 raise ValueError('ur_status_monitoring_enabled must be a boolean')
+            if 'control_execution_target' in accepted:
+                target = str(accepted['control_execution_target']).strip().lower()
+                if target not in {'local', 'robot'}:
+                    raise ValueError('control_execution_target must be local or robot')
+                if target != self._configured_execution_target() and self._any_control_process_running():
+                    raise ValueError('stop all control processes before changing execution target')
+                accepted['control_execution_target'] = target
             if 'battery_topics_by_platform' in accepted:
                 accepted['battery_topics_by_platform'] = self._validated_battery_topics(
                     accepted['battery_topics_by_platform'])
@@ -612,6 +636,11 @@ class OperatorService:
         processes = {}
         for name, managed in self.processes._processes.items():
             processes[name] = {'running': managed.is_running(), 'return_code': managed.poll()}
+        for name, managed in self.remote_processes.snapshots().items():
+            if self._use_remote_process(name):
+                processes[name] = {
+                    'running': managed.is_running(), 'return_code': managed.poll(), 'remote': True,
+                }
         config = dict(self.config)
         defaults = {
             'platform': 'robotnik',
@@ -638,6 +667,7 @@ class OperatorService:
             'battery_topics_by_platform': deepcopy(DEFAULT_BATTERY_TOPICS),
             'base_hardware_by_platform': deepcopy(DEFAULT_BASE_HARDWARE),
             'ur_status_monitoring_enabled': True,
+            'control_execution_target': 'robot',
         }
         for key, value in defaults.items():
             config.setdefault(key, value)
@@ -668,6 +698,15 @@ class OperatorService:
                 'forward_velocity_controller': self.forward_velocity_controller.snapshot(),
                 'controller_confirmed_at': (
                     self.ros_bridge.controller_confirmed_at if self.ros_bridge is not None else None),
+                'remote_execution': {
+                    'supported': self._allow_remote_execution,
+                    'target': self._effective_execution_target(),
+                    'configured_target': self._configured_execution_target(),
+                    'connected': self.remote_processes.connected,
+                    'status_unknown': self.remote_processes.status_unknown,
+                    'ssh_target': REMOTE_SSH_TARGET,
+                    'workspace': REMOTE_WORKSPACE,
+                },
                 'hardware_topic_results': self._hardware_topic_results}
 
     def move_start_distances_cm(self) -> dict:
@@ -688,7 +727,12 @@ class OperatorService:
         description: str,
         one_shot: bool = False,
     ) -> dict[str, str]:
-        managed = [self.processes.get(name) for name in names]
+        if (self.remote_processes.status_unknown and
+                any(name in REMOTE_CONTROL_PROCESSES for name in names) and
+                self._effective_execution_target() == 'robot'):
+            return {'label': start_label, 'state': 'error',
+                    'detail': f'{description}\n\nStatus: Remote status unknown; SSH-Verbindung prüfen.'}
+        managed = [self._managed_process(name) for name in names]
         present = [process for process in managed if process is not None]
         running = any(process.is_running() for process in present)
         if running:
@@ -718,12 +762,28 @@ class OperatorService:
             )
             for action, (process, start, stop) in ONE_SHOT_ACTIONS.items()
         })
-        launch_processes = tuple(self.processes.get(name) for name in self._launch_all_process_names())
+        if self._last_action_success.get('build_remote') is False:
+            states['build_remote'] = self._message_state(
+                'build_remote', 'Build Remote', ACTION_DESCRIPTIONS['build_remote'])
+        required_names = (
+            (('simulation',) if bool(self._setting('simulation', False)) else POSE_ADAPTER_PROCESSES) +
+            ('publish_path', 'controllers', 'path_index', 'base_follower', 'arm_follower')
+        )
+        launch_processes = tuple(self._managed_process(name) for name in required_names)
         launch_running = self._launch_all_active or any(process is not None and process.is_running() for process in launch_processes)
+        launch_failed = (
+            (self.remote_processes.status_unknown and self._effective_execution_target() == 'robot') or
+            self._last_action_success.get('launch_all') is False or
+            any(process is not None and process.poll() not in (None, 0) for process in launch_processes)
+        )
         states['launch_all'] = {
             'label': 'Stop All' if launch_running else 'Launch All',
-            'state': 'running' if launch_running else 'idle',
+            'state': 'error' if launch_failed else ('running' if launch_running else 'idle'),
             'detail': (
+                'Simulation: startet Simulator, Transformation, Pfad-Publisher, Index, '
+                'Follower und Velocity-Stack. Hardware: startet die externe Posekette statt '
+                'des Simulators.\n\nStatus: Fehler oder unbekannter Remote-Status; Details stehen in der Konsole.'
+                if launch_failed else
                 'Simulation: startet Simulator, Transformation, Pfad-Publisher, Index, '
                 'Follower und Velocity-Stack. Hardware: startet die externe Posekette statt '
                 'des Simulators.\n\nStatus: aktiv.'
@@ -768,7 +828,11 @@ class OperatorService:
         states['check_hardware_topics'] = self._message_state(
             'check_hardware_topics', 'Check Hardware Topics', ACTION_DESCRIPTIONS['check_hardware_topics']
         )
-        restart_process = self.processes.get('restart_arm_controllers')
+        states['check_remote'] = self._message_state(
+            'check_remote', 'Check Robot',
+            'Prüft SSH, ROS Jazzy, Remote-Workspace, Pakete, Supervisor-Version und ROS-Domain.'
+        )
+        restart_process = self._managed_process('restart_arm_controllers')
         if restart_process is None and self._last_action_success.get('restart_arm_controllers') is False:
             states['restart_arm_controllers'] = self._message_state(
                 'restart_arm_controllers', 'Restart Controllers', ACTION_DESCRIPTIONS['restart_arm_controllers']
@@ -827,8 +891,31 @@ class OperatorService:
         return states
 
     def _is_running(self, name: str) -> bool:
-        process = self.processes.get(name)
+        process = self._managed_process(name)
         return process is not None and process.is_running()
+
+    def _configured_execution_target(self) -> str:
+        return str(self.config.get('control_execution_target', 'robot')).strip().lower()
+
+    def _effective_execution_target(self) -> str:
+        if bool(self._setting('simulation', False)) or not self._allow_remote_execution:
+            return 'local'
+        return 'robot' if self._configured_execution_target() == 'robot' else 'local'
+
+    def _use_remote_process(self, name: str) -> bool:
+        return name in REMOTE_CONTROL_PROCESSES and self._effective_execution_target() == 'robot'
+
+    def _managed_process(self, name: str):
+        return self.remote_processes.get(name) if self._use_remote_process(name) else self.processes.get(name)
+
+    def _any_control_process_running(self) -> bool:
+        for name in REMOTE_CONTROL_PROCESSES:
+            local = self.processes.get(name)
+            remote = self.remote_processes.get(name)
+            if ((local is not None and local.is_running()) or
+                    (remote is not None and remote.is_running())):
+                return True
+        return False
 
     def _message_state(self, action: str, label: str, description: str) -> dict[str, str]:
         message = self._last_action_messages.get(action)
@@ -1016,20 +1103,33 @@ class OperatorService:
         return [f'path_transform_xyz:=[{x:.6f}, {y:.6f}, {z:.6f}]', f'path_transform_yaw_deg:={yaw:.6f}']
 
     def _toggle(self, name: str, command: list[str]) -> None:
-        running = self.processes.get(name)
+        registry = self.remote_processes if self._use_remote_process(name) else self.processes
+        running = registry.get(name)
         if running and running.is_running():
-            self.processes.stop(name)
-            self.log(name, 'stopped by operator')
+            registry.stop(name)
+            self.log(f'remote:{name}' if registry is self.remote_processes else name,
+                     'stopped by operator')
         else:
-            self.log(name, ' '.join(command))
-            self.processes.start(name, command)
+            source = f'remote:{name}' if registry is self.remote_processes else name
+            self.log(source, ' '.join(command))
+            try:
+                registry.start(name, command)
+            except Exception as exc:
+                self.log(source, f'ERROR: start failed: {exc}')
+                raise
 
     def _start(self, name: str) -> None:
         command = self.command_for(name)
         if command is None:
             raise ValueError(f'unknown action: {name}')
-        self.log(name, ' '.join(command))
-        self.processes.start(name, command, replace=False)
+        registry = self.remote_processes if self._use_remote_process(name) else self.processes
+        source = f'remote:{name}' if registry is self.remote_processes else name
+        self.log(source, ' '.join(command))
+        try:
+            registry.start(name, command, replace=False)
+        except Exception as exc:
+            self.log(source, f'ERROR: start failed: {exc}')
+            raise
 
     def _schedule(self, seconds: float, callback: Callable[[], None]) -> None:
         timer = Timer(seconds, callback)
@@ -1044,6 +1144,7 @@ class OperatorService:
             *POSE_ADAPTER_PROCESSES, 'controllers', 'base_follower', 'arm_follower',
             'move_base', 'switch_arm_velocity', 'base_accuracy', 'tcp_accuracy',
             'accuracy_report', 'rviz', 'sync_workspace',
+            'remote:build',
         )
 
     def action(self, name: str) -> None:
@@ -1069,20 +1170,35 @@ class OperatorService:
         if name == 'stop_all':
             self.stop_all()
             return
+        if name == 'check_remote':
+            self._check_remote()
+            return
+        if name == 'build_remote':
+            self._build_remote()
+            return
         if name == 'launch_all':
             if self._launch_all_active:
                 self.stop_all()
                 return
-            self._launch_all_active = True
-            if bool(self._setting('simulation', False)):
-                self._start('simulation')
-            else:
-                self.start_pose_adapters()
-            for item in ('publish_path', 'controllers', 'path_index', 'base_follower', 'arm_follower'):
-                self._start(item)
-            if bool(self._setting('simulation', False)):
-                self._start('move_arm')
-                self._schedule(13.0, lambda: self._start('move_base'))
+            try:
+                if self._effective_execution_target() == 'robot':
+                    self.remote_processes.connect()
+                self._launch_all_active = True
+                if bool(self._setting('simulation', False)):
+                    self._start('simulation')
+                else:
+                    self.start_pose_adapters()
+                for item in ('publish_path', 'controllers', 'path_index', 'base_follower', 'arm_follower'):
+                    self._start(item)
+                if bool(self._setting('simulation', False)):
+                    self._start('move_arm')
+                    self._schedule(13.0, lambda: self._start('move_base'))
+                self._last_action_success['launch_all'] = True
+            except Exception as exc:
+                self.log('remote:preflight', f'ERROR: Launch All failed: {exc}')
+                self._last_action_success['launch_all'] = False
+                self.stop_all()
+                raise
             return
         if name == 'start_following':
             if self.ensure_ros():
@@ -1173,6 +1289,49 @@ class OperatorService:
         self.ur_status_monitor.request_refresh(dashboard=True, controller=False)
         self._last_action_messages[name] = 'Dashboard-Kommando gesendet; Status wird aktualisiert'
         self._last_action_success[name] = True
+
+    def _check_remote(self) -> None:
+        name = 'check_remote'
+        try:
+            self.remote_processes.connect()
+            self._last_action_messages[name] = f'{REMOTE_SSH_TARGET} ist bereit'
+            self._last_action_success[name] = True
+            self.log('remote:preflight', 'remote preflight successful')
+        except Exception as exc:
+            self._last_action_messages[name] = str(exc)
+            self._last_action_success[name] = False
+            self.log('remote:preflight', f'ERROR: {exc}')
+            raise ValueError(str(exc)) from exc
+
+    def _build_remote(self) -> None:
+        if self.remote_processes.status_unknown:
+            message = 'remote status unknown; run Check Robot before building'
+            self.log('remote:build', f'ERROR: {message}')
+            self._last_action_messages['build_remote'] = message
+            self._last_action_success['build_remote'] = False
+            raise ValueError(message)
+        if self._any_control_process_running():
+            message = 'stop all control processes before building the remote workspace'
+            self.log('remote:build', f'ERROR: {message}')
+            self._last_action_messages['build_remote'] = message
+            self._last_action_success['build_remote'] = False
+            raise ValueError(message)
+        self.remote_processes.close(stop_remote=False)
+        packages = ' '.join(shlex.quote(item) for item in REMOTE_PACKAGES)
+        script = (
+            'set -eo pipefail; '
+            'source /opt/ros/jazzy/setup.bash; '
+            f'cd {shlex.quote(REMOTE_WORKSPACE)}; '
+            f'colcon build --symlink-install --packages-up-to {packages}'
+        )
+        command = [
+            'ssh', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes',
+            '-o', 'ConnectTimeout=8', REMOTE_SSH_TARGET, 'bash', '-lc', shlex.quote(script),
+        ]
+        self.log('remote:build', f'building remote workspace on {REMOTE_SSH_TARGET}')
+        self._last_action_messages.pop('build_remote', None)
+        self._last_action_success.pop('build_remote', None)
+        self.processes.start('remote:build', command)
 
     @staticmethod
     def _restart_arm_controllers_command() -> list[str]:
@@ -1397,7 +1556,7 @@ echo "Controller restart complete: forward_velocity_controller is active."
         if name == 'publish_path':
             return ['ros2', 'launch', 'parse_paths', 'robotnik_base_arm_paths.launch.py',
                     f'use_sim_time:={self._use_sim_time()}', f'frame_id:={frame}',
-                    'load_exported_trajectories:=true', f'trajectory_directory:={trajectory}', 'publish_once:=false',
+                    'load_exported_trajectories:=true', f'trajectory_directory:={trajectory}', 'publish_once:=true',
                     *self._path_transform_arguments(trajectory)]
         if name == 'index_pose_preview':
             return [sys.executable, '-m', 'am_operator_gui.index_pose_preview', '--ros-args',
@@ -1678,16 +1837,26 @@ echo "Controller restart complete: forward_velocity_controller is active."
         if self.ros_bridge is not None:
             self.ros_bridge.publish_start_condition(False)
             self.ros_bridge.publish_stop_commands(str(self._setting('control_frame', 'map')))
+        remote_confirmed = True
+        try:
+            self.remote_processes.stop_all()
+        except Exception as exc:
+            remote_confirmed = False
+            self.log('remote:ssh', f'ERROR: remote stop unconfirmed: {exc}')
         self.processes.stop_all()
         for timer in self._timers:
             timer.cancel()
         self._timers.clear()
         self._launch_all_active = False
         self._following_active = False
-        self.log('system', 'all managed processes stopped')
+        if remote_confirmed:
+            self.log('system', 'all managed processes stopped')
+        else:
+            self.log('system', 'ERROR: local processes stopped; remote status unknown and stop unconfirmed')
 
     def close(self) -> None:
         self.stop_all()
+        self.remote_processes.close(stop_remote=False)
         self.ur_status_monitor.close()
         if self.ros_bridge is not None:
             self.ros_bridge.stop()

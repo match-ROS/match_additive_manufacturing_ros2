@@ -462,6 +462,10 @@ function render(state) {
     renderToolOffset(config);
   }
   fields.forEach(field => { if (active !== field) setField(field, config[field.dataset.setting]); });
+  const controlNames = ['controllers', 'path_index', 'base_follower', 'arm_follower', 'move_base', 'move_arm', 'switch_arm_velocity'];
+  const controlRunning = controlNames.some(name => state.processes?.[name]?.running);
+  const executionTarget = document.querySelector('[data-setting="control_execution_target"]');
+  if (executionTarget) executionTarget.disabled = controlRunning;
   if (!toolOffsetFocused() && !toolOffsetDirty) renderToolOffset(config);
   if (!viconOffsetFocused() && !viconOffsetDirty) renderViconOffset(config);
   if (!viconBaseOffsetFocused() && !viconBaseOffsetDirty) renderViconBaseOffset(config);
@@ -470,6 +474,24 @@ function render(state) {
   const labels = {path:'Pfad', robot_pose:'Roboterpose', arm_pose:'Deposition pose', jparse_ready:'J-PARSE'};
   document.querySelector('#status').innerHTML = Object.entries(labels).map(([key, label]) => `<span class="${state.status[key] ? 'ok' : 'wait'}">${label}: ${state.status[key] ? 'bereit' : 'wartet'}</span>`).join('');
   document.querySelector('#ros-state').textContent = state.ros_error ? `ROS nicht verbunden: ${state.ros_error}` : 'ROS Bridge aktiv';
+  const remoteExecution = state.remote_execution || {};
+  const executionState = document.querySelector('#control-execution-state');
+  if (executionState) {
+    if (remoteExecution.target === 'local') {
+      executionState.textContent = config.simulation ? 'Regelung: lokal (Simulation)' : 'Regelung: lokal';
+      executionState.className = 'connection-state status-ok';
+    } else if (remoteExecution.status_unknown) {
+      executionState.textContent = 'Remote status unknown';
+      executionState.className = 'connection-state status-error';
+    } else if (remoteExecution.connected) {
+      executionState.textContent = 'Regelung: Roboter verbunden';
+      executionState.className = 'connection-state status-ok';
+    } else {
+      executionState.textContent = 'Regelung: Roboter nicht verbunden';
+      executionState.className = 'connection-state status-warning';
+    }
+    executionState.title = `${remoteExecution.ssh_target || ''} ${remoteExecution.workspace || ''}`.trim();
+  }
   const battery = state.battery || {};
   const batteryState = document.querySelector('#battery-state');
   const batteryLevel = Number(battery.level);
