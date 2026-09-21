@@ -1,5 +1,6 @@
 import threading
 import math
+import time
 from copy import deepcopy
 from typing import Callable, Optional
 
@@ -59,6 +60,7 @@ class OperatorGuiNode(Node):
         self._last_arm_path_time = None
         self._last_jparse_ready_time = None
         self._last_controller_ready_time = None
+        self._controller_confirmed_at: Optional[float] = None
         self._latest_base_path: Optional[Path] = None
         self._latest_arm_path: Optional[Path] = None
         self._latest_tracking_arm_path: Optional[Path] = None
@@ -264,6 +266,10 @@ class OperatorGuiNode(Node):
     def controller_ready(self) -> bool:
         return self._controller_ready
 
+    @property
+    def controller_confirmed_at(self) -> Optional[float]:
+        return self._controller_confirmed_at
+
     def latest_base_path_pose(self, index: int) -> Optional[PoseStamped]:
         with self._latest_pose_lock:
             if self._latest_base_path is None:
@@ -400,6 +406,8 @@ class OperatorGuiNode(Node):
     def _controller_ready_cb(self, msg: Bool) -> None:
         self._controller_ready = bool(msg.data)
         self._last_controller_ready_time = self.get_clock().now()
+        if self._controller_ready:
+            self._controller_confirmed_at = time.time()
         self._emit_status()
 
     def _freshness_tick(self) -> None:
@@ -417,9 +425,10 @@ class OperatorGuiNode(Node):
         if self._last_jparse_ready_time is not None:
             fresh = (now - self._last_jparse_ready_time).nanoseconds / 1e9 <= 2.5
             self._jparse_ready = self._jparse_ready and fresh
-        if self._last_controller_ready_time is not None:
-            fresh = (now - self._last_controller_ready_time).nanoseconds / 1e9 <= 2.5
-            self._controller_ready = self._controller_ready and fresh
+        # The controller guard publishes a transient-local confirmation after
+        # setup and intentionally stops polling the controller manager.  Its
+        # readiness is therefore a last-confirmed state, unlike live pose and
+        # J-PARSE heartbeat topics.
         self._emit_status()
 
     def _is_fresh_control_pose(self, msg: PoseStamped) -> bool:
@@ -662,6 +671,10 @@ class RosBridge:
     @property
     def controller_ready(self) -> bool:
         return bool(self._node and self._node.controller_ready)
+
+    @property
+    def controller_confirmed_at(self) -> Optional[float]:
+        return self._node.controller_confirmed_at if self._node is not None else None
 
     def latest_base_path_pose(self, index: int) -> Optional[PoseStamped]:
         if self._node is None:

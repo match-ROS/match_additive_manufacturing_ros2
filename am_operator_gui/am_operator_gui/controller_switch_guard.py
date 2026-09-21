@@ -13,6 +13,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
 from std_msgs.msg import Bool
+from std_srvs.srv import Trigger
 
 
 class ControllerSwitchGuard(Node):
@@ -40,6 +41,11 @@ class ControllerSwitchGuard(Node):
         self.pending: Optional[object] = None
         self.switch_requested = False
         self.ready = False
+        # Startup is allowed to repair the controller configuration.  Once it
+        # is confirmed, ordinary operation must not continuously exercise the
+        # controller manager.  A manual GUI check remains available below.
+        self._preparing = True
+        self._check_only = False
 
         ready_qos = QoSProfile(
             depth=1,
@@ -52,16 +58,39 @@ class ControllerSwitchGuard(Node):
             ready_qos,
         )
         self.ready_pub.publish(Bool(data=False))
-        self.create_timer(max(0.2, float(self.get_parameter('poll_period').value)), self._poll)
+        self._poll_timer = self.create_timer(
+            max(0.2, float(self.get_parameter('poll_period').value)), self._poll)
+        self.create_service(Trigger, 'check', self._check_service)
 
     def _poll(self) -> None:
+        """Prepare the controller only until the first successful confirmation."""
         if self.pending is not None:
             return
         if not self.list_client.service_is_ready():
-            self._set_ready(False)
+            # During initial setup there is no prior confirmation.  Later a
+            # temporarily unreachable manager means "unknown", not "false".
+            if self._preparing:
+                self._set_ready(False)
             return
         self.pending = self.list_client.call_async(ListControllers.Request())
         self.pending.add_done_callback(self._controllers_cb)
+
+    def _check_service(self, _request, response):
+        """Run one read-only controller check requested by the operator GUI."""
+        if self.pending is not None:
+            response.success = False
+            response.message = 'Controller check already in progress'
+            return response
+        if not self.list_client.service_is_ready():
+            response.success = False
+            response.message = 'Controller manager is unavailable; previous confirmation is unchanged'
+            return response
+        self._check_only = True
+        self.pending = self.list_client.call_async(ListControllers.Request())
+        self.pending.add_done_callback(self._controllers_cb)
+        response.success = True
+        response.message = 'Controller check started'
+        return response
 
     def _controllers_cb(self, future) -> None:
         self.pending = None
@@ -75,9 +104,21 @@ class ControllerSwitchGuard(Node):
         states = {controller.name: controller.state for controller in response.controller}
         if states.get(self.activate_controller) == 'active':
             self._set_ready(True)
+            if self._preparing:
+                self._preparing = False
+                self._poll_timer.cancel()
+                self.get_logger().info(
+                    f'{self.activate_controller} is active; controller-manager polling stopped.'
+                )
+            self._check_only = False
             return
 
         self._set_ready(False)
+        if self._check_only:
+            self._check_only = False
+            self.get_logger().warn(
+                f'{self.activate_controller} is not active.', throttle_duration_sec=2.0)
+            return
         if (
             self.deactivate_controller
             and self.deactivate_controller not in states

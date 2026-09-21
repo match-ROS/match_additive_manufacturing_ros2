@@ -10,6 +10,7 @@
   },
   "simulation": true,
   "simulation_gui": false,
+  "ur_status_monitoring_enabled": true,
   "base_compensation_translation_only": false,
   "trajectory_directory": "",
   "control_frame": "map",

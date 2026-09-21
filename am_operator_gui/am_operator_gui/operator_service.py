@@ -144,6 +144,9 @@ ONE_SHOT_ACTIONS = {
     'restart_arm_controllers': (
         'restart_arm_controllers', 'Restart Controllers', 'Restarting Controllers'
     ),
+    'check_arm_controller': (
+        'check_arm_controller', 'Check Controller', 'Checking Controller'
+    ),
 }
 
 # These descriptions are returned with every action state and become the
@@ -211,6 +214,11 @@ ACTION_DESCRIPTIONS = {
         'forward_velocity_controller. Trajectory-, position- und weitere Bewegungscontroller '
         'bleiben deaktiviert.'
     ),
+    'check_arm_controller': (
+        'Fordert beim lokalen Controller-Guard einen einmaligen, schreibfreien Check des '
+        'forward_velocity_controller an. Ein nicht erreichbarer Controller-Manager ändert '
+        'eine zuvor bestätigte Freigabe nicht.'
+    ),
     'transformations': (
         'Simulation: leitet TCP-/Nozzle-Pose aus Robot-TF, Werkzeugoffset und '
         'Sprühabstand ab. Hardware: startet die Vicon-/Odometrie-Posekette.'
@@ -276,7 +284,8 @@ class OperatorService:
             'any_motor_disabled': None, 'emergency_stop': None, 'motors': {},
         }
         self.robot_debug = RobotDebugInfo()
-        self.ur_status_monitor = UrStatusMonitor()
+        self.ur_status_monitor = UrStatusMonitor(
+            enabled=bool(self.config.get('ur_status_monitoring_enabled', True)))
         self.ur_dashboard = UrDashboardInfo(self.ur_status_monitor)
         self.forward_velocity_controller = ForwardVelocityControllerInfo(self.ur_status_monitor)
         self._remote_bringup_run = 0
@@ -388,11 +397,13 @@ class OperatorService:
                    'fixed_tool_offset_input_mode', 'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
                    'direction_mode', 'accuracy_phase', 'battery_topic', 'battery_topics_by_platform',
-                   'base_hardware_by_platform'}
+                   'base_hardware_by_platform', 'ur_status_monitoring_enabled'}
         accepted = {key: value for key, value in values.items() if key in allowed}
         try:
             if 'base_compensation_translation_only' in accepted and not isinstance(accepted['base_compensation_translation_only'], bool):
                 raise ValueError('base_compensation_translation_only must be a boolean')
+            if 'ur_status_monitoring_enabled' in accepted and not isinstance(accepted['ur_status_monitoring_enabled'], bool):
+                raise ValueError('ur_status_monitoring_enabled must be a boolean')
             if 'battery_topics_by_platform' in accepted:
                 accepted['battery_topics_by_platform'] = self._validated_battery_topics(
                     accepted['battery_topics_by_platform'])
@@ -435,6 +446,8 @@ class OperatorService:
             except Exception:
                 accepted['path_index'] = accepted['original_arm_index']
         self.config.update(accepted)
+        if 'ur_status_monitoring_enabled' in accepted:
+            self.ur_status_monitor.set_enabled(accepted['ur_status_monitoring_enabled'])
         if 'control_frame' in accepted and self.ros_bridge is not None:
             self.ros_bridge.set_control_frame(str(accepted['control_frame']))
         if self.ros_bridge is not None and ({'platform', 'battery_topics_by_platform'} & set(accepted)):
@@ -624,6 +637,7 @@ class OperatorService:
             'simulation_gui': False,
             'battery_topics_by_platform': deepcopy(DEFAULT_BATTERY_TOPICS),
             'base_hardware_by_platform': deepcopy(DEFAULT_BASE_HARDWARE),
+            'ur_status_monitoring_enabled': True,
         }
         for key, value in defaults.items():
             config.setdefault(key, value)
@@ -652,6 +666,8 @@ class OperatorService:
                 'base_hardware': self._base_hardware,
                 'ur_dashboard': self.ur_dashboard.snapshot(),
                 'forward_velocity_controller': self.forward_velocity_controller.snapshot(),
+                'controller_confirmed_at': (
+                    self.ros_bridge.controller_confirmed_at if self.ros_bridge is not None else None),
                 'hardware_topic_results': self._hardware_topic_results}
 
     def move_start_distances_cm(self) -> dict:
@@ -1126,6 +1142,12 @@ class OperatorService:
         if name == 'restart_arm_controllers':
             self._restart_arm_controllers()
             return
+        if name == 'check_arm_controller':
+            command = self.command_for(name)
+            if command is None:
+                raise ValueError(f'unknown action: {name}')
+            self._toggle(name, command)
+            return
         if name == 'pose_adapters':
             self._toggle_pose_adapters()
             return
@@ -1521,6 +1543,9 @@ echo "Controller restart complete: forward_velocity_controller is active."
             manager = '/robot/controller_manager' if simulation else '/robot/arm/controller_manager'
             controller = 'arm_forward_velocity_controller' if simulation else 'forward_velocity_controller'
             return ['ros2', 'control', 'switch_controllers', '--controller-manager', manager, '--deactivate', 'joint_trajectory_controller', '--activate', controller]
+        if name == 'check_arm_controller':
+            return ['ros2', 'service', 'call', '/operator_arm_controller_guard/check',
+                    'std_srvs/srv/Trigger', '{}']
         if name == 'rviz':
             rviz = 'bunker_operator.rviz' if str(self._setting('platform', 'robotnik')) == 'bunker' else 'robotnik_operator.rviz'
             return ['rviz2', '-d', str(ASSET_ROOT / 'rviz' / rviz), '-f', frame]

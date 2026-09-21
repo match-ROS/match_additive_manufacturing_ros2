@@ -113,6 +113,7 @@ ACTION_ENDPOINTS = (
     'calculate_path_transform', 'check_hardware_topics', 'rviz', 'sync_workspace',
     'remote_bringup', 'play_program', 'unlock_protective_stop', 'enable_ur', 'release_brakes',
     'restart_arm_controllers',
+    'check_arm_controller',
 )
 
 

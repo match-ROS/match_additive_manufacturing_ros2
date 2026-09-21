@@ -48,7 +48,7 @@ class UrStatusMonitor:
     discovery endpoints.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, enabled: bool = True) -> None:
         self._lock = Lock()
         self._dashboard: dict[str, Any] = {
             'available': None, 'checked_at': None, 'error': None, 'stale': False,
@@ -59,6 +59,7 @@ class UrStatusMonitor:
         }
         self._started = False
         self._stopped = False
+        self._enabled = bool(enabled)
         self._dashboard_in_flight = False
         self._controller_in_flight = False
         self._dashboard_refresh_requested = False
@@ -116,8 +117,9 @@ class UrStatusMonitor:
             self._thread = Thread(target=self._spin, daemon=True, name='ur-status-monitor')
             with self._lock:
                 self._started = True
-                self._next_dashboard = time.monotonic()
-                self._next_controller = time.monotonic()
+                if self._enabled:
+                    self._next_dashboard = time.monotonic()
+                    self._next_controller = time.monotonic()
             self._thread.start()
             return True
         except (ImportError, RuntimeError, ValueError) as exc:
@@ -148,15 +150,33 @@ class UrStatusMonitor:
 
     def dashboard_snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return dict(self._dashboard, checking=self._dashboard_in_flight)
+            return dict(self._dashboard, checking=self._dashboard_in_flight, enabled=self._enabled)
 
     def controller_snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return dict(self._controller, checking=self._controller_in_flight)
+            return dict(self._controller, checking=self._controller_in_flight, enabled=self._enabled)
+
+    def set_enabled(self, enabled: bool) -> None:
+        """Enable or suspend all periodic dashboard and controller queries together."""
+        now = time.monotonic()
+        with self._lock:
+            self._enabled = bool(enabled)
+            self._dashboard_refresh_requested = False
+            self._controller_refresh_requested = False
+            if not self._enabled:
+                # An already sent request cannot be revoked, but its response
+                # is discarded and no subsequent request is started.
+                self._dashboard_in_flight = False
+                self._controller_in_flight = False
+                return
+            self._next_dashboard = now
+            self._next_controller = now
 
     def request_refresh(self, *, dashboard: bool = True, controller: bool = True) -> None:
         """Request one prompt refresh after an operator action without overlapping calls."""
         with self._lock:
+            if not self._enabled:
+                return
             if dashboard:
                 self._dashboard_refresh_requested = True
             if controller:
@@ -172,6 +192,8 @@ class UrStatusMonitor:
     def _tick(self) -> None:
         now = time.monotonic()
         with self._lock:
+            if not self._enabled:
+                return
             dashboard_due = self._dashboard_refresh_requested or now >= self._next_dashboard
             controller_due = self._controller_refresh_requested or now >= self._next_controller
             if dashboard_due and not self._dashboard_in_flight:

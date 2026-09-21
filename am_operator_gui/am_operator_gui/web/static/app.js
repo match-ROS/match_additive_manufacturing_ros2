@@ -467,7 +467,7 @@ function render(state) {
   if (!viconBaseOffsetFocused() && !viconBaseOffsetDirty) renderViconBaseOffset(config);
   renderPlatformSettings(state, config);
   if (active !== document.querySelector('#advanced-json')) document.querySelector('#advanced-json').value = JSON.stringify(config, null, 2);
-  const labels = {path:'Pfad', robot_pose:'Roboterpose', arm_pose:'Deposition pose', jparse_ready:'J-PARSE', controller_ready:'Controller'};
+  const labels = {path:'Pfad', robot_pose:'Roboterpose', arm_pose:'Deposition pose', jparse_ready:'J-PARSE'};
   document.querySelector('#status').innerHTML = Object.entries(labels).map(([key, label]) => `<span class="${state.status[key] ? 'ok' : 'wait'}">${label}: ${state.status[key] ? 'bereit' : 'wartet'}</span>`).join('');
   document.querySelector('#ros-state').textContent = state.ros_error ? `ROS nicht verbunden: ${state.ros_error}` : 'ROS Bridge aktiv';
   const battery = state.battery || {};
@@ -480,7 +480,6 @@ function render(state) {
   batteryState.classList.toggle('battery-low', hasBatteryLevel && batteryLevel <= 20);
   batteryState.classList.toggle('battery-ok', hasBatteryLevel && batteryLevel > 20);
   const dashboard = state.ur_dashboard || {};
-  const forwardVelocity = state.forward_velocity_controller || {};
   const setDashboardStatus = (id, value, level = 'neutral') => {
     const element = document.querySelector(id); element.textContent = value ?? '—';
     element.classList.toggle('status-error', level === 'error');
@@ -502,37 +501,36 @@ function render(state) {
   setDashboardStatus('#base-hardware-status', baseStatus.textContent, baseLevel);
   setDashboardStatus('#base-any-motor-disabled', baseDisabled.textContent,
     baseHardware.any_motor_disabled === true ? 'error' : baseHardware.any_motor_disabled === false ? 'ok' : 'neutral');
-  const safety = dashboard.safety_mode;
-  const robot = dashboard.robot_mode;
-  const program = dashboard.program_state;
-  const safetyLevel = ['NORMAL'].includes(safety) ? 'ok' : ['REDUCED'].includes(safety) ? 'warning' : safety ? 'error' : 'neutral';
-  const robotLevel = ['RUNNING'].includes(robot) ? 'ok' : ['IDLE', 'POWER_ON', 'BOOTING', 'BACKDRIVE'].includes(robot) ? 'warning' : robot ? 'error' : 'neutral';
-  const programLevel = ['PLAYING'].includes(program) ? 'ok' : ['PAUSED'].includes(program) ? 'warning' : program ? 'error' : 'neutral';
-  setDashboardStatus('#ur-dashboard-available', dashboard.checking ? 'prüft …' : (dashboard.available ? 'verbunden' : 'nicht verfügbar'), dashboard.checking ? 'warning' : dashboard.available ? 'ok' : 'error');
+  const monitoringEnabled = dashboard.enabled !== false;
+  const safety = monitoringEnabled ? dashboard.safety_mode : 'deaktiviert';
+  const robot = monitoringEnabled ? dashboard.robot_mode : 'deaktiviert';
+  const program = monitoringEnabled ? dashboard.program_state : 'deaktiviert';
+  const safetyLevel = !monitoringEnabled ? 'neutral' : ['NORMAL'].includes(safety) ? 'ok' : ['REDUCED'].includes(safety) ? 'warning' : safety ? 'error' : 'neutral';
+  const robotLevel = !monitoringEnabled ? 'neutral' : ['RUNNING'].includes(robot) ? 'ok' : ['IDLE', 'POWER_ON', 'BOOTING', 'BACKDRIVE'].includes(robot) ? 'warning' : robot ? 'error' : 'neutral';
+  const programLevel = !monitoringEnabled ? 'neutral' : ['PLAYING'].includes(program) ? 'ok' : ['PAUSED'].includes(program) ? 'warning' : program ? 'error' : 'neutral';
+  setDashboardStatus('#ur-dashboard-available', monitoringEnabled
+    ? (dashboard.checking ? 'prüft …' : (dashboard.available ? 'verbunden' : 'nicht verfügbar'))
+    : 'deaktiviert', monitoringEnabled ? (dashboard.checking ? 'warning' : dashboard.available ? 'ok' : 'error') : 'neutral');
   setDashboardStatus('#ur-safety-status', safety, safetyLevel);
   setDashboardStatus('#ur-robot-status', robot, robotLevel);
-  const remoteControl = String(dashboard.remote_control).toLowerCase();
+  const remoteControl = monitoringEnabled ? String(dashboard.remote_control).toLowerCase() : '';
   setDashboardStatus('#ur-remote-status', remoteControl === 'true' ? 'ja' : remoteControl === 'false' ? 'nein' : null, remoteControl === 'true' ? 'ok' : remoteControl === 'false' ? 'error' : 'neutral');
   setDashboardStatus('#ur-program-status', program, programLevel);
-  setDashboardStatus('#ur-loaded-program', dashboard.loaded_program, dashboard.loaded_program ? 'ok' : 'error');
-  let forwardVelocityText = '—';
-  let forwardVelocityLevel = 'neutral';
-  if (forwardVelocity.checking) {
-    forwardVelocityText = 'prüft …'; forwardVelocityLevel = 'warning';
-  } else if (!forwardVelocity.available) {
-    forwardVelocityText = 'Controller-Manager nicht verfügbar'; forwardVelocityLevel = 'error';
-  } else if (!forwardVelocity.loaded) {
-    forwardVelocityText = 'nicht geladen'; forwardVelocityLevel = 'error';
-  } else if (forwardVelocity.state === 'active') {
-    forwardVelocityText = 'aktiv'; forwardVelocityLevel = 'ok';
-  } else if (forwardVelocity.state === 'inactive') {
-    forwardVelocityText = 'geladen, inaktiv'; forwardVelocityLevel = 'error';
-  } else if (forwardVelocity.state === 'unconfigured') {
-    forwardVelocityText = 'geladen, nicht konfiguriert'; forwardVelocityLevel = 'error';
+  setDashboardStatus('#ur-loaded-program', monitoringEnabled ? dashboard.loaded_program : 'deaktiviert',
+    monitoringEnabled ? (dashboard.loaded_program ? 'ok' : 'error') : 'neutral');
+  const controllerStatus = document.querySelector('#forward-velocity-controller-status');
+  const confirmedAt = Number(state.controller_confirmed_at);
+  controllerStatus.classList.remove('status-error', 'status-warning');
+  if (state.status.controller_ready) {
+    controllerStatus.textContent = 'zuletzt bestätigt';
+    controllerStatus.title = Number.isFinite(confirmedAt)
+      ? `Zuletzt erfolgreich bestätigt: ${new Date(confirmedAt * 1000).toLocaleString()}. Klick prüft einmalig.`
+      : 'Zuletzt erfolgreich bestätigt. Klick prüft einmalig.';
   } else {
-    forwardVelocityText = `geladen: ${forwardVelocity.state || 'unbekannt'}`; forwardVelocityLevel = 'error';
+    controllerStatus.textContent = 'nicht bestätigt';
+    controllerStatus.title = 'Klick prüft einmalig, ob forward_velocity_controller geladen und aktiv ist.';
+    controllerStatus.classList.add('status-error');
   }
-  setDashboardStatus('#forward-velocity-controller-status', forwardVelocityText, forwardVelocityLevel);
   renderActionButtons(state.actions);
   for (const name of ['base', 'arm']) {
     const distance = state.move_start_distances_cm?.[name];
@@ -584,6 +582,19 @@ document.querySelectorAll('[data-action]').forEach(button => button.addEventList
   }
   finally { button.disabled = false; await refresh(); }
 }));
+document.querySelector('[data-controller-check]').addEventListener('click', async event => {
+  const button = event.currentTarget;
+  button.disabled = true;
+  showFeedback('Controller wird einmalig geprüft …');
+  try {
+    await fetch('/api/actions/check_arm_controller', {method: 'POST'}).then(jsonResponse);
+  } catch (error) {
+    showFeedback(`Controller-Prüfung fehlgeschlagen: ${error.message}`, true);
+  } finally {
+    button.disabled = false;
+    await refresh();
+  }
+});
 document.querySelector('#save-advanced').addEventListener('click', async () => {
   try {
     const values = JSON.parse(document.querySelector('#advanced-json').value);
