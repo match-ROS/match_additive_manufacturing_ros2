@@ -1,6 +1,7 @@
 {
   "accuracy_phase": "baseline",
   "arm_pose_topic": "/vicon/tool_transformed",
+  "base_compensation_translation_only": true,
   "base_hardware_by_platform": {
     "bunker": {
       "expected_motor_ids": []

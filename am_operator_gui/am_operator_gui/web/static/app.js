@@ -462,6 +462,11 @@ function render(state) {
     renderToolOffset(config);
   }
   fields.forEach(field => { if (active !== field) setField(field, config[field.dataset.setting]); });
+  const baseFallback = document.querySelector('[data-setting="use_vicon_tcp_base_pose_fallback"]');
+  const tcpFallback = document.querySelector('[data-setting="use_base_tcp_pose_fallback"]');
+  baseFallback.disabled = tcpFallback.checked;
+  tcpFallback.disabled = baseFallback.checked;
+  document.querySelector('[data-setting="base_tcp_pose_fallback_source"]').disabled = baseFallback.checked;
   if (!toolOffsetFocused() && !toolOffsetDirty) renderToolOffset(config);
   if (!viconOffsetFocused() && !viconOffsetDirty) renderViconOffset(config);
   if (!viconBaseOffsetFocused() && !viconBaseOffsetDirty) renderViconBaseOffset(config);
@@ -564,6 +569,14 @@ async function save() {
   dirtyFields.clear();
 }
 fields.forEach(field => field.addEventListener('change', async () => {
+  if (field.dataset.setting === 'use_vicon_tcp_base_pose_fallback' || field.dataset.setting === 'use_base_tcp_pose_fallback') {
+    document.querySelector('[data-setting="use_vicon_tcp_base_pose_fallback"]').disabled =
+      document.querySelector('[data-setting="use_base_tcp_pose_fallback"]').checked;
+    document.querySelector('[data-setting="use_base_tcp_pose_fallback"]').disabled =
+      document.querySelector('[data-setting="use_vicon_tcp_base_pose_fallback"]').checked;
+    document.querySelector('[data-setting="base_tcp_pose_fallback_source"]').disabled =
+      document.querySelector('[data-setting="use_vicon_tcp_base_pose_fallback"]').checked;
+  }
   dirtyFields.add(field.dataset.setting);
   try { await save(); await refresh(); }
   catch (error) { showFeedback(`Einstellung konnte nicht gespeichert werden: ${error.message}`, true); }

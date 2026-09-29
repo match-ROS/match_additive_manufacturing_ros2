@@ -302,8 +302,24 @@ Choose exactly one source for `/robot_pose`:
   missing Base_RB marker, not for a missing tool marker. The tool-marker-to-TCP
   calibration and robot kinematics must be correct.
 
-The latter two checkboxes are mutually exclusive. Do not run another node that
+Odometry may bridge gaps in either primary source. Do not run another node that
 publishes `/robot_pose` concurrently.
+
+**Fallback: TCP Pose** calculates `/current_nozzle_tip_pose` from `/robot_pose`
+(which may be bridged by odometry). Choose **By TF** to compose each new base pose
+with the latest `robot_base_frame -> robot_arm_nozzle_tip` TF. Choose **By topic**
+to use `/robot/arm/tcp_pose_broadcaster/pose`: on the first usable arm sample the
+adapter captures `robot_base_frame -> arm pose frame` and
+`robot_arm_tool0_controller_raw -> robot_arm_nozzle_tip` from TF once. It then
+composes `map -> base -> arm base -> controller TCP -> nozzle` without refreshing
+those fixed transforms. In topic mode, only a new controller TCP pose publishes a
+nozzle pose; base updates merely replace the stored latest `/robot_pose`. The
+controller pose timestamp is used for the output when present. If both input
+stamps are set and differ by more than 0.3 s, the adapter warns and still
+publishes. The mounted arm and controller TCP configuration must remain fixed;
+restart the pose adapter after changing the mount, tool calibration, or active
+UR TCP. Both variants switch live. This option and **Fallback: Base Pose** disable
+one another to avoid a pose feedback loop.
 
 ### Capture Raw UR TCP Offset
 

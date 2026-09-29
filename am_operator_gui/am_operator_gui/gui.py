@@ -746,6 +746,16 @@ class OperatorWindow(QMainWindow):
         self.vicon_tcp_base_pose_fallback_checkbox.setChecked(
             self._configured_use_vicon_tcp_base_pose_fallback()
         )
+        self.base_tcp_pose_fallback_checkbox = QCheckBox('Fallback: TCP Pose')
+        self.base_tcp_pose_fallback_checkbox.setChecked(
+            bool(self._config.get('use_base_tcp_pose_fallback', False)))
+        self.base_tcp_pose_fallback_source = QComboBox()
+        self.base_tcp_pose_fallback_source.addItem('By TF', 'tf')
+        self.base_tcp_pose_fallback_source.addItem('By topic', 'topic')
+        selected_source = str(self._config.get('base_tcp_pose_fallback_source', 'tf'))
+        self.base_tcp_pose_fallback_source.setCurrentIndex(
+            max(0, self.base_tcp_pose_fallback_source.findData(selected_source)))
+        self._sync_pose_fallback_checkboxes()
         self.direction_mode = QComboBox()
         self.direction_mode.addItems(['goal_direction', 'speed_orthogonal'])
         self.direction_mode.setCurrentText('goal_direction')
@@ -809,6 +819,8 @@ class OperatorWindow(QMainWindow):
         launch_layout.addWidget(self.original_arm_index_spin, 1, 5)
         launch_layout.addWidget(self.odometry_pose_checkbox, 2, 4)
         launch_layout.addWidget(self.vicon_tcp_base_pose_fallback_checkbox, 2, 5)
+        launch_layout.addWidget(self.base_tcp_pose_fallback_checkbox, 2, 6)
+        launch_layout.addWidget(self.base_tcp_pose_fallback_source, 2, 7)
         launch_layout.addWidget(QLabel('Path folder'), 2, 0)
         launch_layout.addWidget(self.path_folder, 2, 1, 1, 3)
         launch_layout.addWidget(self.browse_button, 2, 3)
@@ -1014,6 +1026,12 @@ class OperatorWindow(QMainWindow):
         self.vicon_tcp_base_pose_fallback_checkbox.toggled.connect(
             self._set_use_vicon_tcp_base_pose_fallback
         )
+        self.base_tcp_pose_fallback_checkbox.toggled.connect(
+            self._set_use_base_tcp_pose_fallback
+        )
+        self.base_tcp_pose_fallback_source.currentIndexChanged.connect(
+            self._set_base_tcp_pose_fallback_source
+        )
         self.launch_button.clicked.connect(lambda: self._invoke_service_action('launch_all'))
         self.launch_sim_button.clicked.connect(lambda: self._invoke_service_action('simulation'))
         self.vicon_button.clicked.connect(lambda: self._invoke_service_action('vicon'))
@@ -1074,7 +1092,10 @@ class OperatorWindow(QMainWindow):
             f'  Base pose: {pose_source}',
             '    Default: Vicon PoseStamped. Odometry mode needs nav_msgs/Odometry; the tool fallback',
             '    needs the Vicon tool pose plus a live base-to-nozzle TF chain.',
-            f'  Tool marker: {self.arm_pose_topic.text().strip()} (geometry_msgs/PoseStamped, Vicon bridge)',
+            (f'  Controller TCP: /robot/arm/tcp_pose_broadcaster/pose (geometry_msgs/PoseStamped)'
+             if self.base_tcp_pose_fallback_checkbox.isChecked() and
+                self.base_tcp_pose_fallback_source.currentData() == 'topic'
+             else f'  Tool marker: {self.arm_pose_topic.text().strip()} (geometry_msgs/PoseStamped, Vicon bridge)'),
             '  UR state: /robot/robot_description and /robot/joint_states (UR stack; robot_arm_ joint prefix)',
             f'  TF: {self.external_map_frame.text().strip()} -> {self.robot_tree_root_frame.text().strip()} ->',
             f'    {self.robot_base_frame.text().strip()}, plus the UR tree including robot_arm_nozzle_tip.',
@@ -1215,10 +1236,31 @@ class OperatorWindow(QMainWindow):
         self._save_config()
         self.service.update_config({'base_compensation_translation_only': bool(enabled)})
 
+    def _sync_pose_fallback_checkboxes(self) -> None:
+        self.vicon_tcp_base_pose_fallback_checkbox.setEnabled(
+            not self.base_tcp_pose_fallback_checkbox.isChecked())
+        self.base_tcp_pose_fallback_checkbox.setEnabled(
+            not self.vicon_tcp_base_pose_fallback_checkbox.isChecked())
+        self.base_tcp_pose_fallback_source.setEnabled(
+            not self.vicon_tcp_base_pose_fallback_checkbox.isChecked())
+
+    def _set_base_tcp_pose_fallback_source(self, *_args) -> None:
+        source = str(self.base_tcp_pose_fallback_source.currentData())
+        self._config['base_tcp_pose_fallback_source'] = source
+        self._save_config()
+        self.service.update_config({'base_tcp_pose_fallback_source': source})
+
+    def _set_use_base_tcp_pose_fallback(self, enabled: bool) -> None:
+        self._config['use_base_tcp_pose_fallback'] = bool(enabled)
+        self._save_config()
+        self.service.update_config({'use_base_tcp_pose_fallback': bool(enabled)})
+        self._sync_pose_fallback_checkboxes()
+
     def _set_use_vicon_tcp_base_pose_fallback(self, enabled: bool) -> None:
         self._config['use_vicon_tcp_base_pose_fallback'] = bool(enabled)
         self._save_config()
         self.service.update_config({'use_vicon_tcp_base_pose_fallback': bool(enabled)})
+        self._sync_pose_fallback_checkboxes()
 
     def _set_path_transform(self, *_args) -> None:
         directory = Path(self.path_folder.text().strip()).expanduser()

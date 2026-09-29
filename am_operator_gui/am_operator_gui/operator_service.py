@@ -381,7 +381,8 @@ class OperatorService:
                    'vicon_nozzle_transform_input_mode', 'vicon_cluster_to_base_transform_input_mode',
                    'external_map_frame',
                    'robot_base_frame', 'robot_tree_root_frame', 'use_odometry_robot_pose',
-                   'use_vicon_tcp_base_pose_fallback', 'base_compensation_translation_only', 'default_velocity',
+                   'use_vicon_tcp_base_pose_fallback', 'use_base_tcp_pose_fallback',
+                   'base_tcp_pose_fallback_source', 'base_compensation_translation_only', 'default_velocity',
                    'default_velocity_enabled', 'spray_distance_mm', 'path_transform',
                    'path_transforms_by_directory', 'platform_control_settings', 'pid_gains',
                    'base_smoothing', 'fixed_tool_offset', 'fixed_tool_offsets_by_platform',
@@ -434,6 +435,15 @@ class OperatorService:
                 accepted['path_index'] = max(0, int(mapper(accepted['original_arm_index']))) if mapper else accepted['original_arm_index']
             except Exception:
                 accepted['path_index'] = accepted['original_arm_index']
+        if 'base_tcp_pose_fallback_source' in accepted and accepted['base_tcp_pose_fallback_source'] not in ('tf', 'topic'):
+            raise ValueError('TCP pose fallback source must be tf or topic')
+        if 'use_base_tcp_pose_fallback' in accepted or 'use_vicon_tcp_base_pose_fallback' in accepted:
+            base_fk = accepted.get('use_base_tcp_pose_fallback', self._setting('use_base_tcp_pose_fallback', False))
+            tcp_base = accepted.get('use_vicon_tcp_base_pose_fallback', self._setting('use_vicon_tcp_base_pose_fallback', False))
+            if not isinstance(base_fk, bool) or not isinstance(tcp_base, bool):
+                raise ValueError('Pose fallback settings must be booleans')
+            if base_fk and tcp_base:
+                raise ValueError('Base and TCP pose fallbacks cannot be enabled together')
         self.config.update(accepted)
         if 'control_frame' in accepted and self.ros_bridge is not None:
             self.ros_bridge.set_control_frame(str(accepted['control_frame']))
@@ -459,6 +469,10 @@ class OperatorService:
                 self.ros_bridge.publish_robot_pose_modes(
                     bool(self._setting('use_odometry_robot_pose', False)),
                     bool(self._setting('use_vicon_tcp_base_pose_fallback', False)))
+            if 'use_base_tcp_pose_fallback' in accepted or 'base_tcp_pose_fallback_source' in accepted:
+                source = (str(self._setting('base_tcp_pose_fallback_source', 'tf'))
+                          if bool(self._setting('use_base_tcp_pose_fallback', False)) else 'measured')
+                self.ros_bridge.publish_tcp_pose_source(source)
             if 'path_index' in accepted:
                 self.ros_bridge.publish_path_index(int(self._setting('path_index', 0)))
             if 'velocity_override' in accepted:
@@ -619,6 +633,7 @@ class OperatorService:
             'original_arm_index': 0,
             'default_velocity_enabled': False,
             'base_compensation_translation_only': False,
+            'base_tcp_pose_fallback_source': 'tf',
             'default_velocity': 0.1,
             'spray_distance_mm': 100.0,
             'simulation_gui': False,
@@ -1319,11 +1334,6 @@ echo "Controller restart complete: forward_velocity_controller is active."
         profile = self._profile()
         base_topic = str(self._setting('base_pose_topic', '/vicon/Base_RB/Base_RB'))
         requirements = [
-            # This is the bridge input.  /vicon/tool_transformed is generated
-            # locally by vicon_ee_static_tf during Launch All, so checking it
-            # before launch would always create a misleading failure.
-            (str(self._setting('vicon_input_topic', DEFAULT_VICON_INPUT_TOPIC)),
-             'geometry_msgs/msg/PoseStamped', 'publisher'),
             ('/robot/robot_description', 'std_msgs/msg/String', 'publisher'),
             ('/robot/joint_states', 'sensor_msgs/msg/JointState', 'publisher'),
             (str(profile['cmd_vel']),
@@ -1332,6 +1342,14 @@ echo "Controller restart complete: forward_velocity_controller is active."
             ('/robot/arm/forward_velocity_controller/commands',
              'std_msgs/msg/Float64MultiArray', 'subscriber'),
         ]
+        if bool(self._setting('use_vicon_tcp_base_pose_fallback', False)) or not bool(
+                self._setting('use_base_tcp_pose_fallback', False)):
+            # /vicon/tool_transformed is generated locally, so check its external input.
+            requirements.insert(0, (str(self._setting('vicon_input_topic', DEFAULT_VICON_INPUT_TOPIC)),
+                                    'geometry_msgs/msg/PoseStamped', 'publisher'))
+        elif self._setting('base_tcp_pose_fallback_source', 'tf') == 'topic':
+            requirements.insert(0, ('/robot/arm/tcp_pose_broadcaster/pose',
+                                    'geometry_msgs/msg/PoseStamped', 'publisher'))
         if bool(self._setting('use_odometry_robot_pose', False)):
             requirements.insert(0, (str(profile['odom']), 'nav_msgs/msg/Odometry', 'publisher'))
         if not bool(self._setting('use_vicon_tcp_base_pose_fallback', False)):
@@ -1596,7 +1614,14 @@ echo "Controller restart complete: forward_velocity_controller is active."
         self.processes.start('base_pose_adapter', command)
         self.processes.start('arm_pose_adapter', ['ros2', 'run', 'am_operator_gui', 'pose_stamped_adapter', '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f'input_topic:={VICON_NOZZLE_TOPIC}',
-            '-p', 'output_topic:=/current_nozzle_tip_pose', '-p', f'target_frame:={frame}'])
+            '-p', 'output_topic:=/current_nozzle_tip_pose', '-p', f'target_frame:={frame}',
+            '-p', 'base_pose_topic:=/robot_pose',
+            '-p', 'controller_tcp_pose_topic:=/robot/arm/tcp_pose_broadcaster/pose',
+            '-p', f'robot_base_frame:={base_frame}',
+            '-p', 'robot_tcp_frame:=robot_arm_nozzle_tip',
+            '-p', 'controller_tcp_frame:=robot_arm_tool0_controller_raw',
+            '-p', f"base_tcp_pose_fallback_source:={self._setting('base_tcp_pose_fallback_source', 'tf')}",
+            '-p', f"use_base_tcp_pose_fallback:={str(bool(self._setting('use_base_tcp_pose_fallback', False))).lower()}"])
 
     def _publish_start_condition_repeatedly(self, value: bool) -> None:
         """Mirror the reference GUI's transient-local start/stop safety pulses."""

@@ -8,7 +8,7 @@ from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
 from nav_msgs.msg import Odometry, Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
-from std_msgs.msg import Bool, Float32, Int32
+from std_msgs.msg import Bool, Float32, Int32, String
 from tf2_ros import Buffer, TransformException, TransformListener
 from robotnik_battery_msgs.msg import BatteryStatus
 from robotnik_hardware_msgs.msg import MotorStatusArray
@@ -79,6 +79,7 @@ class OperatorGuiNode(Node):
         )
         self._pose_odom_pub = self.create_publisher(Bool, '/am/robot_pose/use_odometry', path_index_qos)
         self._pose_tcp_pub = self.create_publisher(Bool, '/am/robot_pose/use_tcp', path_index_qos)
+        self._tcp_pose_source_pub = self.create_publisher(String, '/am/tcp_pose/source', path_index_qos)
         self._start_condition_pub = self.create_publisher(Bool, '/start_condition', path_index_qos)
         self._velocity_override_pub = self.create_publisher(Float32, '/velocity_override', 10)
         self._desired_arm_speed_pub = self.create_publisher(Float32, '/desired_arm_speed', path_index_qos)
@@ -560,6 +561,10 @@ class RosBridge:
         if self._node is not None:
             self._node._pose_odom_pub.publish(Bool(data=odometry))
             self._node._pose_tcp_pub.publish(Bool(data=tcp))
+
+    def publish_tcp_pose_source(self, source: str) -> None:
+        if self._node is not None:
+            self._node._tcp_pose_source_pub.publish(String(data=source))
 
     def publish_base_compensation_translation_only(self, enabled: bool) -> None:
         if self._node is not None:

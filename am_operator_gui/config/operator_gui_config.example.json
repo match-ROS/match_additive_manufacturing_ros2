@@ -11,6 +11,8 @@
   "simulation": true,
   "simulation_gui": false,
   "base_compensation_translation_only": false,
+  "use_base_tcp_pose_fallback": false,
+  "base_tcp_pose_fallback_source": "tf",
   "trajectory_directory": "",
   "control_frame": "map",
   "base_pose_topic": "/vicon/Base_RB/Base_RB",
