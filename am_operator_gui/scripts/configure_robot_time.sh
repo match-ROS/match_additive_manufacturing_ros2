@@ -10,7 +10,7 @@ mkdir -p "$directory"
 if [ -f "$configuration" ]; then
     cp -p "$configuration" "$configuration.backup.$(date +%Y%m%d%H%M%S)"
 fi
-printf "%s\n" "[Time]" "NTP=" "NTP=192.168.0.222" "FallbackNTP=" > "$configuration"
+printf "%s\n" "[Time]" "NTP=" "NTP=192.168.0.5" "FallbackNTP=" > "$configuration"
 chmod 644 "$configuration"
 systemctl enable --now systemd-timesyncd
 systemctl restart systemd-timesyncd

@@ -22,10 +22,11 @@ the anchor. The odometry child frame is converted to the configured base frame v
 
 Selecting Fallback immediately ignores base-marker measurements, even if available.
 The GUI wires its TCP input to `/vicon/nozzle_fallback` (TF frame
-`vicon_nozzle_fallback`), calibrated separately by
-`vicon_fallback_nozzle_transform`. The deposition chain continues to use
-`/vicon/tool_transformed` and `vicon_nozzle_transform`. Both adapters consume the
-same raw Vicon EE topic; only the deposition adapter publishes the marker TF.
+`vicon_nozzle_fallback`). Both this reference and the deposition chain's
+`/vicon/tool_transformed` use `vicon_nozzle_transform`, saved through
+**Save Vicon-to-nozzle transform**. Both adapters consume the same raw Vicon EE
+topic; only the deposition adapter publishes the marker TF. Restart Pose Adapters
+after changing the shared calibration.
 Deselection resumes base-marker measurements. The existing anchor remains usable
 while waiting for the newly selected primary source. Primary measurements are used
 as measured upon return; their correction relative to drifted odometry may cause a

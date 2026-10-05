@@ -256,6 +256,24 @@ class OperatorService:
             config_path = Path(configured_path).expanduser() if configured_path else CONFIG_PATH
         self.store = ConfigStore(config_path, LEGACY_CONFIG_PATH if config_path == CONFIG_PATH else None)
         self.config: dict[str, Any] = self.store.load()
+        # Older/external configs can contain launch names such as mur620_sim.
+        # Platform selects the robot family; simulation is a separate setting.
+        # Recover unsupported saved values to the default hardware profile.
+        saved_platform = self.config.get('platform', 'robotnik')
+        try:
+            platform = self._platform_name(saved_platform)
+        except ValueError:
+            platform = 'robotnik'
+            self.config['simulation'] = False
+        if platform != saved_platform:
+            self.config['platform'] = platform
+            self.store.save(self.config)
+        # One measured EE and one nozzle require one calibration. Preserve the
+        # visible GUI value when migrating configurations with both old fields.
+        if 'vicon_fallback_nozzle_transform' in self.config:
+            legacy_offset = self.config.pop('vicon_fallback_nozzle_transform')
+            self.config.setdefault('vicon_nozzle_transform', legacy_offset)
+            self.store.save(self.config)
         # The former EE field selected a downstream pose. Preserve a custom
         # measured topic as the input to the now explicit calibration chain.
         legacy_topic = str(self.config.get('arm_pose_topic', VICON_NOZZLE_TOPIC))
@@ -377,7 +395,6 @@ class OperatorService:
         allowed = {'simulation', 'simulation_gui', 'platform', 'trajectory_directory', 'control_frame',
                    'base_pose_topic', 'vicon_input_topic', 'vicon_nozzle_transform',
                    'vicon_cluster_to_base_transform',
-                   'vicon_fallback_nozzle_transform',
                    'vicon_nozzle_transform_input_mode', 'vicon_cluster_to_base_transform_input_mode',
                    'external_map_frame',
                    'robot_base_frame', 'robot_tree_root_frame', 'use_odometry_robot_pose',
@@ -392,6 +409,10 @@ class OperatorService:
                    'base_hardware_by_platform'}
         accepted = {key: value for key, value in values.items() if key in allowed}
         try:
+            if 'platform' in accepted:
+                accepted['platform'] = self._platform_name(accepted['platform'])
+            if 'simulation' in accepted and not isinstance(accepted['simulation'], bool):
+                raise ValueError('simulation must be a boolean')
             if 'base_compensation_translation_only' in accepted and not isinstance(accepted['base_compensation_translation_only'], bool):
                 raise ValueError('base_compensation_translation_only must be a boolean')
             if 'battery_topics_by_platform' in accepted:
@@ -415,8 +436,6 @@ class OperatorService:
             if 'vicon_cluster_to_base_transform' in accepted:
                 accepted['vicon_cluster_to_base_transform'] = validated_transform(
                     accepted['vicon_cluster_to_base_transform'])
-            if 'vicon_fallback_nozzle_transform' in accepted:
-                accepted['vicon_fallback_nozzle_transform'] = validated_transform(accepted['vicon_fallback_nozzle_transform'])
             if 'path_index' in accepted:
                 accepted['path_index'] = max(0, int(accepted['path_index']))
             if 'original_arm_index' in accepted:
@@ -848,7 +867,7 @@ class OperatorService:
 
     def _platform_key(self) -> str:
         """Return the canonical key for platform-scoped operator settings."""
-        return str(self._setting('platform', 'robotnik')).strip().lower() or 'robotnik'
+        return self._platform_name(self._setting('platform', 'robotnik'))
 
     @staticmethod
     def _validated_battery_topic(value: Any) -> str:
@@ -1375,8 +1394,13 @@ echo "Controller restart complete: forward_velocity_controller is active."
             command = ['ros2', 'launch', 'vicon_receiver', 'client.launch.py',
                        'hostname:=192.168.0.30:8802', 'topic_namespace:=vicon',
                        f'world_frame:={frame}', 'vicon_frame:=vicon']
-            setup = Path.home() / 'vicon_receiver_ws' / 'install' / 'setup.bash'
-            if setup.is_file():
+            # Resolve the GUI's own workspace for source and installed layouts.
+            # An unrelated ~/vicon_receiver_ws overlay can shadow this receiver.
+            setup = next((parent / 'install' / 'setup.bash'
+                          for parent in PACKAGE_ROOT.parents
+                          if (parent / 'src').is_dir()
+                          and (parent / 'install' / 'setup.bash').is_file()), None)
+            if setup is not None:
                 # Source only in the managed child session. Positional arguments
                 # preserve paths/frame values without shell interpolation.
                 return ['bash', '-c', 'source "$1" && shift && exec "$@"',
@@ -1585,10 +1609,8 @@ echo "Controller restart complete: forward_velocity_controller is active."
             '-p', f'output_topic:={VICON_NOZZLE_TOPIC}',
             '-p', f"marker_to_nozzle_xyz:={vicon_offset['xyz']}",
             '-p', f"marker_to_nozzle_quaternion_xyzw:={vicon_offset['quaternion_xyzw']}"])
-        # Independent measured reference for base reconstruction. The deposition
-        # adapter above retains its original calibration and output topic.
-        fallback_offset = validated_transform(self._setting(
-            'vicon_fallback_nozzle_transform', vicon_offset))
+        # Separate output for base reconstruction, using the same EE-to-nozzle
+        # calibration as measured deposition feedback.
         self.processes.start('vicon_fallback_nozzle_tf', [
             'ros2', 'run', 'am_operator_gui', 'vicon_ee_static_tf', '--ros-args',
             '-r', '__node:=vicon_fallback_nozzle_transform',
@@ -1597,8 +1619,8 @@ echo "Controller restart complete: forward_velocity_controller is active."
             '-p', 'output_topic:=/vicon/nozzle_fallback',
             '-p', 'tcp_frame:=vicon_nozzle_fallback',
             '-p', 'publish_marker_tf:=false',
-            '-p', f"marker_to_nozzle_xyz:={fallback_offset['xyz']}",
-            '-p', f"marker_to_nozzle_quaternion_xyzw:={fallback_offset['quaternion_xyzw']}",
+            '-p', f"marker_to_nozzle_xyz:={vicon_offset['xyz']}",
+            '-p', f"marker_to_nozzle_quaternion_xyzw:={vicon_offset['quaternion_xyzw']}",
         ])
         command = ['ros2', 'run', 'am_operator_gui', 'external_base_reference', '--ros-args',
             '-p', f'use_sim_time:={self._use_sim_time()}', '-p', f"input_topic:={self._setting('base_pose_topic', '/vicon/Base/root')}",

@@ -649,7 +649,7 @@ document.querySelector('#save-vicon-offset').addEventListener('click', async () 
       vicon_nozzle_transform_input_mode: viconOffsetElements.mode.value,
     }})}).then(jsonResponse);
     viconOffsetDirty = false;
-    showFeedback('Vicon-to-nozzle transform saved; restart Pose Adapters to apply.');
+    showFeedback('Vicon-to-nozzle transform saved for nozzle feedback and base reconstruction; restart Pose Adapters to apply.');
     await refresh();
   } catch (error) { showFeedback(`Vicon transform could not be saved: ${error.message}`, true); }
 });

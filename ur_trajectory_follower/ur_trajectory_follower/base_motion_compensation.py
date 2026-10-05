@@ -272,7 +272,7 @@ class BaseMotionCompensation(Node):
         now = self.get_clock().now().nanoseconds
         age = (now - rclpy.time.Time.from_msg(pose.header.stamp).nanoseconds) / 1e9
         received_age = (now - received) / 1e9
-        if not (0.0 <= age <= self.pose_timeout and 0.0 <= received_age <= self.pose_timeout):
+        if not (-0.5 <= age <= self.pose_timeout and -0.5 <= received_age <= self.pose_timeout):
             raise ValueError(f'stale {topic}: source age={age:.3f}s, receipt age={received_age:.3f}s')
         if not self._clean_frame(pose.header.frame_id):
             raise ValueError(f'{topic} has an empty frame_id')

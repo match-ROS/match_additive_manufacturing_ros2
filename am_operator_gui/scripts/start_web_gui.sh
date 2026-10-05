@@ -4,6 +4,19 @@ set -euo pipefail
 package_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 venv_dir="${package_dir}/.web-venv"
 
+# Desktop launches do not read .bashrc. Match the operator ROS domain while
+# preserving an explicitly selected domain (including domain 0).
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-38}"
+printf 'Operator GUI ROS domain: %s\n' "${ROS_DOMAIN_ID}"
+
+# Launch source code and its configuration from the same checkout, even when
+# another ROS workspace provides the first am_operator_gui share directory.
+# Keep an explicit user override for alternate configurations.
+if [[ -z "${AM_OPERATOR_GUI_CONFIG:-}" ]]; then
+  export AM_OPERATOR_GUI_CONFIG="${package_dir}/config/operator_gui_config.json"
+fi
+printf 'Operator GUI config: %s\n' "${AM_OPERATOR_GUI_CONFIG}"
+
 if [[ ! -x "${venv_dir}/bin/python" ]]; then
   # ROS Python packages are provided by the sourced system/workspace install.
   # Keep them visible while isolating the small web-only dependency set.

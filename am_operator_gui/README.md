@@ -24,6 +24,16 @@ For a clean local setup, use
 `config/operator_gui_config.json` and select the trajectory directory in either
 interface. The example deliberately contains no workstation-specific absolute path.
 
+The source launcher reads and saves `config/operator_gui_config.json` in the same
+package checkout and prints its path at startup. Set `AM_OPERATOR_GUI_CONFIG` to
+use another file. Launching through `ros2 launch` or the installed executables
+uses the ROS package share config unless that environment variable is set.
+Settings are loaded once when the GUI process starts; restart the process after
+editing the JSON externally. Refreshing the browser does not reload the file.
+The source launcher defaults `ROS_DOMAIN_ID` to `38` when unset, including desktop
+launches that do not read `.bashrc`. An explicit domain overrides this default.
+Use the same domain in terminals running `ros2 topic list` and on the robot.
+
 ### Sync sources and run JParse on the robot
 
 **Sync Workspace** copies the local workspace's entire `src/` tree over SSH to
@@ -271,16 +281,17 @@ Hardware feedback always follows the chain:
 `measured Vicon EE → Vicon calibration → /vicon/tool_transformed → control-frame
 conversion → /current_nozzle_tip_pose → spray-distance offset → /current_deposition_pose`.
 The follower compares the deposition pose with `/arm_trajectory_reference`.
-Base reconstruction uses an independent Vicon nozzle reference:
-`measured Vicon EE → vicon_fallback_nozzle_transform → /vicon/nozzle_fallback`
+Base reconstruction uses a separate Vicon nozzle output with the same calibration:
+`measured Vicon EE → vicon_nozzle_transform → /vicon/nozzle_fallback`
 (TF frame `vicon_nozzle_fallback`). The base adapter matches this measurement to
 the kinematic `robot_arm_nozzle_tip` reference. Their correspondence is identity;
-the calibrated EE-to-reference transform is applied by the independent adapter.
-Changing the fallback calibration does not affect the deposition pose or its
-Vicon calibration. If no separate calibration is configured, the second adapter
-uses the deposition calibration for compatibility. Restart the GUI service and
-pose adapters after deploying this change. Validate the fallback calibration
-over multiple arm configurations; the current calibration used a fixed posture.
+the calibrated EE-to-nozzle transform is applied by both adapters.
+**Save Vicon-to-nozzle transform** updates the calibration for both paths.
+Older configurations with `vicon_fallback_nozzle_transform` are migrated on load:
+the visible `vicon_nozzle_transform` takes precedence, and the obsolete field is
+removed from the saved JSON. If only the old field exists, its value becomes the
+shared calibration. Restart the GUI service and pose adapters after deploying
+this change. Validate the calibration over multiple arm configurations.
 
 Existing custom `arm_pose_topic` selections such as `/vicon/EE/root` become the
 `vicon_input_topic` when loading an older web configuration. They now pass through

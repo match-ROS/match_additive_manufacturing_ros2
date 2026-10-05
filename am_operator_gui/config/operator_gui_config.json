@@ -19,7 +19,7 @@
       ]
     }
   },
-  "base_pose_topic": "/vicon/Base/root",
+  "base_pose_topic": "/vicon/Base_RB/Base_RB",
   "base_smoothing": {
     "enabled": false,
     "external_path_index_stride": 1,
@@ -29,12 +29,13 @@
     "method": "moving_average",
     "moving_average_window_size": 5
   },
+  "base_tcp_pose_fallback_source": "topic",
   "battery_topics_by_platform": {
     "bunker": "",
     "robotnik": "/robot/battery_estimator/data"
   },
   "control_frame": "vicon_world",
-  "default_velocity": 0.15,
+  "default_velocity": 0.04,
   "default_velocity_enabled": true,
   "diff_drive_mode": false,
   "direction_mode": "goal_direction",
@@ -43,22 +44,22 @@
   "fixed_tool_offsets_by_platform": {
     "robotnik": {
       "quaternion_xyzw": [
-        0.7073328992545017,
-        0.0006486593295660997,
-        -0.0002341955024130999,
-        0.7068802543753516
+        -0.49957821601526814,
+        0.5005620090813552,
+        -0.5004187226337362,
+        -0.4994400696630772
       ],
       "xyz": [
-        0.0015873624879277,
-        -0.266405984267603,
-        0.089429814228986
+        0.0015605583654927,
+        -0.426166529448559,
+        0.0772169719912517
       ]
     }
   },
   "follower_type": "pid",
   "nozzle_offset_mm": 0,
-  "original_arm_index": 50,
-  "path_index": 490,
+  "original_arm_index": 730,
+  "path_index": 7236,
   "path_transform": {
     "x": -1.8148869126341716,
     "y": 3.96938899095019,
@@ -124,6 +125,12 @@
           "y": 3.96938899095019,
           "yaw_deg": 101.43493334231577,
           "z": 0.0024308892970040094
+        },
+        "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path": {
+          "x": 0.0,
+          "y": 0.0,
+          "yaw_deg": 0.0,
+          "z": 0.0
         }
       },
       "pid_gains": {
@@ -144,9 +151,9 @@
         "base_follower.kp_x": 0.8,
         "base_follower.kp_y": 0.8,
         "base_follower.kp_yaw": 1.2,
-        "base_follower.max_vx": 0.3,
-        "base_follower.max_vy": 0.3,
-        "base_follower.max_wz": 0.5,
+        "base_follower.max_vx": 0.8,
+        "base_follower.max_vy": 0.5,
+        "base_follower.max_wz": 1.0,
         "base_move.kp_angular_reorient": 1.2,
         "base_move.kp_angular_to_point": 1.5,
         "base_move.kp_lateral": 0.6,
@@ -163,36 +170,38 @@
   "robot_tree_root_frame": "robot_odom",
   "simulation": false,
   "simulation_gui": false,
-  "spray_distance_mm": 100.0,
-  "trajectory_directory": "/home/afab/b04_gui_ws/src/match_additive_manufacturing_ros2/components/horizontal_test",
+  "spray_distance_mm": 400.0,
+  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path",
+  "use_base_tcp_pose_fallback": false,
   "use_odometry_robot_pose": true,
   "use_vicon_tcp_base_pose_fallback": false,
-  "velocity_override": 50,
-  "vicon_fallback_nozzle_transform": {
+  "velocity_override": 100.0,
+  "vicon_cluster_to_base_transform": {
     "quaternion_xyzw": [
-      0.9696768821452185,
-      0.24357122148426677,
-      -0.004463499869759728,
-      0.01949054813756968
+      0.016110517195251,
+      0.004584386034049,
+      -0.385291918432406,
+      0.922642711037739
     ],
     "xyz": [
-      0.032560504623751506,
-      0.021826921709054238,
-      -0.1657816331683243
+      0.197869343104857,
+      -0.233301111754828,
+      -1.05116129543399
     ]
   },
-  "vicon_input_topic": "/vicon/EE/root",
+  "vicon_cluster_to_base_transform_input_mode": "quaternion",
+  "vicon_input_topic": "/vicon/Tool_Flange/Tool_Flange",
   "vicon_nozzle_transform": {
     "quaternion_xyzw": [
-      0.5,
-      0.5,
-      0.5,
-      0.5
+      -0.026022384414421996,
+      0.0195927580389567,
+      0.41714427216541994,
+      0.9082563600335519
     ],
     "xyz": [
-      0.32,
-      0.088,
-      0.0027
+      0.010395185,
+      0.030554446,
+      0.406378555
     ]
   },
   "vicon_nozzle_transform_input_mode": "quaternion"
