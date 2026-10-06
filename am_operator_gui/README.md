@@ -1,5 +1,13 @@
 # AM Operator GUI — Hardware Operation
 
+For scientific trials, the desktop and web accuracy controls include **Record Paper
+Dataset** and **Summarize Paper Datasets**. Choose a persistent output directory
+(default `~/am_accuracy_runs`), condition and trial notes. Start recording before
+**Start Following**, let the endpoint settle, then stop recording to finalize
+both pose CSVs, run metadata and the raw ROS bag. One session corresponds to one
+trial. See [paper dataset recording](../print_path_monitoring/README.md#paper-datasets)
+for fields, timing rules and report statistics.
+
 ## Local web GUI (preview, runs alongside the PyQt reference GUI)
 
 The web interface listens only on `127.0.0.1:8000`, opens the browser automatically,

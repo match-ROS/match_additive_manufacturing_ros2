@@ -29,3 +29,14 @@ def test_deposition_pose_moves_along_local_nozzle_z() -> None:
 def test_distance_slew_rate_limits_a_step() -> None:
     assert clamp_distance_step(0.0, 0.3, max_rate=0.02, dt=0.5) == 0.01
     assert clamp_distance_step(0.3, 0.0, max_rate=0.02, dt=0.5) == 0.29
+
+
+def test_deposition_conversion_copies_sensor_timestamp_without_mutating_input():
+    pose = _identity_pose()
+    pose.header.stamp.sec = 12
+    result = deposition_pose_from_nozzle(pose, 0.2)
+    assert result.header.stamp.sec == 12
+    result.header.stamp.sec = 99
+    result.pose.orientation.w = 0.0
+    assert pose.header.stamp.sec == 12
+    assert pose.pose.orientation.w == 1.0

@@ -14,6 +14,7 @@
   <exec_depend>am_jparse_controller</exec_depend>
   <exec_depend>move_to_path_idx</exec_depend>
   <exec_depend>parse_paths</exec_depend>
+  <exec_depend>print_path_monitoring</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>builtin_interfaces</exec_depend>

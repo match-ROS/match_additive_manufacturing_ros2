@@ -7,9 +7,12 @@ settings and invokes named actions; status and bounded logs are read back as dat
 from __future__ import annotations
 
 import math
+import hashlib
+import json
 import os
 import shlex
 import sys
+import subprocess
 from collections import deque
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -132,6 +135,7 @@ TOGGLE_ACTIONS = {
     'controllers': ('controllers', 'Start Controllers', 'Stop Controllers'),
     'base_accuracy': ('base_accuracy', 'Record Base Accuracy', 'Stop Base Recording'),
     'tcp_accuracy': ('tcp_accuracy', 'Record TCP Accuracy', 'Stop TCP Recording'),
+    'paper_accuracy': ('paper_accuracy', 'Record Paper Dataset', 'Stop Paper Recording'),
     'sync_workspace': ('sync_workspace', 'Sync Workspace', 'Stop Sync'),
 }
 
@@ -140,6 +144,7 @@ ONE_SHOT_ACTIONS = {
     'move_arm': ('move_arm', 'Move Arm To Start', 'Stop Arm Move'),
     'switch_arm_velocity': ('switch_arm_velocity', 'Switch Arm Velocity', 'Switching Arm Velocity'),
     'accuracy_report': ('accuracy_report', 'Summarize Accuracy', 'Summarizing Accuracy'),
+    'paper_report': ('paper_report', 'Summarize Paper Datasets', 'Summarizing Paper Datasets'),
     'check_hardware_topics': ('check_hardware_topics', 'Check Hardware Topics', 'Checking Hardware Topics'),
     'restart_arm_controllers': (
         'restart_arm_controllers', 'Restart Controllers', 'Restarting Controllers'
@@ -184,6 +189,11 @@ ACTION_DESCRIPTIONS = {
         'Zeichnet die Abweichung von /current_deposition_pose zum Tracking-Armpfad '
         'und zur Arm-Referenzpose ab /start_condition auf.'
     ),
+    'paper_accuracy': (
+        'Records base and deposition measurements, a raw ROS bag, paths and run metadata. '
+        'Start before Start Following; press again after settling to finalize the dataset. '
+        'The output directory is shown in the accuracy controls.'
+    ),
     'sync_workspace': 'Copies workspace sources to robot@192.168.0.200:~/b04_gui_ws/src/ via rsync. Build and launch on the robot separately.',
     'move_base': (
         'Fährt die Base einmalig zur Pose des gemeinsamen Trackingindex in /base_path_tracking mit '
@@ -201,6 +211,7 @@ ACTION_DESCRIPTIONS = {
         'Erstellt aus den Läufen in /tmp/am_trajectory_runs einen Genauigkeitsbericht '
         'für das ausgewählte Pfadverzeichnis.'
     ),
+    'paper_report': 'Summarizes independent paper trials with per-run metrics and bootstrap confidence intervals.',
     'check_hardware_topics': (
         'Prüft die ROS-Graph-Verträge der externen Hardware-Eingänge und Kommando-Endpunkte; '
         'dies ist kein Frische-, Controllerzustands- oder Sicherheitstest.'
@@ -406,9 +417,17 @@ class OperatorService:
                    'fixed_tool_offset_input_mode', 'path_index', 'original_arm_index',
                    'velocity_override', 'nozzle_offset_mm', 'follower_type', 'diff_drive_mode',
                    'direction_mode', 'accuracy_phase', 'battery_topic', 'battery_topics_by_platform',
-                   'base_hardware_by_platform'}
+                   'base_hardware_by_platform', 'paper_output_directory', 'paper_condition', 'paper_notes'}
         accepted = {key: value for key, value in values.items() if key in allowed}
         try:
+            if 'paper_output_directory' in accepted:
+                output = accepted['paper_output_directory']
+                if not isinstance(output, str) or not output.strip():
+                    raise ValueError('paper output directory must not be empty')
+                accepted['paper_output_directory'] = str(Path(output.strip()).expanduser().absolute())
+            for key in ('paper_condition', 'paper_notes'):
+                if key in accepted and not isinstance(accepted[key], str):
+                    raise ValueError(f'{key} must be text')
             if 'platform' in accepted:
                 accepted['platform'] = self._platform_name(accepted['platform'])
             if 'simulation' in accepted and not isinstance(accepted['simulation'], bool):
@@ -669,6 +688,9 @@ class OperatorService:
         config.setdefault('diff_drive_mode', self._control_setting('diff_drive_mode', False))
         config.setdefault('direction_mode', 'goal_direction')
         config.setdefault('accuracy_phase', 'baseline')
+        config.setdefault('paper_output_directory', str(Path.home() / 'am_accuracy_runs'))
+        config.setdefault('paper_condition', '')
+        config.setdefault('paper_notes', '')
         config.setdefault('velocity_override', 100)
         config.setdefault('nozzle_offset_mm', 0)
         config.setdefault('fixed_tool_offset_input_mode', 'quaternion')
@@ -1061,10 +1083,17 @@ class OperatorService:
             'simulation', 'publish_path', 'move_arm', 'path_index', 'transformations',
             *POSE_ADAPTER_PROCESSES, 'controllers', 'base_follower', 'arm_follower',
             'move_base', 'switch_arm_velocity', 'base_accuracy', 'tcp_accuracy',
-            'accuracy_report', 'rviz', 'sync_workspace',
+            'accuracy_report', 'paper_report', 'paper_accuracy', 'rviz', 'sync_workspace',
         )
 
     def action(self, name: str) -> None:
+        if name == 'paper_accuracy':
+            if self._is_running(name):
+                self.processes.stop(name)
+                self.log(name, 'Paper recording stopped; dataset finalization is reported in the console.')
+            else:
+                self._start_paper_recording()
+            return
         if name == 'remote_bringup':
             self._remote_bringup_run += 1
             run_name = f'remote_bringup_{self._remote_bringup_run}'
@@ -1177,6 +1206,66 @@ class OperatorService:
         if command is None:
             raise ValueError(f'unknown action: {name}')
         self._toggle(name, command)
+
+    def _start_paper_recording(self) -> None:
+        """Prepare an immutable run directory, then start one supervised session."""
+        root = Path(str(self._setting('paper_output_directory', Path.home() / 'am_accuracy_runs'))).expanduser()
+        session_id = datetime.now(timezone.utc).strftime('run_%Y%m%dT%H%M%S%fZ')
+        directory = root / session_id
+        directory.mkdir(parents=True, exist_ok=False)
+        trajectory = Path(str(self._setting('trajectory_directory', ''))).expanduser()
+        sources = {}
+        for filename in ('arm_path.json', 'base_path.json', 'normal_vector.json'):
+            source = trajectory / filename
+            if source.is_file():
+                content = source.read_bytes()
+                (directory / filename).write_bytes(content)
+                sources[filename] = {'source': str(source), 'sha256': hashlib.sha256(content).hexdigest()}
+
+        def git_value(arguments):
+            try:
+                result = subprocess.run(['git', '-C', str(REPO_ROOT), *arguments],
+                                        capture_output=True, text=True, timeout=2)
+                return result.stdout.strip() if result.returncode == 0 else None
+            except (OSError, subprocess.TimeoutExpired):
+                return None
+
+        phase = str(self._setting('accuracy_phase', 'baseline'))
+        profile = self._profile()
+        additional_topics = [profile['cmd_vel'], profile['odom'],
+                             str(self._setting('base_pose_topic', '')),
+                             str(self._setting('vicon_input_topic', DEFAULT_VICON_INPUT_TOPIC))]
+        commands = {name: process.command for name, process in self.processes._processes.items()
+                    if process.is_running()}
+        manifest = {
+            'schema_version': 1, 'session_id': session_id, 'status': 'prepared',
+            'created_utc': datetime.now(timezone.utc).isoformat(),
+            'phase': phase, 'condition': str(self._setting('paper_condition', '')).strip() or phase,
+            'notes': str(self._setting('paper_notes', '')),
+            'platform': self._platform_key(), 'simulation': bool(self._setting('simulation', False)),
+            'initial_path_index': self._live_path_index if self._live_path_index is not None else int(self._setting('path_index', 0)),
+            'control_frame': str(self._setting('control_frame', 'map')),
+            'git_commit': git_value(['rev-parse', 'HEAD']),
+            'git_status': git_value(['status', '--porcelain']),
+            'source_files': sources, 'settings': deepcopy(self.snapshot()['config']),
+            'effective_platform_settings': self.platform_settings_snapshot(self._platform_key()),
+            'running_commands': commands,
+            'additional_topics': [topic for topic in additional_topics if topic],
+            'measurement_point': 'base frame origin and computed deposition point (/measured_deposition_pose)',
+            'reference_rule': 'last source trajectory state at or before sensor timestamp; maximum age 0.1 s',
+            'units': {'position': 'm', 'angle': 'rad', 'time': 's'},
+        }
+        (directory / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+        command = ['ros2', 'run', 'print_path_monitoring', 'paper_accuracy_recorder', '--ros-args',
+                   '-p', f'session_directory:={directory}', '-p', f'use_sim_time:={self._use_sim_time()}',
+                   '-p', f'required_frame:={manifest["control_frame"]}', '-p', f'phase:={phase}']
+        self.log('paper_accuracy', f'Dataset directory: {directory}')
+        try:
+            self.processes.start('paper_accuracy', command, shutdown_timeout=15.0)
+        except Exception as exc:
+            manifest.update(status='failed', error=str(exc))
+            (directory / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+            raise
 
     def _start_dashboard_command(self, name: str, command: list[str] | None = None) -> None:
         command = dashboard_command(name) if command is None else command
@@ -1522,7 +1611,7 @@ echo "Controller restart complete: forward_velocity_controller is active."
         if name in {'base_accuracy', 'tcp_accuracy'}:
             mode = 'base' if name == 'base_accuracy' else 'tcp'
             actual = '/robot_pose' if mode == 'base' else '/current_deposition_pose'
-            path = '/base_path' if mode == 'base' else '/ur_path_tracking'
+            path = '/base_path_tracking' if mode == 'base' else '/ur_path_tracking'
             reference = '/base_trajectory_reference' if mode == 'base' else '/arm_trajectory_reference'
             phase = str(self._setting('accuracy_phase', 'baseline'))
             return ['ros2', 'run', 'print_path_monitoring', 'trajectory_accuracy_monitor', '--ros-args',
@@ -1530,8 +1619,15 @@ echo "Controller restart complete: forward_velocity_controller is active."
                     '-p', f'actual_pose_topic:={actual}', '-p', f'reference_path_topic:={path}',
                     '-p', f'reference_pose_topic:={reference}', '-p', 'path_index_topic:=/path_index',
                     '-p', 'output_directory:=/tmp/am_trajectory_runs', '-p', f'phase:={phase}',
-                    '-p', 'required_frame:=map',
-                    '-p', f"start_condition_topic:={'/start_pose_reached' if mode == 'base' else '/start_condition'}"]
+                    '-p', f'required_frame:={frame}',
+                    '-p', 'trajectory_phase_topic:=/trajectory_phase',
+                    '-p', 'velocity_override_topic:=/velocity_override',
+                    '-p', 'desired_speed_topic:=/desired_arm_speed',
+                    '-p', 'base_reference_path_topic:=/base_path_tracking',
+                    '-p', 'start_condition_topic:=/start_condition']
+        if name == 'paper_report':
+            return ['ros2', 'run', 'print_path_monitoring', 'paper_accuracy_report',
+                    '--input-directory', str(self._setting('paper_output_directory', Path.home() / 'am_accuracy_runs'))]
         if name == 'accuracy_report':
             return ['ros2', 'run', 'print_path_monitoring', 'trajectory_accuracy_report',
                     '--input-directory', '/tmp/am_trajectory_runs', '--trajectory-directory', trajectory,

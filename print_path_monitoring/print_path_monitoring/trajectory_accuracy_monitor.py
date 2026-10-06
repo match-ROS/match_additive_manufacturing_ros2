@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import math
-from collections import Counter
+from collections import Counter, deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -14,9 +14,14 @@ import rclpy
 from geometry_msgs.msg import PoseStamped, Twist, Vector3Stamped
 from nav_msgs.msg import Path as RosPath
 from rclpy.node import Node
-from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
+from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy, qos_profile_sensor_data
+from rclpy.executors import ExternalShutdownException
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Bool, Float32, Int32
+from std_msgs.msg import Bool, Float32, Int32, String
+
+from print_path_monitoring.research_data import (
+    orientation_error, path_snapshot, summarize_window, validate_state,
+)
 
 from print_path_monitoring.error_metrics import (
     compute_planar_error,
@@ -29,8 +34,8 @@ from print_path_monitoring.error_metrics import (
 
 
 class TrajectoryAccuracyMonitor(Node):
-    def __init__(self) -> None:
-        super().__init__('trajectory_accuracy_monitor')
+    def __init__(self, node_name='trajectory_accuracy_monitor', **kwargs) -> None:
+        super().__init__(node_name, **kwargs)
         self.declare_parameter('mode', 'tcp')
         self.declare_parameter('actual_pose_topic', '/current_tcp_pose')
         self.declare_parameter('reference_path_topic', '/ur_path_transformed')
@@ -64,6 +69,11 @@ class TrajectoryAccuracyMonitor(Node):
         self.declare_parameter('max_tracking_linear_velocity', 0.12)
         self.declare_parameter('saturation_fraction', 0.99)
         self.declare_parameter('completion_topic', '/trajectory_complete')
+        self.declare_parameter('trajectory_state_topic', '')
+        self.declare_parameter('max_reference_age', 0.1)
+        self.declare_parameter('max_sample_gap', 0.25)
+        self.declare_parameter('session_id', '')
+        self.declare_parameter('evaluate_reachability', True)
 
         self.mode = str(self.get_parameter('mode').value).strip().lower()
         if self.mode not in {'base', 'tcp'}:
@@ -96,6 +106,17 @@ class TrajectoryAccuracyMonitor(Node):
         self.twist_linear_y: list[float] = []
         self.twist_linear_z: list[float] = []
         self.joint_velocities: dict[str, list[float]] = {}
+        self.state_topic = str(self.get_parameter('trajectory_state_topic').value).strip()
+        self.states = deque(maxlen=500)
+        self.pending_poses = deque()
+        self.last_actual_stamp_ns = None
+        self.episode = 0
+        self._state_gate = False
+        self._state_paused = False
+        self.path_hashes = {}
+        self.path_changed = False
+        self.saw_disabled_state = False
+        self.recording_started_before_gate = False
 
         qos = QoSProfile(depth=1, durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
                          reliability=QoSReliabilityPolicy.RELIABLE)
@@ -120,7 +141,10 @@ class TrajectoryAccuracyMonitor(Node):
         desired_speed_topic = str(self.get_parameter('desired_speed_topic').value).strip()
         if desired_speed_topic:
             self.create_subscription(Float32, desired_speed_topic, self._desired_speed_cb, 10)
-        self.create_subscription(PoseStamped, str(self.get_parameter('actual_pose_topic').value), self._pose_cb, 10)
+        self.create_subscription(PoseStamped, str(self.get_parameter('actual_pose_topic').value), self._pose_cb, qos_profile_sensor_data)
+        if self.state_topic:
+            self.create_subscription(String, self.state_topic, self._state_cb, 100)
+            self.create_timer(0.1, self._drain_pending)
         command_twist_topic = str(self.get_parameter('command_twist_topic').value).strip()
         if command_twist_topic:
             self.create_subscription(Twist, command_twist_topic, self._twist_cb, 10)
@@ -144,11 +168,11 @@ class TrajectoryAccuracyMonitor(Node):
 
         output_directory = Path(str(self.get_parameter('output_directory').value)).expanduser()
         run_name = str(self.get_parameter('run_name').value).strip() or (
-            f'{self.mode}_{datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")}')
+            f'{self.mode}_{datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")}')
         output_directory.mkdir(parents=True, exist_ok=True)
         self.csv_path = output_directory / f'{run_name}.csv'
         self.summary_path = output_directory / f'{run_name}.json'
-        self.csv_file = self.csv_path.open('w', newline='', encoding='utf-8')
+        self.csv_file = self.csv_path.open('x', newline='', encoding='utf-8')
         self.writer = csv.DictWriter(self.csv_file, fieldnames=[
             'stamp_sec', 'path_index', 'trajectory_phase', 'velocity_override', 'desired_speed',
             'reference_source', 'actual_x', 'actual_y', 'actual_z',
@@ -157,23 +181,95 @@ class TrajectoryAccuracyMonitor(Node):
             'along_track_error', 'lateral_error', 'spray_axis_error',
             'reach_class', 'planned_arm_base_x', 'planned_arm_base_y',
             'planned_arm_base_z', 'planned_arm_base_planar_radius',
+            'session_id', 'episode', 'measurement_window', 'path_progress',
+            'actual_stamp_ns', 'receipt_stamp_ns', 'sample_age', 'reference_stamp_ns',
+            'reference_age', 'reference_planned_stamp_sec', 'actual_frame', 'reference_frame',
+            'target_x', 'target_y', 'target_z', 'target_qx', 'target_qy', 'target_qz', 'target_qw',
+            'actual_qx', 'actual_qy', 'actual_qz', 'actual_qw', 'orientation_error',
         ])
         self.writer.writeheader()
         self.get_logger().info(f'Recording {self.mode} trajectory accuracy to {self.csv_path}')
 
     def _path_cb(self, msg: RosPath) -> None:
         self.path = msg
+        self._save_path(msg, 'reference_path')
 
     def _reference_cb(self, msg: PoseStamped) -> None:
         self.reference_pose = msg
 
     def _base_path_cb(self, msg: RosPath) -> None:
         self.base_path = msg
+        self._save_path(msg, 'base_reference_path')
+
+    def _save_path(self, msg, name):
+        if not msg.poses:
+            return
+        snapshot, digest = path_snapshot(msg)
+        previous = self.path_hashes.get(name)
+        if previous == digest:
+            return
+        if previous is not None:
+            self.path_changed = True
+            self.invalid['path_changed_during_recording'] += 1
+        self.path_hashes[name] = digest
+        destination = self.csv_path.with_name(f'{self.csv_path.stem}_{name}_{digest[:12]}.json')
+        destination.write_text(json.dumps(snapshot, indent=2) + '\n', encoding='utf-8')
 
     def _index_cb(self, msg: Int32) -> None:
         self.path_index = max(0, int(msg.data))
-        if self.path is not None and self.path.poses and self.path_index >= len(self.path.poses) - 1:
+        if (not self.state_topic and self.path_end_time is None and self.path is not None and self.path.poses
+                and self.path_index >= len(self.path.poses) - 1):
             self.path_end_time = self.get_clock().now()
+
+    def _state_cb(self, msg: String) -> None:
+        try:
+            state = validate_state(json.loads(msg.data))
+        except (ValueError, TypeError, KeyError, OverflowError):
+            self.invalid['invalid_trajectory_state'] += 1
+            return
+        if self.states and state['stamp_ns'] <= self.states[-1]['stamp_ns']:
+            self.invalid['out_of_order_trajectory_state'] += 1
+            return
+        paused = state['velocity_override'] == 0
+        if state['start_enabled'] and (not self._state_gate or paused != self._state_paused):
+            self.episode += 1
+        self._state_gate = state['start_enabled']
+        self.recording_enabled = state['start_enabled']
+        self._state_paused = paused
+        state['episode'] = self.episode
+        self.states.append(state)
+        self.saw_disabled_state |= not state['start_enabled']
+        stamp = rclpy.time.Time(nanoseconds=state['stamp_ns'], clock_type=self.get_clock().clock_type)
+        if state['start_enabled'] and self.start_time is None:
+            self.start_time = stamp
+            self.recording_started_before_gate = self.saw_disabled_state
+        if state['path_complete'] and self.path_end_time is None:
+            self.path_end_time = stamp
+        self._drain_pending()
+
+    def _drain_pending(self) -> None:
+        now_ns = self.get_clock().now().nanoseconds
+        while self.pending_poses:
+            actual, receipt_ns = self.pending_poses[0]
+            stamp_ns = actual.header.stamp.sec * 1_000_000_000 + actual.header.stamp.nanosec
+            # Wait for a state at/after the sample so delayed transport cannot
+            # silently select an older reference. Use the last causal target:
+            # this is the discrete commanded reference, not a future target.
+            if not self.states or self.states[-1]['stamp_ns'] < stamp_ns:
+                if (now_ns - receipt_ns) / 1e9 <= float(self.get_parameter('max_pose_age').value):
+                    break
+                self.pending_poses.popleft()
+                self.invalid['missing_synchronized_reference'] += 1
+                continue
+            self.pending_poses.popleft()
+            state = next((s for s in reversed(self.states) if s['stamp_ns'] <= stamp_ns), None)
+            if state is None:
+                self.invalid['reference_buffer_miss'] += 1
+                continue
+            if (stamp_ns - state['stamp_ns']) / 1e9 > float(self.get_parameter('max_reference_age').value):
+                self.invalid['stale_reference'] += 1
+                continue
+            self._record_pose(actual, state, receipt_ns)
 
     def _trajectory_phase_cb(self, msg: Float32) -> None:
         self.trajectory_phase = max(0.0, min(1.0, float(msg.data)))
@@ -186,7 +282,7 @@ class TrajectoryAccuracyMonitor(Node):
 
     def _start_cb(self, msg: Bool) -> None:
         self.recording_enabled = bool(msg.data)
-        if self.recording_enabled and self.start_time is None:
+        if not self.state_topic and self.recording_enabled and self.start_time is None:
             self.start_time = self.get_clock().now()
 
     def _completion_cb(self, msg: Bool) -> None:
@@ -260,24 +356,48 @@ class TrajectoryAccuracyMonitor(Node):
         return (goal.x - start.x, goal.y - start.y, goal.z - start.z)
 
     def _pose_cb(self, actual: PoseStamped) -> None:
-        if not self.recording_enabled:
+        if self.state_topic:
+            if len(self.pending_poses) >= 1000:
+                self.pending_poses.popleft()
+                self.invalid['pending_buffer_overflow'] += 1
+            self.pending_poses.append((actual, self.get_clock().now().nanoseconds))
+            self._drain_pending()
+        else:
+            self._record_pose(actual)
+
+    def _record_pose(self, actual, state=None, receipt_ns=None):
+        if not (state['start_enabled'] if state else self.recording_enabled):
             self.invalid['before_start_condition'] += 1
             return
-        if not self._recording_window_open():
+        if not state and not self._recording_window_open():
             self.invalid['after_path_end'] += 1
             return
         max_pose_age = float(self.get_parameter('max_pose_age').value)
         if not (actual.header.stamp.sec or actual.header.stamp.nanosec):
             self.invalid['unstamped_actual_pose'] += 1
             return
-        age = (self.get_clock().now() - rclpy.time.Time.from_msg(actual.header.stamp)).nanoseconds / 1e9
+        stamp_ns = actual.header.stamp.sec * 1_000_000_000 + actual.header.stamp.nanosec
+        receipt_ns = receipt_ns if receipt_ns is not None else self.get_clock().now().nanoseconds
+        age = (receipt_ns - stamp_ns) / 1e9
         if age > max_pose_age:
             self.invalid['stale_actual_pose'] += 1
             return
+        if age < -0.05:
+            self.invalid['future_actual_pose'] += 1
+            return
+        if self.last_actual_stamp_ns is not None and stamp_ns <= self.last_actual_stamp_ns:
+            self.invalid['duplicate_or_out_of_order_actual_pose'] += 1
+            return
+        if state and state['path_complete'] and self.path_end_time is not None:
+            end_ns = (self.completion_time or self.path_end_time).nanoseconds
+            grace = 'post_end_grace_seconds' if self.completion_time else 'max_post_end_seconds'
+            if (stamp_ns - end_ns) / 1e9 > float(self.get_parameter(grace).value):
+                self.invalid['after_path_end'] += 1
+                return
         if self.path is None or not self.path.poses:
             self.invalid['missing_path'] += 1
             return
-        index = self.path_index if self.path_index is not None else self.fixed_path_index
+        index = state['path_index'] if state else (self.path_index if self.path_index is not None else self.fixed_path_index)
         if index is None:
             if self.reference_pose is None:
                 self.invalid['missing_path_index'] += 1
@@ -286,13 +406,33 @@ class TrajectoryAccuracyMonitor(Node):
         if index >= len(self.path.poses):
             self.invalid['path_index_out_of_range'] += 1
             return
-        reference, reference_source = self._reference_for_sample(index)
+        if state:
+            data = state['base_reference' if self.mode == 'base' else 'arm_reference']
+            if data is None or state['path_points'] != len(self.path.poses):
+                self.invalid['reference_path_mismatch'] += 1
+                return
+            reference = PoseStamped()
+            reference.header.frame_id = data['frame_id']
+            p, q = reference.pose.position, reference.pose.orientation
+            p.x, p.y, p.z = data['position']
+            q.x, q.y, q.z, q.w = data['orientation']
+            reference_source = 'synchronized_state'
+        else:
+            reference, reference_source = self._reference_for_sample(index)
         actual_frame = actual.header.frame_id.strip().lstrip('/')
         reference_frame = (reference.header.frame_id or self.path.header.frame_id).strip().lstrip('/')
         required_frame = str(self.get_parameter('required_frame').value).strip().lstrip('/')
         if (not actual_frame or not reference_frame or actual_frame != reference_frame or
                 (required_frame and actual_frame != required_frame)):
             self.invalid['frame_mismatch'] += 1
+            return
+        try:
+            angular_error = orientation_error(actual.pose.orientation, reference.pose.orientation)
+            if not all(math.isfinite(v) for v in (actual.pose.position.x, actual.pose.position.y,
+                                                  actual.pose.position.z, angular_error)):
+                raise ValueError('nonfinite actual pose')
+        except ValueError:
+            self.invalid['invalid_actual_pose'] += 1
             return
         error = compute_pose_error(actual.pose, reference.pose)
         previous = self.path.poses[max(0, index - 1)].pose
@@ -309,9 +449,9 @@ class TrajectoryAccuracyMonitor(Node):
         row = {
             'stamp_sec': float(stamp.sec) + float(stamp.nanosec) / 1e9,
             'path_index': index,
-            'trajectory_phase': self.trajectory_phase,
-            'velocity_override': self.velocity_override,
-            'desired_speed': self.desired_speed,
+            'trajectory_phase': state['segment_phase'] if state else self.trajectory_phase,
+            'velocity_override': state['velocity_override'] if state else self.velocity_override,
+            'desired_speed': state['desired_speed'] if state else self.desired_speed,
             'reference_source': reference_source,
             'actual_x': actual.pose.position.x,
             'actual_y': actual.pose.position.y,
@@ -323,8 +463,26 @@ class TrajectoryAccuracyMonitor(Node):
             'along_track_error': tracking.along_track,
             'lateral_error': tracking.lateral,
             'spray_axis_error': tracking.spray_axis,
+            'session_id': str(self.get_parameter('session_id').value),
+            'episode': state['episode'] if state else 1,
+            'measurement_window': ('settling' if index == len(self.path.poses) - 1 else
+                                   'paused' if state and state['velocity_override'] == 0 else 'active_tracking'),
+            'path_progress': (index + (state['segment_phase'] if state else (self.trajectory_phase or 0.0))) / max(1, len(self.path.poses) - 1),
+            'actual_stamp_ns': stamp_ns, 'receipt_stamp_ns': receipt_ns, 'sample_age': age,
+            'reference_stamp_ns': state['stamp_ns'] if state else None,
+            'reference_age': (stamp_ns - state['stamp_ns']) / 1e9 if state else None,
+            'reference_planned_stamp_sec': (data['planned_stamp_sec'] if state else
+                reference.header.stamp.sec + reference.header.stamp.nanosec / 1e9),
+            'actual_frame': actual_frame, 'reference_frame': reference_frame,
+            'orientation_error': angular_error,
             **reach,
         }
+        for prefix, pose in (('actual', actual.pose), ('target', reference.pose)):
+            for axis in ('x', 'y', 'z'):
+                row[f'{prefix}_{axis}'] = getattr(pose.position, axis)
+            for axis in ('x', 'y', 'z', 'w'):
+                row[f'{prefix}_q{axis}'] = getattr(pose.orientation, axis)
+        self.last_actual_stamp_ns = stamp_ns
         self.samples.append(row)
         self.writer.writerow(row)
         self.csv_file.flush()
@@ -342,6 +500,9 @@ class TrajectoryAccuracyMonitor(Node):
             self.spray_pub.publish(Float32(data=tracking.spray_axis))
 
     def write_summary(self) -> None:
+        self._drain_pending()
+        self.invalid['unmatched_at_shutdown'] += len(self.pending_poses)
+        self.pending_poses.clear()
         distances = [float(row['absolute_error']) for row in self.samples]
         endpoint_rows = self.samples[-1:] if self.samples else []
         trajectory_duration = None
@@ -358,7 +519,8 @@ class TrajectoryAccuracyMonitor(Node):
             'axis_bias': {axis: (sum(float(row[axis]) for row in self.samples) / len(self.samples) if self.samples else 0.0)
                           for axis in ('dx', 'dy', 'dz')},
             'path_index_alignment': self._path_index_alignment(),
-            'reference_source': ('continuous' if self.reference_pose is not None else 'indexed'),
+            'reference_source': ('synchronized_state' if self.state_topic else
+                                 'continuous' if self.reference_pose is not None else 'indexed'),
             'trajectory_duration_seconds': trajectory_duration,
             'endpoint_error': summarize_distances(float(row['absolute_error']) for row in endpoint_rows),
             'command_twist': {
@@ -376,6 +538,33 @@ class TrajectoryAccuracyMonitor(Node):
             'joint_velocity': {
                 name: summarize_distances(values)
                 for name, values in sorted(self.joint_velocities.items())
+            },
+            'schema_version': 2,
+            'session_id': str(self.get_parameter('session_id').value),
+            'synchronization': ('causal_source_state' if self.state_topic else 'latest_received'),
+            'parameters': {name: self.get_parameter(name).value for name in self.list_parameters([], 0).names},
+            'path_hashes': self.path_hashes, 'path_changed': self.path_changed,
+            'windows': {
+                window: summarize_window([r for r in self.samples if r['measurement_window'] == window],
+                                         float(self.get_parameter('max_sample_gap').value))
+                for window in ('active_tracking', 'paused', 'settling')
+            },
+            'endpoint_window': summarize_window([
+                r for r in self.samples if r['measurement_window'] == 'settling'
+                and r['stamp_sec'] >= self.samples[-1]['stamp_sec'] - 1.0
+            ], float(self.get_parameter('max_sample_gap').value)) if self.samples else {},
+            'reached_path_end': self.path_end_time is not None,
+            'recording_started_before_gate': self.recording_started_before_gate if self.state_topic else None,
+            'observed_desired_speeds': sorted({r['desired_speed'] for r in self.samples if r['desired_speed'] is not None}),
+            'observed_velocity_overrides': sorted({r['velocity_override'] for r in self.samples if r['velocity_override'] is not None}),
+            'observed_start_index': self.samples[0]['path_index'] if self.samples else None,
+            'sampling': {
+                'inter_sample_seconds': summarize_distances(
+                    b['stamp_sec'] - a['stamp_sec'] for a, b in zip(self.samples, self.samples[1:])
+                    if a['episode'] == b['episode']),
+                'reference_age': summarize_distances(
+                    r['reference_age'] for r in self.samples if r['reference_age'] is not None),
+                'sample_age': summarize_distances(max(0.0, r['sample_age']) for r in self.samples),
             },
         }
         if self.mode == 'tcp':
@@ -411,7 +600,8 @@ class TrajectoryAccuracyMonitor(Node):
             'planned_arm_base_z': 0.0,
             'planned_arm_base_planar_radius': 0.0,
         }
-        if self.mode != 'tcp' or self.base_path is None or index >= len(self.base_path.poses):
+        if (not bool(self.get_parameter('evaluate_reachability').value)
+                or self.mode != 'tcp' or self.base_path is None or index >= len(self.base_path.poses)):
             return unavailable
         base = self.base_path.poses[index].pose
         offset = list(self.get_parameter('arm_base_offset').value)
@@ -472,6 +662,8 @@ class TrajectoryAccuracyMonitor(Node):
 
     def _path_index_alignment(self) -> dict[str, float | int | bool | str]:
         """Diagnose a constant index lag without overwriting primary metrics."""
+        if self.state_topic:
+            return {'available': False, 'reason': 'Index-only lag diagnostic is not applicable to synchronized segment references.'}
         if self.path is None or not self.samples:
             return {'available': False, 'reason': 'No path or valid samples.'}
         limit = max(0, int(self.get_parameter('max_index_offset').value))
@@ -508,7 +700,7 @@ def main(args=None) -> None:
     try:
         node = TrajectoryAccuracyMonitor()
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         if node is not None:

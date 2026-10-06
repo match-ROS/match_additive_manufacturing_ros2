@@ -880,7 +880,20 @@ class OperatorWindow(QMainWindow):
         self.accuracy_phase_combo = QComboBox()
         self.accuracy_phase_combo.addItem('Baseline', 'baseline')
         self.accuracy_phase_combo.addItem('Tuned', 'tuned')
+        self.accuracy_phase_combo.setCurrentIndex(max(0, self.accuracy_phase_combo.findData(
+            self._config.get('accuracy_phase', 'baseline'))))
         self.accuracy_report_button = QPushButton('Summarize Accuracy Runs')
+        self.paper_accuracy_button = QPushButton('Record Paper Dataset')
+        self.paper_report_button = QPushButton('Summarize Paper Datasets')
+        self.paper_accuracy_button.setToolTip(
+            'Start before Start Following. Records base and deposition poses, '
+            'targets, raw ROS bag and metadata. Press again after settling to finalize.')
+        self.paper_output_directory = QLineEdit(str(self._config.get(
+            'paper_output_directory', Path.home() / 'am_accuracy_runs')))
+        self.paper_condition = QLineEdit(str(self._config.get('paper_condition', '')))
+        self.paper_condition.setPlaceholderText('Condition label (defaults to accuracy phase)')
+        self.paper_notes = QLineEdit(str(self._config.get('paper_notes', '')))
+        self.paper_notes.setPlaceholderText('Sensor/calibration ID, payload, surface, trial notes')
         self.default_velocity_checkbox = QCheckBox('Default velocity')
         self.default_velocity_checkbox.setChecked(self._configured_default_velocity_enabled())
         self.default_velocity_spin = QDoubleSpinBox()
@@ -905,6 +918,13 @@ class OperatorWindow(QMainWindow):
         component_layout.addWidget(QLabel('Accuracy phase'), 6, 0)
         component_layout.addWidget(self.accuracy_phase_combo, 6, 1)
         component_layout.addWidget(self.accuracy_report_button, 6, 2)
+        component_layout.addWidget(self.paper_accuracy_button, 7, 0)
+        component_layout.addWidget(self.paper_report_button, 9, 0, 1, 2)
+        component_layout.addWidget(QLabel('Paper output directory'), 7, 1)
+        component_layout.addWidget(self.paper_output_directory, 7, 2, 1, 2)
+        component_layout.addWidget(QLabel('Condition / notes'), 8, 0)
+        component_layout.addWidget(self.paper_condition, 8, 1)
+        component_layout.addWidget(self.paper_notes, 8, 2, 1, 2)
         component_layout.addWidget(self.default_velocity_checkbox, 4, 0)
         component_layout.addWidget(self.default_velocity_spin, 4, 1)
 
@@ -1055,6 +1075,8 @@ class OperatorWindow(QMainWindow):
         self.base_accuracy_monitor_button.clicked.connect(lambda: self._invoke_service_action('base_accuracy'))
         self.tcp_accuracy_monitor_button.clicked.connect(lambda: self._invoke_service_action('tcp_accuracy'))
         self.accuracy_report_button.clicked.connect(lambda: self._invoke_service_action('accuracy_report'))
+        self.paper_accuracy_button.clicked.connect(lambda: self._invoke_service_action('paper_accuracy'))
+        self.paper_report_button.clicked.connect(lambda: self._invoke_service_action('paper_report'))
         self.move_base_button.clicked.connect(lambda: self._invoke_service_action('move_base'))
         self.move_arm_button.clicked.connect(lambda: self._invoke_service_action('move_arm'))
         self.start_following_button.clicked.connect(lambda: self._invoke_service_action('start_following'))
@@ -1140,11 +1162,26 @@ class OperatorWindow(QMainWindow):
 
     def _invoke_service_action(self, action: str) -> None:
         """Adapter from the retained Qt view to the shared control layer."""
-        if action in {'base_accuracy', 'tcp_accuracy'}:
+        if action in {'base_accuracy', 'tcp_accuracy', 'paper_accuracy'}:
             self._config['accuracy_phase'] = str(self.accuracy_phase_combo.currentData())
+        if action in {'paper_accuracy', 'paper_report'}:
+            try:
+                self.service.update_config({
+                    'paper_output_directory': self.paper_output_directory.text().strip(),
+                    'paper_condition': self.paper_condition.text().strip(),
+                    'paper_notes': self.paper_notes.text().strip(),
+                })
+            except (ValueError, OSError) as exc:
+                QMessageBox.warning(self, 'Recording settings', str(exc))
+                return
         self._config['path_index'] = int(self.index_spin.value())
         self._config['original_arm_index'] = int(self._original_arm_path_index())
-        self.service.action(action)
+        try:
+            self.service.action(action)
+        except (ValueError, OSError) as exc:
+            self._append_process_output(action, str(exc))
+            QMessageBox.warning(self, 'Action failed', str(exc))
+            return
         self._launch_all_active = self.service._launch_all_active
         if action == 'calculate_path_transform':
             transform = self._config.get('path_transform', {})
@@ -2510,6 +2547,10 @@ class OperatorWindow(QMainWindow):
         self._set_path_index_button_state()
         self._set_current_tcp_pose_button_state()
         self._set_accuracy_monitor_button_states()
+        self._set_process_toggle_button(self.paper_accuracy_button, 'paper_accuracy',
+                                        'Stop Paper Recording', 'Record Paper Dataset')
+        self._set_process_toggle_button(self.paper_report_button, 'paper_report',
+                                        'Summarizing Paper Datasets', 'Summarize Paper Datasets')
         self._set_arm_controllers_button_state()
         self._set_base_follower_button_state()
         self._set_arm_follower_button_state()
@@ -2584,13 +2625,13 @@ class OperatorWindow(QMainWindow):
     def _set_accuracy_monitor_button_states(self) -> None:
         self._set_process_toggle_button(
             self.base_accuracy_monitor_button,
-            BASE_ACCURACY_MONITOR_NAME,
+            'base_accuracy',
             'Stop Base Recording',
             'Record Base Accuracy',
         )
         self._set_process_toggle_button(
             self.tcp_accuracy_monitor_button,
-            TCP_ACCURACY_MONITOR_NAME,
+            'tcp_accuracy',
             'Stop TCP Recording',
             'Record TCP Accuracy',
         )

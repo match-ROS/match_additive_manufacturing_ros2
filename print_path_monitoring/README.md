@@ -64,3 +64,85 @@ as a possible TCP-error cause.
 For static smoke tests without a live path-index publisher, set
 `fixed_path_index` to a non-negative index. A live `path_index_topic` message
 still takes precedence when it is available.
+
+## Paper datasets
+
+The desktop and web operator GUIs provide **Record Paper Dataset** and
+**Summarize Paper Datasets**. The default persistent output root is
+`~/am_accuracy_runs`; set **Paper output directory** to a campaign directory.
+Use one session per trial and set a condition label and trial notes before starting.
+
+1. Launch the trajectory/pose stack and position the robot at the selected start index.
+2. Set the phase, condition, output directory and trial notes. Include the sensor
+   calibration identifier, payload and environment in the notes.
+3. Press **Record Paper Dataset** and wait for the console to report that the bag
+   is recording. The recorder waits for fresh paths, trajectory state and sensor poses.
+4. Press **Start Following**. Both measurements use the same source start gate.
+   A recording started during motion is a partial trial.
+5. Allow the endpoint to settle; press **Stop Paper Recording** to finalize files.
+   Stopping the recording does not change motion commands.
+6. Repeat the trial and conditions, then press **Summarize Paper Datasets**.
+
+Each `run_<UTC timestamp>/` directory contains:
+
+- `manifest.json`: session/condition, units, configuration, effective platform
+  settings, commands, git revision/dirty status, timestamps and finalization status.
+- `base.csv` and `tcp.csv`, plus JSON summaries: sensor/receipt/reference timestamps,
+  full actual/target poses, frames, index/segment phase, speed/override, Cartesian
+  and angular errors, quality counters, and active/paused/settling window statistics.
+- Hashed snapshots of the exact processed reference paths, and copies/hashes of
+  exported source files when available.
+- `runtime_parameters/`: live ROS parameter dumps and explicit errors for nodes
+  that could not be queried. Parameters are captured at startup; keep
+  gains/calibration fixed during a trial.
+- `raw/`: the rosbag2 recording of poses, external measurement topics, odometry,
+  paths, reference/state messages, TF, commands, joints, spray distance and events.
+  `bag_qos.yaml` and the manifest preserve the recording configuration.
+
+The existing reference headers contain **planned trajectory time**, not live
+measurement time. `/trajectory_state` (`std_msgs/String`, JSON schema version 1)
+therefore carries one atomic snapshot with live ROS `stamp_ns`, both references,
+path index, segment phase, start gate and speeds. After receiving a state at/after
+the sensor sample, the monitor selects the last source state at/before that sample.
+It measures the discrete commanded target with a maximum reference age of 0.1 s;
+it does not interpolate a future target or compensate away tracking lag. CSV
+`reference_age` makes the timing resolution visible. All sources must use the same
+ROS clock (and synchronized hardware clocks); simulation sessions use `/clock`.
+
+TCP measurements use `/measured_deposition_pose`, emitted once per new nozzle
+sample with its sensor timestamp and current smoothed stand-off distance.
+The periodic `/current_deposition_pose` remains the control input. The deposition
+point is computed from nozzle pose/calibration and stand-off; these measurements
+do not directly measure deposited material or final surface geometry.
+Estimated/odometry/fallback sources remain identifiable in the manifest and raw bag.
+Planar reach classification is disabled in paper sessions because mount geometry
+must be established separately rather than assumed from defaults.
+
+Summaries retain sample-weighted metrics for compatibility and provide separate
+time-weighted active/paused/settling metrics. Time weighting holds each accepted
+error until the next accepted sample, excludes gaps over 0.25 s (`max_sample_gap`) and does not bridge
+pause/resume episodes. A 100-bin progress diagnostic weights covered index/phase
+bins equally; it is not an arc-length metric. Endpoint statistics use the final
+one-second settling window, in addition to the legacy last-sample endpoint metric.
+Check sample timestamps, gaps and coverage alongside errors.
+
+The paper report groups conditions by platform, processed path hashes, frame,
+sensor source, configured speed and initial index. It excludes unfinished bags,
+uncompleted paths, changed paths, missing active duration, and recordings below
+95% accepted samples. Sessions started after motion and bags missing required
+measurement topics are also excluded. Exclusions remain in the JSON report. Each trial has equal
+weight; 95% percentile bootstrap intervals resample independent trial metrics
+(2000 resamples, fixed seed), never individual pose samples. A single trial has no
+confidence interval. Keep tuning trials separate from final evaluation trials.
+
+Reports can also be generated without the GUI:
+
+```bash
+ros2 run print_path_monitoring paper_accuracy_report \
+  --input-directory ~/am_accuracy_runs
+```
+
+Outputs are `paper_accuracy_report.json` (including per-run values and exclusions)
+and `paper_accuracy_report.md`. Raw bags can be replayed with
+`ros2 bag play <run directory>/raw --clock`, using an isolated evaluation domain
+and `use_sim_time:=true` on monitors. Do not replay command topics into a live robot.

@@ -18,6 +18,7 @@ class ManagedProcess:
     process: Optional[subprocess.Popen] = None
     output: Deque[str] = field(default_factory=lambda: deque(maxlen=500))
     return_code: Optional[int] = None
+    shutdown_timeout: float = 5.0
     _lock: Lock = field(default_factory=Lock)
 
     def start(self) -> None:
@@ -48,7 +49,7 @@ class ManagedProcess:
             self.return_code = code
         return code
 
-    def stop(self, timeout: float = 5.0) -> None:
+    def stop(self, timeout: Optional[float] = None) -> None:
         with self._lock:
             process = self.process
             if process is None:
@@ -58,7 +59,7 @@ class ManagedProcess:
                 return
             try:
                 os.killpg(process.pid, signal.SIGTERM)
-                process.wait(timeout=timeout)
+                process.wait(timeout=self.shutdown_timeout if timeout is None else timeout)
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
@@ -90,13 +91,15 @@ class ProcessRegistry:
         self._processes: dict[str, ManagedProcess] = {}
         self._output_callback = output_callback
 
-    def start(self, name: str, command: List[str], replace: bool = True) -> ManagedProcess:
+    def start(self, name: str, command: List[str], replace: bool = True,
+              shutdown_timeout: float = 5.0) -> ManagedProcess:
         existing = self._processes.get(name)
         if existing is not None and existing.is_running():
             if not replace:
                 return existing
             existing.stop()
-        managed = ManagedProcess(name=name, command=command, output_callback=self._output_callback)
+        managed = ManagedProcess(name=name, command=command, output_callback=self._output_callback,
+                                 shutdown_timeout=shutdown_timeout)
         self._processes[name] = managed
         managed.start()
         return managed

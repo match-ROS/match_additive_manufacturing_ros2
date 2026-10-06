@@ -9,6 +9,7 @@ progress through that segment.
 """
 
 from copy import deepcopy
+import json
 from typing import Optional
 
 import numpy as np
@@ -17,7 +18,7 @@ from geometry_msgs.msg import PoseStamped, Vector3
 from nav_msgs.msg import Path
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSProfile, QoSReliabilityPolicy
-from std_msgs.msg import Bool, Float32, Int32
+from std_msgs.msg import Bool, Float32, Int32, String
 
 
 def stamp_seconds(pose: PoseStamped) -> float:
@@ -157,6 +158,7 @@ class IncrementPathIndex(Node):
         self.declare_parameter('processed_path_topic', '/ur_path_tracking')
         self.declare_parameter('processed_base_path_topic', '/base_path_tracking')
         self.declare_parameter('phase_topic', '/trajectory_phase')
+        self.declare_parameter('trajectory_state_topic', '/trajectory_state')
         self.declare_parameter('desired_speed_topic', '/desired_arm_speed')
         self.declare_parameter('desired_arm_speed', -1.0)
         self.declare_parameter('control_rate', 50.0)
@@ -200,6 +202,8 @@ class IncrementPathIndex(Node):
         self.processed_path_pub = self.create_publisher(Path, str(self.get_parameter('processed_path_topic').value), latch_qos)
         self.processed_base_path_pub = self.create_publisher(Path, str(self.get_parameter('processed_base_path_topic').value), latch_qos)
         self.phase_pub = self.create_publisher(Float32, str(self.get_parameter('phase_topic').value), latch_qos)
+        self.state_pub = self.create_publisher(
+            String, str(self.get_parameter('trajectory_state_topic').value), 50)
 
         self.additional_goal_pose_pub = None
         additional_goal_path_topic = str(self.get_parameter('additional_goal_path_topic').value).strip()
@@ -357,10 +361,13 @@ class IncrementPathIndex(Node):
 
     def _legacy_tick(self) -> None:
         if self.path is None or not self.path.poses or not self.start_enabled:
+            self._publish_measurement_state()
             return
         if self.path_index < len(self.path.poses) - 1:
             self.path_index += 1
             self._publish_state()
+        else:
+            self._publish_measurement_state()
 
     def _segment_duration(self) -> float:
         if self.path is None or self.path_index >= len(self.path.poses) - 1:
@@ -380,6 +387,7 @@ class IncrementPathIndex(Node):
         dt = max(0.0, (now - self._last_tick).nanoseconds / 1e9)
         self._last_tick = now
         if not self._trajectory_valid or self.path is None or not self.path.poses or not self.start_enabled or self.completed:
+            self._publish_measurement_state()
             return
         if self.velocity_override > 0.0:
             remaining = dt * self.velocity_override
@@ -425,6 +433,40 @@ class IncrementPathIndex(Node):
         if force or self.path_index != self._last_published_index:
             self.index_pub.publish(Int32(data=self.path_index))
             self._last_published_index = self.path_index
+        self._publish_measurement_state()
+
+    def _publish_measurement_state(self) -> None:
+        """Publish one atomic measurement snapshot with live ROS time.
+
+        Reference PoseStamped headers retain the exported trajectory time used
+        by controllers. This separate message provides the publication time,
+        poses and progress together, including while stopped or at the endpoint.
+        """
+        if not self._trajectory_valid or self.path is None:
+            return
+
+        def pose_data(path):
+            reference = self._reference(path)
+            if reference is None:
+                return None
+            p, q = reference.pose.position, reference.pose.orientation
+            return {'frame_id': reference.header.frame_id or path.header.frame_id,
+                    'planned_stamp_sec': stamp_seconds(reference),
+                    'position': [p.x, p.y, p.z],
+                    'orientation': [q.x, q.y, q.z, q.w]}
+
+        stamp = self.get_clock().now().nanoseconds
+        state = {
+            'schema_version': 1, 'stamp_ns': stamp,
+            'path_index': self.path_index, 'segment_phase': self.phase,
+            'path_points': len(self.path.poses),
+            'start_enabled': self.start_enabled,
+            'path_complete': self.path_index >= len(self.path.poses) - 1,
+            'velocity_override': self.velocity_override,
+            'desired_speed': self.desired_arm_speed, 'progress_mode': self.progress_mode,
+            'arm_reference': pose_data(self.path), 'base_reference': pose_data(self.base_path),
+        }
+        self.state_pub.publish(String(data=json.dumps(state, allow_nan=False)))
 
 
 def main(args=None) -> None:

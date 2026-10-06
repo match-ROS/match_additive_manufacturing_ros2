@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Publish a measured nozzle pose or derive it from the base and arm pose."""
 from typing import Optional
+from copy import deepcopy
 
 from geometry_msgs.msg import PoseStamped
 import rclpy
@@ -87,7 +88,7 @@ class PoseStampedAdapter(Node):
         try:
             if source_frame == self.target_frame:
                 transformed = PoseStamped()
-                transformed.header = msg.header
+                transformed.header = deepcopy(msg.header)
                 transformed.pose = msg.pose
             else:
                 transform = self.buffer.lookup_transform(
@@ -95,7 +96,10 @@ class PoseStampedAdapter(Node):
                 transformed = PoseStamped()
                 transformed.pose = do_transform_pose(msg.pose, transform)
             transformed.header.frame_id = self.target_frame
-            transformed.header.stamp = self.get_clock().now().to_msg()
+            # Preserve measurement time through the frame conversion. Receipt
+            # freshness is tracked separately by _publish; relabeling an old
+            # sensor pose with now would conceal transport delay in datasets.
+            transformed.header.stamp = deepcopy(msg.header.stamp)
         except TransformException as exc:
             self.get_logger().warn(f'Waiting for TF {self.target_frame} <- {source_frame}: {exc}',
                                    throttle_duration_sec=2.0)

@@ -11,6 +11,13 @@ transient-local references for both paths:
 - `/arm_trajectory_reference`
 - `/base_trajectory_reference`
 
+For scientific recordings, `/trajectory_state` publishes both references and their
+index/segment phase in one JSON message with live ROS time. Existing reference
+headers continue to represent exported trajectory time. State publication continues
+while paused and at the endpoint. `/measured_deposition_pose` publishes one computed
+deposition pose per nozzle input, preserving its timestamp; the periodic control
+pose is still `/current_deposition_pose`.
+
 For segment `i -> i + 1`, both references use the same phase `alpha`:
 
 ```text

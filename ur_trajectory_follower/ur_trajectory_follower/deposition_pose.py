@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 
 from geometry_msgs.msg import PoseStamped
 import rclpy
@@ -27,13 +28,13 @@ def deposition_pose_from_nozzle(nozzle_pose: PoseStamped, distance: float) -> Po
         raise ValueError('nozzle pose has an invalid orientation quaternion')
     axis = quaternion_matrix(quaternion)[0:3, 2]
     result = PoseStamped()
-    result.header = nozzle_pose.header
+    result.header = deepcopy(nozzle_pose.header)
     # ROS Python message assignment aliases the nested message object.  Copy
     # the fields explicitly so periodic output never modifies the cached input.
     result.pose.position.x = nozzle_pose.pose.position.x + float(axis[0]) * float(distance)
     result.pose.position.y = nozzle_pose.pose.position.y + float(axis[1]) * float(distance)
     result.pose.position.z = nozzle_pose.pose.position.z + float(axis[2]) * float(distance)
-    result.pose.orientation = nozzle_pose.pose.orientation
+    result.pose.orientation = deepcopy(nozzle_pose.pose.orientation)
     return result
 
 
@@ -44,6 +45,7 @@ class DepositionPose(Node):
         super().__init__('deposition_pose')
         self.declare_parameter('nozzle_pose_topic', '/current_nozzle_tip_pose')
         self.declare_parameter('deposition_pose_topic', '/current_deposition_pose')
+        self.declare_parameter('measurement_pose_topic', '/measured_deposition_pose')
         self.declare_parameter('spray_distance_topic', '/spray_distance')
         self.declare_parameter('smoothed_spray_distance_topic', '/spray_distance_smoothed')
         self.declare_parameter('spray_distance_initial', 0.0)
@@ -57,6 +59,8 @@ class DepositionPose(Node):
         self.last_tick = self.get_clock().now()
         self.pose_pub = self.create_publisher(
             PoseStamped, str(self.get_parameter('deposition_pose_topic').value), 10)
+        self.measurement_pub = self.create_publisher(
+            PoseStamped, str(self.get_parameter('measurement_pose_topic').value), 10)
         self.distance_pub = self.create_publisher(
             Float32, str(self.get_parameter('smoothed_spray_distance_topic').value), 10)
         self.create_subscription(
@@ -68,6 +72,12 @@ class DepositionPose(Node):
 
     def _nozzle_cb(self, msg: PoseStamped) -> None:
         self.last_nozzle_pose = msg
+        try:
+            measurement = deposition_pose_from_nozzle(msg, self.smoothed_distance)
+        except ValueError as exc:
+            self.get_logger().warn(str(exc), throttle_duration_sec=2.0)
+            return
+        self.measurement_pub.publish(measurement)
 
     def _distance_cb(self, msg: Float32) -> None:
         if math.isfinite(float(msg.data)):
