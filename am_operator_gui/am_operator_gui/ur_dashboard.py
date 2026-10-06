@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 DASHBOARD_NAMESPACE = '/robot/arm/dashboard_client'
 ARM_CONTROLLER_MANAGER = '/robot/arm/controller_manager'
+ARM_SAFETY_MODE_TOPIC = '/robot/arm/io_and_status_controller/safety_mode'
 FORWARD_VELOCITY_CONTROLLER = 'forward_velocity_controller'
 DASHBOARD_PERIOD_S = 10.0
 CONTROLLER_PERIOD_S = 30.0
@@ -101,6 +102,10 @@ class UrStatusMonitor:
         self._next_controller = 0.0
         self._dashboard_index = 0
         self._dashboard_values: dict[str, Any] = {}
+        self._safety_subscription = None
+        self._topic_safety_mode = None
+        self._topic_safety_checked_at = 0.0
+        self._topic_safety_available = False
         self._node = None
         self._executor = None
         self._thread: Thread | None = None
@@ -119,6 +124,8 @@ class UrStatusMonitor:
             import rclpy
             from controller_manager_msgs.srv import ListControllers
             from rclpy.executors import SingleThreadedExecutor
+            from rclpy.qos import qos_profile_sensor_data
+            from ur_dashboard_msgs.msg import SafetyMode
             from ur_dashboard_msgs.srv import (
                 GetLoadedProgram, GetProgramState, GetRobotMode, GetSafetyMode, IsInRemoteControl,
             )
@@ -127,6 +134,11 @@ class UrStatusMonitor:
             node = rclpy.create_node('am_operator_ur_status_monitor')
             executor = SingleThreadedExecutor()
             executor.add_node(node)
+            # Receive changes promptly without increasing dashboard service traffic.
+            # Sensor-data QoS also accepts older volatile/best-effort UR publishers.
+            self._safety_subscription = node.create_subscription(
+                SafetyMode, ARM_SAFETY_MODE_TOPIC, self._safety_mode_callback, qos_profile_sensor_data,
+            )
             queries = (
                 ('loaded_program', 'get_loaded_program', GetLoadedProgram, lambda response: response.program_name),
                 ('program_state', 'program_state', GetProgramState, lambda response: response.state.state),
@@ -180,7 +192,29 @@ class UrStatusMonitor:
 
     def dashboard_snapshot(self) -> dict[str, Any]:
         with self._lock:
-            return dict(self._dashboard, checking=self._dashboard_in_flight)
+            snapshot = dict(self._dashboard, checking=self._dashboard_in_flight)
+            snapshot['safety_mode_available'] = bool(snapshot.get('available') and not snapshot.get('stale'))
+            snapshot['safety_mode_source'] = 'dashboard'
+            # A dashboard query may complete after a newer topic event. Do not
+            # allow its older NORMAL value to clear a newly reported stop.
+            if self._topic_safety_mode is not None and (
+                self._topic_safety_checked_at >= snapshot.get('safety_mode_checked_at', 0.0)
+            ):
+                snapshot.update(
+                    safety_mode=self._topic_safety_mode,
+                    safety_mode_available=self._topic_safety_available,
+                    safety_mode_source='topic',
+                )
+            return snapshot
+
+    def _safety_mode_callback(self, message: Any) -> None:
+        mode = SAFETY_MODES.get(int(message.mode))
+        if mode is None:
+            return
+        with self._lock:
+            self._topic_safety_mode = mode
+            self._topic_safety_checked_at = time.time()
+            self._topic_safety_available = True
 
     def controller_snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -203,6 +237,9 @@ class UrStatusMonitor:
 
     def _tick(self) -> None:
         now = time.monotonic()
+        if self._safety_subscription is not None and not self._safety_subscription.get_publisher_count():
+            with self._lock:
+                self._topic_safety_available = False
         with self._lock:
             dashboard_due = self._dashboard_refresh_requested or now >= self._next_dashboard
             controller_due = self._controller_refresh_requested or now >= self._next_controller
@@ -246,16 +283,19 @@ class UrStatusMonitor:
             self._finish_dashboard_error(f'Dashboard service unavailable: {service}')
             return
         try:
+            queried_at = time.time()
             future = client.call_async(service_type.Request())
             future.add_done_callback(
                 lambda completed, query_key=key, value_fn=value: self._dashboard_response(
-                    completed, query_key, value_fn,
+                    completed, query_key, value_fn, queried_at=queried_at,
                 )
             )
         except Exception as exc:
             self._finish_dashboard_error(f'Dashboard service failed: {exc}')
 
-    def _dashboard_response(self, future: Any, key: str, value_fn: Callable[[Any], Any]) -> None:
+    def _dashboard_response(
+        self, future: Any, key: str, value_fn: Callable[[Any], Any], *, queried_at: float | None = None,
+    ) -> None:
         try:
             response = future.result()
             if response is None:
@@ -268,6 +308,8 @@ class UrStatusMonitor:
             if not self._dashboard_in_flight:
                 return
             self._dashboard_values[key] = value
+            if key == 'safety_mode':
+                self._dashboard_values['safety_mode_checked_at'] = queried_at if queried_at is not None else time.time()
             self._dashboard_index += 1
             complete = self._dashboard_index == len(self._dashboard_queries)
             values = dict(self._dashboard_values) if complete else None

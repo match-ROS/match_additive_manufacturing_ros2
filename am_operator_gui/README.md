@@ -42,6 +42,29 @@ The source launcher defaults `ROS_DOMAIN_ID` to `38` when unset, including deskt
 launches that do not read `.bashrc`. An explicit domain overrides this default.
 Use the same domain in terminals running `ros2 topic list` and on the robot.
 
+### Protective stop sound on the PC and notebook
+
+Every open web GUI plays its own repeating submarine-style klaxon when the UR
+driver reports `PROTECTIVE_STOP`. After opening or reloading the GUI, click
+**Enable alarm sound** on both the terminal PC and the notebook; browsers require
+a click to allow audio. **Test alarm** enables sound and plays one horn cycle
+without sending any robot command. Keep the GUI open, allow site audio, and set
+the computer's speaker volume as needed. Playback uses each browser's local
+audio output, including when the notebook connects through an SSH tunnel.
+
+The alarm repeats until a live dashboard status clears the stop or you click
+**Silence this alarm** in that browser. Silencing does not unlock the arm or mute
+the other computer, and the next protective stop sounds again. The volume slider
+is saved per browser; **Disable alarm sound** disables audio until re-enabled.
+An already active stop sounds when audio is enabled. If status updates are lost,
+a confirmed stop continues sounding and the panel reports that live status is
+unavailable. The monitor subscribes to
+`/robot/arm/io_and_status_controller/safety_mode` (`ur_dashboard_msgs/msg/SafetyMode`)
+for prompt updates, shown on the next GUI poll (normally every second). The
+existing ten-second dashboard polling provides initial status and a fallback
+when the topic is unavailable. A suspended browser/computer cannot provide live
+alerts.
+
 ### Sync sources and run JParse on the robot
 
 **Sync Workspace** copies the local workspace's entire `src/` tree over SSH to
