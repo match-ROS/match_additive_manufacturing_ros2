@@ -58,8 +58,8 @@
   },
   "follower_type": "pid",
   "nozzle_offset_mm": 0,
-  "original_arm_index": 1,
-  "path_index": 1,
+  "original_arm_index": 1050,
+  "path_index": 10226,
   "path_transform": {
     "x": -1.8148869126341716,
     "y": 3.96938899095019,
@@ -142,7 +142,7 @@
       "pid_gains": {
         "arm_direction.along_track_kp": 2.0,
         "arm_direction.final_position_tolerance": 0.005,
-        "arm_direction.kp_z": 0.7,
+        "arm_direction.kp_z": 2.5,
         "arm_direction.max_along_track_correction": 0.03,
         "arm_direction.max_spray_axis_correction": 0.03,
         "arm_direction.max_tracking_linear_velocity": 0.12,
@@ -177,7 +177,7 @@
   "simulation": false,
   "simulation_gui": false,
   "spray_distance_mm": 400.0,
-  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261005_2036_robot_path_seg_1_srf_waffle_80",
+  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261006_0928_robot_path_Seg_1_srf_waffle_new_params_dense",
   "use_base_tcp_pose_fallback": false,
   "use_odometry_robot_pose": true,
   "use_vicon_tcp_base_pose_fallback": false,
