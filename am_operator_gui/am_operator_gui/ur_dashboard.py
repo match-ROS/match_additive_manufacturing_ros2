@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import sys
 from threading import Lock, Thread
 from typing import Any, Callable
 
@@ -21,6 +22,37 @@ ROBOT_MODES = {-1: 'NO_CONTROLLER', 0: 'DISCONNECTED', 1: 'CONFIRM_SAFETY', 2: '
 
 def dashboard_command(action: str) -> list[str]:
     """Return a fixed dashboard command; the UI never accepts arbitrary ROS commands."""
+    if action == 'restart_program':
+        # Check the Trigger response, since a failed ROS service response does
+        # not necessarily cause the ros2 CLI to exit with a nonzero code.
+        script = '''import sys
+import rclpy
+from std_srvs.srv import Trigger
+
+rclpy.init()
+node = rclpy.create_node('am_operator_restart_program')
+try:
+    for service in ('stop', 'play'):
+        client = node.create_client(Trigger, sys.argv[1] + '/' + service)
+        if not client.wait_for_service(timeout_sec=5.0):
+            raise RuntimeError(service + ': dashboard service unavailable')
+        future = client.call_async(Trigger.Request())
+        rclpy.spin_until_future_complete(node, future, timeout_sec=5.0)
+        if not future.done():
+            raise RuntimeError(service + ': dashboard service timed out')
+        response = future.result()
+        if response is None or not response.success:
+            raise RuntimeError(service + ': ' + (response.message if response else 'empty response'))
+        print(service + ': ' + response.message, flush=True)
+        node.destroy_client(client)
+except Exception as exc:
+    print('[ERROR] Restart Program failed: ' + str(exc), flush=True)
+    sys.exit(1)
+finally:
+    node.destroy_node()
+    rclpy.shutdown()
+'''
+        return [sys.executable, '-c', script, DASHBOARD_NAMESPACE]
     services = {
         'play_program': ('play', 'std_srvs/srv/Trigger'),
         'unlock_protective_stop': ('unlock_protective_stop', 'std_srvs/srv/Trigger'),

@@ -836,6 +836,11 @@ class OperatorService:
         states['play_program'] = self._message_state(
             'play_program', 'Run Program', 'Startet das aktuell im UR geladene Programm.'
         )
+        states['restart_program'] = self._process_state(
+            ('restart_program',), 'Restart Program', 'Restarting Program',
+            'Stoppt das aktuell im UR geladene Programm und startet es nach erfolgreichem Stop erneut.',
+            one_shot=True,
+        )
         ready = all(self._status.values())
         controls = all(self._is_running(name) for name in ('path_index', 'base_follower', 'arm_follower'))
         states['start_following'] = {
@@ -1104,7 +1109,7 @@ class OperatorService:
             self._last_action_messages[name] = f'Bringup-Ausführung {self._remote_bringup_run} gestartet'
             self._last_action_success[name] = True
             return
-        if name in {'play_program', 'unlock_protective_stop', 'enable_ur', 'release_brakes'}:
+        if name in {'play_program', 'restart_program', 'unlock_protective_stop', 'enable_ur', 'release_brakes'}:
             if name == 'enable_ur':
                 command = enable_command(
                     self.ur_dashboard.snapshot().get('safety_mode') == 'PROTECTIVE_STOP'
