@@ -17,6 +17,13 @@ h1 { margin: 0; font-size: 1.35rem; letter-spacing: .01em; }
 main { max-width: 1600px; margin: auto; padding: 1rem; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1rem; align-items: start; }
 .card { padding: 1rem; border: 1px solid #dbe4e8; border-radius: 10px; background: #fff; box-shadow: 0 1px 3px #17313d12; }
 .card h2 { margin: 0 0 .25rem; color: #18384a; font-size: 1rem; }
+.alarm-card { grid-column: 1 / -1; border-left: 5px solid #d7b54c; }
+.alarm-card.alarm-active { border-color: #c95c5c; background: #fff0f0; }
+.alarm-card.alarm-active h2, .alarm-card.alarm-active #alarm-status { color: #a5262d; font-weight: 700; }
+.alarm-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; }
+.alarm-controls label { display: flex; align-items: center; gap: .5rem; }
+.alarm-controls input { max-width: 150px; padding: 0; }
+.alarm-help { margin-bottom: 0; color: #49616c; font-size: .82rem; }
 .system-card { grid-column: span 5; }.components-card { grid-column: span 4; }.motion-card { grid-column: span 3; }.robot-hardware-card { grid-column: span 5; }.hardware-guide { grid-column: span 7; }.overrides-card { grid-column: span 5; }.accuracy-card { grid-column: span 3; }.advanced-card { grid-column: span 4; }.console { grid-column: 1 / -1; }
 .hardware-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .45rem .8rem; margin-top: .7rem; font-size: .88rem; }.hardware-status strong { overflow-wrap: anywhere; }.hardware-status .status-error { color: #a5262d; }.hardware-status .status-warning { color: #9a6400; }.hardware-status .status-ok { color: #205c2b; }
 .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .75rem; }

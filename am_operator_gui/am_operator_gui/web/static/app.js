@@ -9,6 +9,7 @@ const consoleElements = {
 const consoleStorageKey = 'am-operator-console-preferences';
 let clearedAfter = null;
 let latestState = null;
+const protectiveStopAlarm = new ProtectiveStopAlarm();
 const toolOffsetElements = {
   mode: document.querySelector('#tool-offset-mode'),
   xyz: ['x', 'y', 'z'].map(axis => document.querySelector(`#tool-offset-${axis}`)),
@@ -454,6 +455,7 @@ function renderHardwareTopicCheck(results = []) {
 }
 function render(state) {
   latestState = state;
+  protectiveStopAlarm.update(state.ur_dashboard);
   const config = state.config || {};
   const active = document.activeElement;
   if (toolOffsetPlatform !== config.platform) {
@@ -559,7 +561,10 @@ async function jsonResponse(response) {
 }
 async function refresh() {
   try { render(await fetch('/api/state').then(jsonResponse)); }
-  catch (error) { showFeedback(`Status konnte nicht aktualisiert werden: ${error.message}`, true); }
+  catch (error) {
+    protectiveStopAlarm.update(null);
+    showFeedback(`Status konnte nicht aktualisiert werden: ${error.message}`, true);
+  }
 }
 async function save() {
   if (!dirtyFields.size) return;

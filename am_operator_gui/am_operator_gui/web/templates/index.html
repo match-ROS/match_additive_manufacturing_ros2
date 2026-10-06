@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>AM Operator</title><link rel="stylesheet" href="/static/style.css">
+  <title>AM Operator</title><link rel="stylesheet" href="/static/style.css?v=protective-stop-alarm-v1">
 </head>
 <body>
 <header class="app-header">
@@ -17,6 +17,17 @@
   </div>
 </header>
 <main>
+  <section id="protective-stop-alarm" class="card alarm-card" aria-labelledby="alarm-heading">
+    <h2 id="alarm-heading">Arm protective stop alarm</h2>
+    <p id="alarm-status" role="status" aria-live="polite">Click Enable alarm sound in each browser.</p>
+    <div class="alarm-controls">
+      <button id="alarm-enable" type="button">Enable alarm sound</button>
+      <button id="alarm-test" type="button">Test alarm</button>
+      <button id="alarm-silence" type="button" disabled title="Silences this stop in this browser. The next protective stop sounds again.">Silence this alarm</button>
+      <label for="alarm-volume">Volume <input id="alarm-volume" type="range" min="0" max="100" value="60"></label>
+    </div>
+    <p class="alarm-help">Repeating submarine klaxon on this computer. Enable on the terminal PC and notebook after opening or reloading the GUI. Silencing the sound leaves the arm's protective stop active.</p>
+  </section>
   <section class="card system-card"><h2>System</h2><div class="fields">
     <label title="Bestimmt Base-Pfad, Pose- und cmd_vel-Topics sowie den Controller-Manager.">Plattform <select data-setting="platform"><option value="robotnik">Robotnik</option><option value="bunker">Bunker</option></select></label>
     <label title="Simulation verwendet Simulationszeit und Simulator-Controller/-Topics. Ohne Simulation verwendet die GUI externe Pose-Quellen und Hardware-Controller des Plattformprofils."><input type="checkbox" data-setting="simulation"> Simulation</label>
@@ -91,4 +102,4 @@
     <p id="action-feedback" class="action-feedback" role="status" aria-live="polite"></p>
     <div id="log" class="log-output" role="log" aria-live="polite" aria-label="Konsolenausgabe"></div>
   </section>
-</main><script src="/static/app.js?v=vicon-base-calibration-v1"></script></body></html>
+</main><script src="/static/protective-stop-alarm.js?v=protective-stop-alarm-v1"></script><script src="/static/app.js?v=protective-stop-alarm-v1"></script></body></html>
