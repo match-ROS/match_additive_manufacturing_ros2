@@ -58,9 +58,9 @@
   },
   "follower_type": "pid",
   "nozzle_offset_mm": 0,
-  "original_arm_index": 1,
-  "paper_notes": "run1",
-  "path_index": 1,
+  "original_arm_index": 1990,
+  "paper_notes": "run2",
+  "path_index": 11809,
   "path_transform": {
     "x": -1.8148869126341716,
     "y": 3.96938899095019,
@@ -127,6 +127,12 @@
           "yaw_deg": 101.43493334231577,
           "z": 0.0024308892970040094
         },
+        "/home/rosmatch/workspaces/wattle_daub_ros2_ws/261006_1733_robot_path_Seg_2_srf_strong_waffle_dense": {
+          "x": 0.0,
+          "y": 0.0,
+          "yaw_deg": 0.0,
+          "z": 0.0
+        },
         "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261005_2036_robot_path_seg_1_srf_waffle_80": {
           "x": 0.0,
           "y": 0.0,
@@ -134,6 +140,18 @@
           "z": 0.0
         },
         "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261006_0928_robot_path_Seg_1_srf_waffle_new_params_dense": {
+          "x": 0.0,
+          "y": 0.0,
+          "yaw_deg": 0.0,
+          "z": 0.0
+        },
+        "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261006_1733_robot_path_Seg_2_srf_strong_waffle_dense": {
+          "x": 0.0,
+          "y": 0.0,
+          "yaw_deg": 0.0,
+          "z": 0.0
+        },
+        "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261006_1953_robot_pathSeg_2_srf_strong_waffle_dense_bottom_inf_50": {
           "x": 0.0,
           "y": 0.0,
           "yaw_deg": 0.0,
@@ -184,7 +202,7 @@
   "simulation": false,
   "simulation_gui": false,
   "spray_distance_mm": 400.0,
-  "trajectory_directory": "261006_1733_robot_path_Seg_2_srf_strong_waffle_dense",
+  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261006_1953_robot_pathSeg_2_srf_strong_waffle_dense_bottom_inf_50",
   "use_base_tcp_pose_fallback": false,
   "use_odometry_robot_pose": true,
   "use_vicon_tcp_base_pose_fallback": false,
