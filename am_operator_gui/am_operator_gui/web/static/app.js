@@ -455,6 +455,7 @@ function renderHardwareTopicCheck(results = []) {
 }
 function render(state) {
   latestState = state;
+  renderTrajectoryProgress(state.trajectory_progress);
   protectiveStopAlarm.update(state.ur_dashboard);
   const config = state.config || {};
   const active = document.activeElement;
@@ -554,6 +555,14 @@ function showFeedback(message, isError = false) {
   feedback.textContent = message;
   feedback.classList.toggle('error', isError);
 }
+function renderTrajectoryProgress(progress) {
+  const bar = document.querySelector('#trajectory-progress-bar');
+  const text = document.querySelector('#trajectory-progress-text');
+  bar.value = Number.isFinite(progress?.percent) ? progress.percent : 0;
+  text.textContent = progress?.text || 'Wartet auf Trackingdaten';
+  bar.classList.toggle('stale', progress?.status === 'stale');
+  bar.setAttribute('aria-valuetext', text.textContent);
+}
 async function jsonResponse(response) {
   if (response.ok) return response.json();
   const error = await response.json().catch(() => ({}));
@@ -563,6 +572,8 @@ async function refresh() {
   try { render(await fetch('/api/state').then(jsonResponse)); }
   catch (error) {
     protectiveStopAlarm.update(null);
+    renderTrajectoryProgress({...latestState?.trajectory_progress,
+      status: 'stale', text: 'Trackingdaten nicht verfügbar'});
     showFeedback(`Status konnte nicht aktualisiert werden: ${error.message}`, true);
   }
 }

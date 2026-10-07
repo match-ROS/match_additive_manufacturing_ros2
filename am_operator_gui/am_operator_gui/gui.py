@@ -25,6 +25,7 @@ from PyQt5.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QProgressBar,
     QPlainTextEdit,
     QSlider,
     QSplitter,
@@ -950,6 +951,17 @@ class OperatorWindow(QMainWindow):
         motion_layout.addWidget(self.move_arm_distance, 1, 1)
         motion_layout.addWidget(self.start_following_button, 2, 0)
         motion_layout.addWidget(self.stop_following_button, 2, 1)
+
+        self.trajectory_progress_bar = QProgressBar()
+        self.trajectory_progress_bar.setRange(0, 1000)
+        self.trajectory_progress_bar.setValue(0)
+        self.trajectory_progress_bar.setFormat('Wartet auf Trackingdaten')
+        self.trajectory_progress_bar.setToolTip(
+            'Referenzfortschritt über den gesamten Trackingpfad, einschließlich '
+            'Segmentphase. 100 % bedeutet: Referenz am Pfadende.'
+        )
+        motion_layout.addWidget(QLabel('Trajectory Tracking – Fortschritt'), 3, 0, 1, 2)
+        motion_layout.addWidget(self.trajectory_progress_bar, 4, 0, 1, 2)
 
         override_group = QGroupBox('Overrides')
         override_layout = QGridLayout(override_group)
@@ -2532,6 +2544,10 @@ class OperatorWindow(QMainWindow):
             self.debug_info.setText(format_debug_info(self.service.robot_debug.snapshot()))
 
     def _refresh_process_states(self) -> None:
+        progress = self.service.trajectory_progress()
+        self.trajectory_progress_bar.setValue(round((progress['percent'] or 0.0) * 10))
+        self.trajectory_progress_bar.setFormat(progress['text'])
+        self.trajectory_progress_bar.setEnabled(progress['status'] not in ('waiting', 'stale'))
         distances = self.service.move_start_distances_cm()
         for name, label, axes in (('base', self.move_base_distance, 'XY'),
                                   ('arm', self.move_arm_distance, 'XYZ')):

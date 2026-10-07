@@ -67,3 +67,9 @@ textarea { width: 100%; height: 18rem; overflow: auto; color: #d8e4e9; backgroun
 
 .move-start-control { display: inline-flex; flex-direction: column; gap: 0.35rem; }
 .move-start-control span { font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+
+.trajectory-progress { display: grid; gap: .4rem; margin-top: 1rem; }
+.trajectory-progress label { font-weight: 600; }
+.trajectory-progress progress { width: 100%; height: 1.2rem; accent-color: #36824a; }
+.trajectory-progress progress.stale { opacity: .45; }
+.trajectory-progress span { font-size: .9rem; font-variant-numeric: tabular-nums; }

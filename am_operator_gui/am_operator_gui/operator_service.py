@@ -28,6 +28,7 @@ from .tool_transforms import (
 from .config_store import ConfigStore
 from .robot_debug import RobotDebugInfo
 from .process_manager import ProcessRegistry
+from .trajectory_progress import TrajectoryProgress
 from .ur_dashboard import (
     ForwardVelocityControllerInfo, UrDashboardInfo, UrStatusMonitor, dashboard_command, enable_command,
 )
@@ -703,12 +704,17 @@ class OperatorService:
         return {'config': config, 'platform_settings': platform_settings, 'status': self._status, 'processes': processes,
                 'actions': self._action_states(),
                 'move_start_distances_cm': self.move_start_distances_cm(),
+                'trajectory_progress': self.trajectory_progress(),
                 'logs': list(self.logs), 'ros_error': self.ros_error,
                 'battery': {'level': self._battery_level, 'topic': self._battery_topic()},
                 'base_hardware': self._base_hardware,
                 'ur_dashboard': self.ur_dashboard.snapshot(),
                 'forward_velocity_controller': self.forward_velocity_controller.snapshot(),
                 'hardware_topic_results': self._hardware_topic_results}
+
+    def trajectory_progress(self) -> dict:
+        reader = getattr(self.ros_bridge, 'trajectory_progress', None)
+        return reader() if reader is not None else TrajectoryProgress().snapshot()
 
     def move_start_distances_cm(self) -> dict:
         if self.ros_bridge is None:

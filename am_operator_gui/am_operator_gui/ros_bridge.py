@@ -13,6 +13,8 @@ from tf2_ros import Buffer, TransformException, TransformListener
 from robotnik_battery_msgs.msg import BatteryStatus
 from robotnik_hardware_msgs.msg import MotorStatusArray
 
+from .trajectory_progress import TrajectoryProgress
+
 
 StatusCallback = Callable[[bool, bool, bool, bool, bool], None]
 PathIndexCallback = Callable[[int], None]
@@ -66,6 +68,7 @@ class OperatorGuiNode(Node):
         self._latest_arm_pose = None
         self._latest_tracking_base_path = None
         self._latest_pose_lock = threading.Lock()
+        self._trajectory_progress = TrajectoryProgress()
 
         path_index_qos = QoSProfile(
             depth=1,
@@ -90,6 +93,7 @@ class OperatorGuiNode(Node):
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
         self.create_subscription(Int32, '/path_index', self._path_index_cb, path_index_qos)
+        self.create_subscription(String, '/trajectory_state', self._trajectory_state_cb, 10)
         self.create_subscription(Path, '/base_path', self._base_path_cb, 10)
         self.create_subscription(Path, '/base_path_tracking', self._tracking_base_path_cb, path_index_qos)
         self.create_subscription(Path, '/ur_path_transformed', self._ur_path_cb, path_index_qos)
@@ -393,6 +397,9 @@ class OperatorGuiNode(Node):
         if self._path_index_callback is not None:
             self._path_index_callback(int(msg.data))
 
+    def _trajectory_state_cb(self, msg: String) -> None:
+        self._trajectory_progress.update(msg.data)
+
     def _jparse_ready_cb(self, msg: Bool) -> None:
         self._jparse_ready = bool(msg.data)
         self._last_jparse_ready_time = self.get_clock().now()
@@ -485,6 +492,11 @@ class RosBridge:
                 setattr(self._node, f'_last_{name}_time', None)
             self._node._has_path = False
             self._node._emit_status()
+
+    def trajectory_progress(self) -> dict:
+        if self._node is None:
+            return TrajectoryProgress().snapshot()
+        return self._node._trajectory_progress.snapshot()
 
     def start(self) -> None:
         if not rclpy.ok():

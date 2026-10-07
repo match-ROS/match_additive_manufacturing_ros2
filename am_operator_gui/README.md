@@ -466,6 +466,18 @@ Following` is the motion start command.
 
 ## 7. Common failures and recovery
 
+Web and desktop **Motion** controls show **Trajectory Tracking – Fortschritt**:
+a progress bar, percentage and the current zero-based tracking index / final index.
+The display uses the atomic `/trajectory_state` snapshot, including segment phase:
+`100 * (path_index + segment_phase) / (path_points - 1)`. It covers the entire
+resampled path, including when starting at a nonzero index. Stopping or setting
+velocity override to zero holds the reference progress. The label distinguishes
+active tracking, stopped tracking, override pause and the reference endpoint.
+At 100 %, the reference has reached the endpoint; this does not confirm measured
+robot arrival. Missing data shows a waiting label; after 2.5 seconds without a
+valid snapshot, the last value is marked stale. No additional ROS publisher or
+tracking parameter is required.
+
 | Symptom | Likely cause | Check / recovery |
 | --- | --- | --- |
 | `/robot_pose: waiting` | missing Vicon/odom input, wrong map frame, invalid base calibration, or stale data | echo the selected source; verify `map` transform and base/root TF names; choose the appropriate pose-source fallback |
