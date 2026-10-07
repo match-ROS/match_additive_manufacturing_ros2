@@ -58,9 +58,9 @@
   },
   "follower_type": "pid",
   "nozzle_offset_mm": 0,
-  "original_arm_index": 1990,
-  "paper_notes": "run2",
-  "path_index": 11809,
+  "original_arm_index": 934,
+  "paper_notes": "run4_ws2",
+  "path_index": 5533,
   "path_transform": {
     "x": -1.8148869126341716,
     "y": 3.96938899095019,
@@ -157,6 +157,18 @@
           "yaw_deg": 0.0,
           "z": 0.0
         },
+        "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261007_1202_robot_path_Seg_2_55_to_70_percent": {
+          "x": 0.0,
+          "y": 0.0,
+          "yaw_deg": 0.0,
+          "z": 0.0
+        },
+        "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261007_1610_robot_path_Seg_4_55_50": {
+          "x": 0.0,
+          "y": 0.0,
+          "yaw_deg": 0.0,
+          "z": 0.0
+        },
         "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/david_path": {
           "x": 0.0,
           "y": 0.0,
@@ -189,9 +201,9 @@
         "base_move.kp_angular_to_point": 1.5,
         "base_move.kp_lateral": 0.6,
         "base_move.kp_linear": 0.6,
-        "base_move.max_angular_velocity": 0.2,
-        "base_move.max_lateral_velocity": 0.1,
-        "base_move.max_linear_velocity": 0.1
+        "base_move.max_angular_velocity": 0.05,
+        "base_move.max_lateral_velocity": 0.05,
+        "base_move.max_linear_velocity": 0.05
       },
       "robot_base_frame": "robot_base_footprint",
       "robot_tree_root_frame": "robot_odom"
@@ -202,8 +214,8 @@
   "simulation": false,
   "simulation_gui": false,
   "spray_distance_mm": 400.0,
-  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261006_1953_robot_pathSeg_2_srf_strong_waffle_dense_bottom_inf_50",
-  "use_base_tcp_pose_fallback": false,
+  "trajectory_directory": "/home/rosmatch/workspaces/wattle_daub_ros2_ws/src/match_additive_manufacturing_ros2/components/261007_1610_robot_path_Seg_4_55_50",
+  "use_base_tcp_pose_fallback": true,
   "use_odometry_robot_pose": true,
   "use_vicon_tcp_base_pose_fallback": false,
   "velocity_override": 100.0,
